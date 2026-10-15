@@ -1,0 +1,12 @@
+// Constants shared by the server and the app. Kept apart from server.ts so the
+// app bundle does not pull in server code.
+
+export const NOTE_COLORS = ["yellow", "blue", "green", "pink", "purple", "gray"] as const;
+export type NoteColor = (typeof NOTE_COLORS)[number];
+
+export const FRAME_COLORS = ["none", "blue", "green", "amber", "rose", "violet", "cyan", "slate"] as const;
+export type FrameColor = (typeof FRAME_COLORS)[number];
+
+/** What the canvas draws frames around. */
+export const GROUPINGS = ["project", "section", "machine"] as const;
+export type Grouping = (typeof GROUPINGS)[number];

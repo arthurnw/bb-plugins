@@ -10,8 +10,9 @@ import {
   type PluginSidebarThread,
 } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
-import { Icon } from "./icons.tsx";
-import { FRAME_COLORS, NOTE_COLORS, type FrameColor, type Note } from "../server";
+import { Icon, type IconName } from "./icons.tsx";
+import type { Note } from "../server";
+import { FRAME_COLORS, NOTE_COLORS, type FrameColor, type Grouping } from "./shared.ts";
 import { useCanvasActions } from "./context";
 import { CARD_H, CARD_W, FRAME_HEADER } from "./layout.ts";
 import { BUCKET_LABEL, age, type Bucket } from "./status.ts";
@@ -28,7 +29,14 @@ export type ThreadNodeData = {
   childCount: number;
 };
 export type FrameNodeData = {
-  projectId: string;
+  grouping: Grouping;
+  groupKey: string;
+  /** Key for the frame's color: `<grouping>:<group key>`. */
+  frameKey: string;
+  /** The project, in the project grouping. */
+  projectId: string | null;
+  /** The bb section, in the section grouping; null for threads outside every section. */
+  sectionId: string | null;
   name: string;
   count: number;
   attention: number;
@@ -218,39 +226,96 @@ const SWATCH: Record<FrameColor, string> = {
   slate: "bg-slate-500",
 };
 
-export const FrameNode = memo(function FrameNode({ data }: NodeProps<FrameFlowNode>) {
+const GROUP_ICON: Record<Grouping, IconName> = {
+  project: "FolderGit2",
+  section: "Rows3",
+  machine: "Monitor",
+};
+
+const headerButton =
+  "flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-state-hover hover:text-foreground";
+
+export const FrameNode = memo(function FrameNode({ data, selected }: NodeProps<FrameFlowNode>) {
   const actions = useCanvasActions();
   const far = useIsFar();
   const [picking, setPicking] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  useEffect(() => {
+    if (!confirmingDelete) return;
+    const timer = setTimeout(() => setConfirmingDelete(false), 3000);
+    return () => clearTimeout(timer);
+  }, [confirmingDelete]);
+  const isSection = data.grouping === "section" && data.sectionId !== null;
+  const canCreate = data.grouping !== "machine";
+
   return (
     <div
       style={{ width: data.width, height: data.height }}
-      className={cn("rounded-xl border-2", FRAME_TINT[data.color])}
+      className={cn("rounded-xl border-2", FRAME_TINT[data.color], selected && "ring-2 ring-ring")}
     >
       <div
         style={{ height: FRAME_HEADER }}
         className="flex cursor-grab items-center gap-2 px-4 active:cursor-grabbing"
       >
-        <Icon name="FolderGit2" className={cn("shrink-0 text-muted-foreground", far ? "size-8" : "size-4")} />
-        <span className={cn("truncate font-semibold", far ? "text-4xl" : "text-sm")}>{data.name}</span>
-        {far ? null : (
+        <Icon name={GROUP_ICON[data.grouping]} className={cn("shrink-0 text-muted-foreground", far ? "size-8" : "size-4")} />
+        {renaming ? (
+          <input
+            autoFocus
+            defaultValue={data.name}
+            aria-label="Section name"
+            className="nodrag min-w-0 flex-1 rounded border border-input bg-background px-1.5 py-0.5 text-sm font-semibold outline-none focus:ring-1 focus:ring-ring"
+            onKeyDown={(event) => {
+              event.stopPropagation();
+              if (event.key === "Escape") setRenaming(false);
+              if (event.key === "Enter") {
+                const name = event.currentTarget.value.trim();
+                if (name !== "" && name !== data.name && data.sectionId) actions.renameSection(data.sectionId, name);
+                setRenaming(false);
+              }
+            }}
+            onBlur={() => setRenaming(false)}
+          />
+        ) : (
+          <span
+            className={cn("truncate font-semibold", far ? "text-4xl" : "text-sm")}
+            onDoubleClick={isSection ? () => setRenaming(true) : undefined}
+          >
+            {data.name}
+          </span>
+        )}
+        {far || renaming ? null : (
           <>
-            <span className="text-xs text-muted-foreground">
+            <span className="shrink-0 text-xs text-muted-foreground">
               {data.count} thread{data.count === 1 ? "" : "s"}
             </span>
             {data.attention > 0 ? (
-              <span className="rounded-full bg-amber-500/20 px-1.5 text-xs font-medium text-amber-700 dark:text-amber-300">
+              <span className="shrink-0 rounded-full bg-amber-500/20 px-1.5 text-xs font-medium text-amber-700 dark:text-amber-300">
                 {data.attention} need{data.attention === 1 ? "s" : ""} you
               </span>
             ) : null}
-            <span className="nodrag ml-auto flex items-center gap-1">
+            <span className="nodrag ml-auto flex shrink-0 items-center gap-1">
+              {isSection ? (
+                <>
+                  <button type="button" aria-label="Rename section" title="Rename section" className={headerButton} onClick={() => setRenaming(true)}>
+                    <Icon name="Pencil" className="size-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={confirmingDelete ? "Click again to delete the section" : "Delete section"}
+                    title={confirmingDelete ? "Click again to delete; its threads move to No section" : "Delete section"}
+                    className={cn(headerButton, confirmingDelete && "bg-destructive/15 text-destructive hover:text-destructive")}
+                    onClick={() => {
+                      if (!confirmingDelete) setConfirmingDelete(true);
+                      else if (data.sectionId) actions.deleteSection(data.sectionId);
+                    }}
+                  >
+                    <Icon name="Trash2" className="size-3.5" />
+                  </button>
+                </>
+              ) : null}
               <span className="relative">
-                <button
-                  type="button"
-                  aria-label="Frame color"
-                  className="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-state-hover hover:text-foreground"
-                  onClick={() => setPicking((open) => !open)}
-                >
+                <button type="button" aria-label="Frame color" title="Frame color" className={headerButton} onClick={() => setPicking((open) => !open)}>
                   <Icon name="Palette" className="size-3.5" />
                 </button>
                 {picking ? (
@@ -266,7 +331,7 @@ export const FrameNode = memo(function FrameNode({ data }: NodeProps<FrameFlowNo
                           data.color === color && "ring-2 ring-ring ring-offset-1 ring-offset-background",
                         )}
                         onClick={() => {
-                          actions.setFrameColor(data.projectId, color);
+                          actions.setFrameColor(data.frameKey, color);
                           setPicking(false);
                         }}
                       />
@@ -274,15 +339,17 @@ export const FrameNode = memo(function FrameNode({ data }: NodeProps<FrameFlowNo
                   </span>
                 ) : null}
               </span>
-              <button
-                type="button"
-                aria-label={`New thread in ${data.name}`}
-                title="New thread in this project"
-                className="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-state-hover hover:text-foreground"
-                onClick={() => actions.newThread(data.projectId)}
-              >
-                <Icon name="Plus" className="size-3.5" />
-              </button>
+              {canCreate ? (
+                <button
+                  type="button"
+                  aria-label={`New thread in ${data.name}`}
+                  title={`New thread in ${data.name}`}
+                  className={headerButton}
+                  onClick={() => actions.newThreadIn(data)}
+                >
+                  <Icon name="Plus" className="size-3.5" />
+                </button>
+              ) : null}
             </span>
           </>
         )}

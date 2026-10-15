@@ -3,10 +3,10 @@
 // open window. Thread data itself comes from bb's live thread list in the app.
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
+import { FRAME_COLORS, GROUPINGS, NOTE_COLORS } from "./canvas/shared.ts";
 
 const pointSchema = z.object({ x: z.number().finite(), y: z.number().finite() });
 
-const NOTE_COLORS = ["yellow", "blue", "green", "pink", "purple", "gray"] as const;
 const noteSchema = z.object({
   id: z.string().min(1).max(64),
   x: z.number().finite(),
@@ -17,50 +17,79 @@ const noteSchema = z.object({
   color: z.enum(NOTE_COLORS),
 });
 export type Note = z.infer<typeof noteSchema>;
-export type NoteColor = (typeof NOTE_COLORS)[number];
-export { NOTE_COLORS };
+const groupingSchema = z.enum(GROUPINGS);
 
-const FRAME_COLORS = ["none", "blue", "green", "amber", "rose", "violet", "cyan", "slate"] as const;
-export type FrameColor = (typeof FRAME_COLORS)[number];
-export { FRAME_COLORS };
-
-const layoutSchema = z.object({
+/** Each grouping keeps its own arrangement, so switching never scrambles another. */
+const arrangementSchema = z.object({
   positions: z.record(z.string(), pointSchema),
   notes: z.array(noteSchema),
+});
+export type Arrangement = z.infer<typeof arrangementSchema>;
+
+const layoutSchema = z.object({
+  version: z.literal(2),
+  arrangements: z.object({
+    project: arrangementSchema,
+    section: arrangementSchema,
+    machine: arrangementSchema,
+  }),
+  /** Keyed by `<grouping>:<group key>`. */
   frameColors: z.record(z.string(), z.enum(FRAME_COLORS)),
 });
 export type Layout = z.infer<typeof layoutSchema>;
 
+/** The first release stored one project arrangement at the top level. */
+const legacyLayoutSchema = z.object({
+  positions: z.record(z.string(), pointSchema),
+  notes: z.array(noteSchema),
+  frameColors: z.record(z.string(), z.enum(FRAME_COLORS)),
+});
+
+const emptyArrangement = (): Arrangement => ({ positions: {}, notes: [] });
+function emptyLayout(): Layout {
+  return {
+    version: 2,
+    arrangements: { project: emptyArrangement(), section: emptyArrangement(), machine: emptyArrangement() },
+    frameColors: {},
+  };
+}
+
+function parseLayout(raw: unknown): Layout {
+  const current = layoutSchema.safeParse(raw);
+  if (current.success) return current.data;
+  const legacy = legacyLayoutSchema.safeParse(raw);
+  if (!legacy.success) return emptyLayout();
+  const layout = emptyLayout();
+  layout.arrangements.project = { positions: legacy.data.positions, notes: legacy.data.notes };
+  for (const [projectId, color] of Object.entries(legacy.data.frameColors)) {
+    layout.frameColors[`project:${projectId}`] = color;
+  }
+  return layout;
+}
+
 /** Every write carries the writer's client id so it can skip its own echo. */
 const origin = z.string().max(64);
+const ok = z.object({ ok: z.literal(true) });
 
 export const rpcContract = defineRpcContract({
   layout_get: { input: z.null(), output: layoutSchema },
   /** Replaces the whole arrangement; undo and redo restore snapshots with it. */
-  layout_set: {
-    input: z.object({ origin, layout: layoutSchema }),
-    output: z.object({ ok: z.literal(true) }),
-  },
+  layout_set: { input: z.object({ origin, layout: layoutSchema }), output: ok },
   positions_set: {
     input: z.object({
       origin,
+      grouping: groupingSchema,
       positions: z.record(z.string(), pointSchema.nullable()),
-      /** Drop every stored position first (auto-arrange). */
+      /** Drop the grouping's stored positions first (auto-arrange). */
       replace: z.boolean().optional(),
     }),
-    output: z.object({ ok: z.literal(true) }),
+    output: ok,
   },
-  note_upsert: {
-    input: z.object({ origin, note: noteSchema }),
-    output: z.object({ ok: z.literal(true) }),
-  },
-  note_delete: {
-    input: z.object({ origin, id: z.string() }),
-    output: z.object({ ok: z.literal(true) }),
-  },
+  note_upsert: { input: z.object({ origin, grouping: groupingSchema, note: noteSchema }), output: ok },
+  note_delete: { input: z.object({ origin, grouping: groupingSchema, id: z.string() }), output: ok },
   frame_color_set: {
-    input: z.object({ origin, projectId: z.string(), color: z.enum(FRAME_COLORS) }),
-    output: z.object({ ok: z.literal(true) }),
+    input: z.object({ origin, frameKey: z.string().max(200), color: z.enum(FRAME_COLORS) }),
+    output: ok,
   },
 });
 
@@ -70,8 +99,7 @@ const MAX_NOTES = 500;
 
 export default async function plugin(bb: BbPluginApi) {
   async function read(): Promise<Layout> {
-    const parsed = layoutSchema.safeParse(await bb.storage.kv.get(KEY));
-    return parsed.success ? parsed.data : { positions: {}, notes: [], frameColors: {} };
+    return parseLayout(await bb.storage.kv.get(KEY));
   }
 
   // kv has no transactions; chain read-modify-write updates so concurrent
@@ -92,32 +120,39 @@ export default async function plugin(bb: BbPluginApi) {
     layout_get: () => read(),
     layout_set: ({ origin, layout }) =>
       update(origin, (current) => {
-        if (layout.notes.length > MAX_NOTES) throw new Error(`The canvas holds at most ${MAX_NOTES} notes.`);
+        for (const grouping of GROUPINGS) {
+          if (layout.arrangements[grouping].notes.length > MAX_NOTES) {
+            throw new Error(`The canvas holds at most ${MAX_NOTES} notes per grouping.`);
+          }
+        }
         Object.assign(current, layout);
       }),
-    positions_set: ({ origin, positions, replace }) =>
+    positions_set: ({ origin, grouping, positions, replace }) =>
       update(origin, (layout) => {
-        if (replace) layout.positions = {};
+        const arrangement = layout.arrangements[grouping];
+        if (replace) arrangement.positions = {};
         for (const [id, point] of Object.entries(positions)) {
-          if (point === null) delete layout.positions[id];
-          else layout.positions[id] = { x: Math.round(point.x), y: Math.round(point.y) };
+          if (point === null) delete arrangement.positions[id];
+          else arrangement.positions[id] = { x: Math.round(point.x), y: Math.round(point.y) };
         }
       }),
-    note_upsert: ({ origin, note }) =>
+    note_upsert: ({ origin, grouping, note }) =>
       update(origin, (layout) => {
-        const index = layout.notes.findIndex((existing) => existing.id === note.id);
-        if (index >= 0) layout.notes[index] = note;
-        else if (layout.notes.length < MAX_NOTES) layout.notes.push(note);
-        else throw new Error(`The canvas holds at most ${MAX_NOTES} notes.`);
+        const notes = layout.arrangements[grouping].notes;
+        const index = notes.findIndex((existing) => existing.id === note.id);
+        if (index >= 0) notes[index] = note;
+        else if (notes.length < MAX_NOTES) notes.push(note);
+        else throw new Error(`The canvas holds at most ${MAX_NOTES} notes per grouping.`);
       }),
-    note_delete: ({ origin, id }) =>
+    note_delete: ({ origin, grouping, id }) =>
       update(origin, (layout) => {
-        layout.notes = layout.notes.filter((note) => note.id !== id);
+        const arrangement = layout.arrangements[grouping];
+        arrangement.notes = arrangement.notes.filter((note) => note.id !== id);
       }),
-    frame_color_set: ({ origin, projectId, color }) =>
+    frame_color_set: ({ origin, frameKey, color }) =>
       update(origin, (layout) => {
-        if (color === "none") delete layout.frameColors[projectId];
-        else layout.frameColors[projectId] = color;
+        if (color === "none") delete layout.frameColors[frameKey];
+        else layout.frameColors[frameKey] = color;
       }),
   });
 }

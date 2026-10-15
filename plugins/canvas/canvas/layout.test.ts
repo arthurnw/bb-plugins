@@ -2,9 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { CARD_H, CARD_W, autoLayout, frameBounds, placeNew, type LayoutThread } from "./layout.ts";
 
-const thread = (id: string, projectId: string, extra: Partial<LayoutThread> = {}): LayoutThread => ({
+const thread = (id: string, group: string, extra: Partial<LayoutThread> = {}): LayoutThread => ({
   id,
-  projectId,
+  group,
   parentThreadId: null,
   sourceThreadId: null,
   createdAt: 0,
@@ -30,7 +30,7 @@ test("autoLayout puts a first child beside its parent and later children below",
   assert.ok(b.y > a.y);
 });
 
-test("autoLayout keeps projects apart and never overlaps cards", () => {
+test("autoLayout keeps groups apart and never overlaps cards", () => {
   const threads = [
     thread("a1", "a", { latestAttentionAt: 5 }),
     thread("a2", "a"),
@@ -41,7 +41,7 @@ test("autoLayout keeps projects apart and never overlaps cards", () => {
   for (let i = 0; i < positions.length; i += 1) {
     for (let j = i + 1; j < positions.length; j += 1) assert.ok(!overlap(positions[i]!, positions[j]!));
   }
-  // The most recently active project comes first.
+  // The most recently active group comes first.
   assert.ok(autoLayout(threads).get("b1")!.x < autoLayout(threads).get("a1")!.x);
 });
 
@@ -68,7 +68,7 @@ test("placeNew puts a new child beside its parent without overlapping", () => {
   assert.deepEqual(positions.get("parent"), { x: 0, y: 0 });
 });
 
-test("placeNew puts a project's first thread to the right of everything", () => {
+test("placeNew puts a group's first thread to the right of everything", () => {
   const positions = placeNew([thread("a", "a"), thread("b", "b")], new Map([["a", { x: 0, y: 0 }]]));
   assert.ok(positions.get("b")!.x > CARD_W);
 });

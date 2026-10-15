@@ -1,5 +1,5 @@
 // Pure placement logic for the canvas: automatic arrangement, placing new
-// threads next to their relatives, and project frame bounds.
+// threads next to their relatives, and group frame bounds.
 
 export interface Point {
   x: number;
@@ -13,7 +13,8 @@ export interface Rect extends Point {
 /** The thread fields layout reads. */
 export interface LayoutThread {
   id: string;
-  projectId: string;
+  /** The frame the thread belongs to under the current grouping. */
+  group: string;
   parentThreadId: string | null;
   sourceThreadId: string | null;
   createdAt: number;
@@ -29,7 +30,7 @@ export const FRAME_HEADER = 44;
 const FRAME_GAP = 96;
 const ROW_MAX_WIDTH = 2600;
 
-/** Parent links within one project, falling back to the fork source. */
+/** Parent links within one group, falling back to the fork source. */
 function relativeOf(thread: LayoutThread, ids: ReadonlySet<string>): string | null {
   if (thread.parentThreadId !== null && ids.has(thread.parentThreadId)) return thread.parentThreadId;
   if (thread.sourceThreadId !== null && ids.has(thread.sourceThreadId)) return thread.sourceThreadId;
@@ -37,11 +38,11 @@ function relativeOf(thread: LayoutThread, ids: ReadonlySet<string>): string | nu
 }
 
 /**
- * Lays one project's threads out as a tree that grows right and down: a
+ * Lays one group's threads out as a tree that grows right and down: a
  * thread's first child sits beside it, later children stack below. Returns
  * positions relative to the block's top-left and the block size.
  */
-function layoutProject(threads: readonly LayoutThread[]): {
+function layoutGroup(threads: readonly LayoutThread[]): {
   positions: Map<string, Point>;
   width: number;
   height: number;
@@ -83,24 +84,24 @@ function layoutProject(threads: readonly LayoutThread[]): {
 }
 
 /**
- * Arranges every thread from scratch: one block per project, most recently
- * active project first, wrapped into rows.
+ * Arranges every thread from scratch: one block per group, most recently
+ * active group first, wrapped into rows.
  */
 export function autoLayout(threads: readonly LayoutThread[]): Map<string, Point> {
-  const byProject = new Map<string, LayoutThread[]>();
+  const byGroup = new Map<string, LayoutThread[]>();
   for (const thread of threads) {
-    byProject.set(thread.projectId, [...(byProject.get(thread.projectId) ?? []), thread]);
+    byGroup.set(thread.group, [...(byGroup.get(thread.group) ?? []), thread]);
   }
   const latest = (list: readonly LayoutThread[]) =>
     Math.max(...list.map((thread) => thread.latestAttentionAt));
-  const projects = [...byProject.values()].sort((a, b) => latest(b) - latest(a));
+  const groups = [...byGroup.values()].sort((a, b) => latest(b) - latest(a));
 
   const result = new Map<string, Point>();
   let x = 0;
   let y = 0;
   let rowHeight = 0;
-  for (const list of projects) {
-    const block = layoutProject(list);
+  for (const list of groups) {
+    const block = layoutGroup(list);
     const frameWidth = block.width + FRAME_PAD * 2;
     const frameHeight = block.height + FRAME_PAD * 2 + FRAME_HEADER;
     if (x > 0 && x + frameWidth > ROW_MAX_WIDTH) {
@@ -143,7 +144,7 @@ function firstFree(start: Point, taken: readonly Rect[]): Point {
 /**
  * Picks a spot for threads that have no stored position, given the ones that
  * do: right of their parent or fork source, else under the rest of their
- * project, else right of everything for a project's first thread.
+ * group, else right of everything for a group's first thread.
  */
 export function placeNew(
   threads: readonly LayoutThread[],
@@ -157,17 +158,19 @@ export function placeNew(
   const pending = threads
     .filter((thread) => !positions.has(thread.id))
     .sort((a, b) => a.createdAt - b.createdAt);
-  const projectOf = new Map(threads.map((thread) => [thread.id, thread.projectId]));
+  const groupOf = new Map(threads.map((thread) => [thread.id, thread.group]));
 
   for (const thread of pending) {
     const relative = relativeOf(thread, ids);
-    const anchor = relative === null ? undefined : positions.get(relative);
+    // Only sit beside a relative in the same frame.
+    const anchor =
+      relative === null || groupOf.get(relative) !== thread.group ? undefined : positions.get(relative);
     let start: Point;
     if (anchor !== undefined) {
       start = { x: anchor.x + CARD_W + GAP_X, y: anchor.y };
     } else {
       const siblings = [...positions]
-        .filter(([id]) => projectOf.get(id) === thread.projectId)
+        .filter(([id]) => groupOf.get(id) === thread.group)
         .map(([, point]) => point);
       if (siblings.length > 0) {
         const left = Math.min(...siblings.map((point) => point.x));
@@ -189,7 +192,7 @@ export function placeNew(
   return positions;
 }
 
-/** The frame drawn around a project's cards. */
+/** The frame drawn around a group's cards. */
 export function frameBounds(points: readonly Point[]): Rect | null {
   if (points.length === 0) return null;
   const left = Math.min(...points.map((point) => point.x));

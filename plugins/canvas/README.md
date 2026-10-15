@@ -4,41 +4,47 @@ A bb plugin that adds a **Canvas** page to bb's navigation rail: a zoomable map 
 
 ## What it shows
 
-- **Project frames.** Each project's threads sit inside a frame with the project name, thread count, and how many need you. Drag a frame's header to move the whole project. The palette button tints the frame; `+` starts a new thread in that project.
+- **Frames.** Threads sit inside frames, grouped by **project**, by bb **section**, or by **machine** (the Group by switch, or `1` `2` `3`). Each frame shows its name, thread count, and how many need you. Drag a frame's header to move it with its threads. The palette button tints it, and `+` starts a new thread in that project, section, or machine.
+- **Sections** are bb's own thread sections, the same ones the sidebar shows, so one section can hold threads from several repos. In the section grouping you can create a section from the toolbar, rename one (pencil, or double-click its name), delete one (trash, click twice; its threads move to No section), and file a thread by dragging its card onto another section or pressing `m`.
 - **Thread cards.** Each card shows bb's status glyph, the title, time since the last update, the agent provider, the branch or folder, a worktree tag, the PR with its check state, and background activity (subagents, commands, workflows, goals, plan mode, queued messages). The whole card is tinted by status, as in herdr-map: amber needs you (and pulses), blue working, red error, green finished and unread, gray idle.
 - **Links.** Child threads are joined to their parent with an arrow, animated while the child works. Forks and handoffs get a dashed line from their source thread.
-- **Chat panel.** Click a card to open the thread's live chat beside the canvas. You can read and reply there without leaving the canvas. Buttons in its header open the thread in place or in a split.
+- **Chat panel.** Click a card (or press Space) to open the thread's live chat beside the canvas. Opening it leaves the keyboard on the canvas; press `r` to reply, and Shift+Esc to come back to the canvas.
 - **Sticky notes.** Double-click empty canvas or use the note button. Type in the note, drag its top bar, resize it when selected, pick a color, or delete it.
-- **Zoomed out**, cards show only large titles over their status color, and frames show large project names.
+- **Zoomed out**, cards show only large titles over their status color, and frames show large names.
 
-## Controls
+## Keyboard
 
-| Action | How |
+| Keys | Action |
 | --- | --- |
-| Open chat panel | Click a card |
-| Open thread | Double-click a card, or Enter with a card selected |
-| Open thread in a split | Cmd/Ctrl + double-click a card |
-| bb's thread menu (archive, pin, rename, …) | Right-click a card |
-| Filter | Type in the filter box (`/` focuses it; Enter jumps to the first match) |
-| Dim a status | Click its chip; Option-click to show only that status |
-| Next thread that needs you | `n`, or the Needs you list at the top right |
-| Fit everything | `f` or the fit button |
-| Close the chat panel | `Esc` |
-| Show archived threads | Archive button |
-| Undo / redo a layout change | Undo and Redo buttons, `⌘Z` / `⇧⌘Z` (`Ctrl+Z` / `Ctrl+Y` elsewhere) |
-| Rearrange automatically | Grid button |
+| `⌘K` or `g` | Go to a thread: pick it and the canvas jumps to its card |
+| `h` `j` `k` `l` (or arrows) | Move to the nearest thread in that direction within the frame |
+| `H` `J` `K` `L` (Shift) | Move to the nearest frame in that direction |
+| Space | Show or hide the chat panel for the selected thread |
+| `r` | Reply: open the chat panel with its reply box focused |
+| Shift+Esc | Leave the chat panel for the canvas |
+| Enter / Shift+Enter | Open the thread / open it in a split |
+| `n` / `N` | Next / previous thread that needs you |
+| `m` | Move the selected thread to a section (or a new one) |
+| `1` `2` `3` | Group by project, section, machine |
+| `c` / `f` | Center the selection / fit everything |
+| `/` | Filter (dims threads that don't match) |
+| `⌘Z` / `⇧⌘Z` | Undo / redo a layout change (`Ctrl+Z` / `Ctrl+Y` elsewhere) |
+| Esc | Close the chat panel, then clear the selection |
+| `?` | Show the shortcuts |
+
+`⌘K` opens the canvas picker instead of bb's while you're on the canvas, except inside the chat panel. With the mouse: double-click a card to open the thread (Cmd/Ctrl for a split), right-click for bb's thread menu, and Option-click a status chip to show only that status.
 
 ## Layout
 
-The first time it opens, the canvas arranges every project as a tree: a thread's first child sits to its right, and later children stack below. New threads are placed next to their parent or fork source, or under the rest of their project. After that, positions are yours: card, frame, and note positions, note text, and frame colors are saved by the plugin on the bb server and shared by every window. The zoom and pan position is saved per browser.
+Each grouping keeps its own arrangement of cards and notes, so switching groupings never moves anything in another. The first time a grouping opens, the canvas arranges it as a tree per frame: a thread's first child sits to its right, and later children stack below. New threads are placed next to their parent or fork source when it's in the same frame, or under the rest of their frame. Positions, notes, and frame colors are saved by the plugin on the bb server and shared by every window. The zoom and pan position and the grouping are saved per browser.
 
-Undo covers moves of cards, frames, and notes; rearranging; adding, editing, recoloring, and deleting notes; and frame colors. The last 50 steps are kept for each open window until it reloads.
+Undo covers moves of cards, frames, and notes; rearranging; adding, editing, recoloring, and deleting notes; and frame colors. Section changes (create, rename, delete, filing a thread) go to bb and aren't undone by it. The last 50 steps are kept for each open window until it reloads.
 
 ## Development
 
 ```sh
 npm install --include=dev
-npm test            # layout and status unit tests
+npm test            # layout, navigation, and status unit tests
 npm run typecheck
 bb plugin install . # first time
 bb plugin dev       # rebuild and reload on save

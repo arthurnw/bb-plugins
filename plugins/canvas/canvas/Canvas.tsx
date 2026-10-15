@@ -25,21 +25,34 @@ import {
   useRealtime,
   useRealtimeConnectionState,
   useRpc,
+  useSdk,
   type PluginSidebarThread,
 } from "@get-bb/plugin-sdk/app";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { Icon } from "./icons.tsx";
-import type { FrameColor, Layout, Note, rpcContract } from "../server";
+import type { Arrangement, Layout, Note, rpcContract } from "../server";
 import { CanvasActionsContext, type CanvasActions } from "./context";
-import { CARD_H, CARD_W, autoLayout, frameBounds, placeNew, type Point } from "./layout.ts";
-import { nodeTypes, type CanvasNode } from "./nodes";
+import { Icon } from "./icons.tsx";
+import { CARD_H, CARD_W, autoLayout, frameBounds, placeNew, type Point, type Rect } from "./layout.ts";
+import { DIRECTION_KEYS, nearestInDirection, nearestTo, type Direction, type NavItem } from "./nav.ts";
+import { nodeTypes, type CanvasNode, type FrameNodeData } from "./nodes";
+import { Picker, type PickerItem } from "./Picker.tsx";
+import { GROUPINGS, type FrameColor, type Grouping } from "./shared.ts";
 import { BUCKETS, BUCKET_LABEL, bucketOf, type Bucket } from "./status.ts";
 
 const CLIENT_ID = Math.random().toString(36).slice(2, 10);
 const UNDO_LIMIT = 50;
-const EMPTY_LAYOUT: Layout = { positions: {}, notes: [], frameColors: {} };
+const NO_GROUP = "none";
+const EMPTY_ARRANGEMENT: Arrangement = { positions: {}, notes: [] };
+const EMPTY_LAYOUT: Layout = {
+  version: 2,
+  arrangements: { project: EMPTY_ARRANGEMENT, section: EMPTY_ARRANGEMENT, machine: EMPTY_ARRANGEMENT },
+  frameColors: {},
+};
+const GROUPING_LABEL: Record<Grouping, string> = { project: "Project", section: "Section", machine: "Machine" };
+
+const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 /** The stored arrangement, refetched when another window changes it. */
 function useStoredLayout() {
@@ -47,7 +60,7 @@ function useStoredLayout() {
   const [layout, setLayout] = useState<Layout | null>(null);
   const refetch = useCallback(() => {
     rpc.call("layout_get").then(setLayout, (error: unknown) => {
-      toast.error(`Canvas layout failed to load: ${error instanceof Error ? error.message : String(error)}`);
+      toast.error(`Canvas layout failed to load: ${errorText(error)}`);
       setLayout((current) => current ?? EMPTY_LAYOUT);
     });
   }, [rpc]);
@@ -76,11 +89,35 @@ function useNow(intervalMs: number): number {
   return now;
 }
 
-function matches(thread: PluginSidebarThread, projectName: string, query: string): boolean {
+/** A value kept in localStorage under this plugin's id. */
+function useStoredPreference<T extends string>(key: string, allowed: readonly T[], fallback: T) {
+  const [value, setValue] = useState<T>(() => {
+    try {
+      const stored = localStorage.getItem(key);
+      return allowed.includes(stored as T) ? (stored as T) : fallback;
+    } catch {
+      return fallback;
+    }
+  });
+  const update = useCallback(
+    (next: T) => {
+      setValue(next);
+      try {
+        localStorage.setItem(key, next);
+      } catch {
+        // Blocked storage only loses the preference.
+      }
+    },
+    [key],
+  );
+  return [value, update] as const;
+}
+
+function matches(thread: PluginSidebarThread, groupName: string, query: string): boolean {
   if (query === "") return true;
   const haystack = [
     thread.displayTitle,
-    projectName,
+    groupName,
     thread.environment?.branchName,
     thread.environment?.name,
     thread.environment?.path,
@@ -106,34 +143,123 @@ function ToolButton({
   return <button type="button" className={cn(buttonVariants({ variant, size }), className)} {...props} />;
 }
 
-function Inspector({ thread, onClose }: { thread: PluginSidebarThread; onClose(): void }) {
+function Inspector({
+  thread,
+  focusRequest,
+  onClose,
+  onReleaseFocus,
+}: {
+  thread: PluginSidebarThread;
+  focusRequest: number;
+  onClose(): void;
+  /** Hands keyboard focus back to the canvas. */
+  onReleaseFocus(): void;
+}) {
   const navigate = useBbNavigate();
+  const asideRef = useRef<HTMLElement>(null);
+  // bb's chat focuses its composer when it mounts. Unless the user asked to
+  // reply (`r`), give focus back so hjkl keeps moving around the canvas.
+  const replyRequest = useRef(focusRequest);
+  useEffect(() => {
+    if (focusRequest !== replyRequest.current) {
+      replyRequest.current = focusRequest;
+      return;
+    }
+    const aside = asideRef.current;
+    if (aside === null) return;
+    // The composer can take focus once its timeline loads, so watch for a while.
+    const until = Date.now() + 2500;
+    const onFocusIn = () => {
+      if (Date.now() < until) onReleaseFocus();
+    };
+    // Clicking into the chat on purpose ends the watch.
+    const onPointerDown = () => aside.removeEventListener("focusin", onFocusIn);
+    aside.addEventListener("focusin", onFocusIn);
+    aside.addEventListener("pointerdown", onPointerDown, { capture: true });
+    if (aside.contains(document.activeElement)) onReleaseFocus();
+    return () => {
+      aside.removeEventListener("focusin", onFocusIn);
+      aside.removeEventListener("pointerdown", onPointerDown, { capture: true });
+    };
+  }, [thread.id, focusRequest, onReleaseFocus]);
   return (
-    <aside className="flex h-full w-[min(480px,45%)] shrink-0 flex-col border-l border-border bg-background">
+    <aside ref={asideRef} data-bb-canvas-inspector="" className="flex h-full w-[min(480px,45%)] shrink-0 flex-col border-l border-border bg-background">
       <div className="flex h-11 shrink-0 items-center gap-1 border-b border-border px-3">
         <span className="min-w-0 flex-1 truncate text-sm font-medium" title={thread.displayTitle}>
           {thread.displayTitle}
         </span>
-        <ToolButton variant="ghost" size="icon" className="size-7" title="Open in a split" aria-label="Open in a split" onClick={() => navigate.toThread(thread.id, { split: true })}>
+        <ToolButton variant="ghost" size="icon" className="size-7" title="Open in a split (⇧↵)" aria-label="Open in a split" onClick={() => navigate.toThread(thread.id, { split: true })}>
           <Icon name="Columns2" className="size-4" />
         </ToolButton>
-        <ToolButton variant="ghost" size="icon" className="size-7" title="Open thread" aria-label="Open thread" onClick={() => navigate.toThread(thread.id)}>
+        <ToolButton variant="ghost" size="icon" className="size-7" title="Open thread (↵)" aria-label="Open thread" onClick={() => navigate.toThread(thread.id)}>
           <Icon name="ArrowUpRight" className="size-4" />
         </ToolButton>
-        <ToolButton variant="ghost" size="icon" className="size-7" title="Close (Esc)" aria-label="Close" onClick={onClose}>
+        <ToolButton variant="ghost" size="icon" className="size-7" title="Close (Space or Esc)" aria-label="Close" onClick={onClose}>
           <Icon name="X" className="size-4" />
         </ToolButton>
       </div>
       <div className="min-h-0 flex-1">
-        <ThreadChat key={thread.id} threadId={thread.id} variant="compact" />
+        <ThreadChat key={thread.id} threadId={thread.id} variant="compact" focusRequest={focusRequest} />
       </div>
     </aside>
   );
 }
 
+const SHORTCUTS: [string, string][] = [
+  ["⌘K or g", "Go to a thread"],
+  ["h j k l", "Move between threads in a frame"],
+  ["⇧ H J K L", "Move between frames"],
+  ["Space", "Show or hide the chat panel"],
+  ["r", "Reply to the selected thread"],
+  ["⇧Esc", "Leave the chat panel for the canvas"],
+  ["↵ / ⇧↵", "Open the thread / in a split"],
+  ["n / ⇧N", "Next / previous thread that needs you"],
+  ["m", "Move the thread to a section"],
+  ["1 2 3", "Group by project, section, machine"],
+  ["c / f", "Center the selection / fit everything"],
+  ["/", "Filter"],
+  ["⌘Z / ⇧⌘Z", "Undo / redo a layout change"],
+  ["Esc", "Close, then clear the selection"],
+  ["?", "Show these shortcuts"],
+];
+
+function ShortcutHelp({ onClose }: { onClose(): void }) {
+  return (
+    <div className="absolute inset-0 z-20 flex items-start justify-center bg-black/10 pt-[12vh]" onMouseDown={onClose}>
+      <div
+        role="dialog"
+        aria-label="Keyboard shortcuts"
+        className="w-[min(440px,90%)] rounded-xl border border-border bg-popover p-4 text-sm text-popover-foreground shadow-2xl"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="mb-3 font-medium">Keyboard shortcuts</div>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
+          {SHORTCUTS.map(([keys, label]) => (
+            <div key={keys} className="contents">
+              <dt className="font-mono text-xs leading-5 text-muted-foreground">{keys}</dt>
+              <dd>{label}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    </div>
+  );
+}
+
+interface Group {
+  key: string;
+  name: string;
+  projectId: string | null;
+  sectionId: string | null;
+  hostId: string | null;
+}
+
+type Overlay = null | { kind: "goto" } | { kind: "move"; threadId: string } | { kind: "new-section" } | { kind: "help" };
+
 function CanvasInner() {
   const pluginId = usePluginId();
   const navigate = useBbNavigate();
+  const sdk = useSdk();
   const flow = useReactFlow<CanvasNode, Edge>();
   const [showArchived, setShowArchived] = useState(false);
   const sidebar = useSidebarThreads(
@@ -141,10 +267,15 @@ function CanvasInner() {
   );
   const { rpc, layout, setLayout } = useStoredLayout();
   const now = useNow(30_000);
+  const [grouping, setGrouping] = useStoredPreference<Grouping>(`${pluginId}:grouping`, GROUPINGS, "project");
   const [query, setQuery] = useState("");
   const [hidden, setHidden] = useState<ReadonlySet<Bucket>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [chatFocus, setChatFocus] = useState(0);
+  const [overlay, setOverlay] = useState<Overlay>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
   const threads = useMemo(
     () => sidebar.threads.filter((thread) => !thread.isHidden && (showArchived || !thread.isArchived)),
@@ -154,15 +285,50 @@ function CanvasInner() {
     () => new Map(sidebar.projects.map((project) => [project.id, project.isPersonal ? "Personal" : project.name])),
     [sidebar.projects],
   );
+  const sectionNames = useMemo(
+    () => new Map(sidebar.sections.map((section) => [section.id, section.name])),
+    [sidebar.sections],
+  );
+  const groupOf = useCallback(
+    (thread: PluginSidebarThread): Group => {
+      if (grouping === "section") {
+        const sectionId = thread.sectionId !== null && sectionNames.has(thread.sectionId) ? thread.sectionId : null;
+        return {
+          key: sectionId ?? NO_GROUP,
+          name: sectionId === null ? "No section" : sectionNames.get(sectionId)!,
+          projectId: null,
+          sectionId,
+          hostId: null,
+        };
+      }
+      if (grouping === "machine") {
+        return {
+          key: thread.host?.id ?? NO_GROUP,
+          name: thread.host?.name ?? "No machine",
+          projectId: null,
+          sectionId: null,
+          hostId: thread.host?.id ?? null,
+        };
+      }
+      return {
+        key: thread.projectId,
+        name: projectNames.get(thread.projectId) ?? thread.projectId,
+        projectId: thread.projectId,
+        sectionId: null,
+        hostId: null,
+      };
+    },
+    [grouping, projectNames, sectionNames],
+  );
+  const groups = useMemo(() => new Map(threads.map((thread) => [thread.id, groupOf(thread)])), [threads, groupOf]);
   const buckets = useMemo(() => new Map(threads.map((thread) => [thread.id, bucketOf(thread)])), [threads]);
 
+  const arrangement = layout?.arrangements[grouping] ?? EMPTY_ARRANGEMENT;
   // Live positions: stored ones, plus computed spots for threads never placed.
   const [positions, setPositions] = useState<Record<string, Point>>({});
   const positionsRef = useRef(positions);
   positionsRef.current = positions;
-  const notes = layout?.notes ?? EMPTY_LAYOUT.notes;
-  const notesRef = useRef(notes);
-  notesRef.current = notes;
+  const notes = arrangement.notes;
   const dragging = useRef(false);
 
   // Undo and redo hold whole-layout snapshots, kept per window in memory.
@@ -191,7 +357,7 @@ function CanvasInner() {
       layoutRef.current = target;
       setLayout(target);
       rpc.call("layout_set", { origin: CLIENT_ID, layout: target }).catch((error: unknown) => {
-        toast.error(`Could not save the layout: ${error instanceof Error ? error.message : String(error)}`);
+        toast.error(`Could not save the layout: ${errorText(error)}`);
       });
     },
     [history, rpc, setLayout],
@@ -199,66 +365,139 @@ function CanvasInner() {
 
   // Local edits go into `layout` first so later re-derivations see them; the
   // server's echo to this window is skipped.
-  const setNotes = useCallback(
-    (change: (notes: Note[]) => Note[]) =>
-      setLayout((current) => (current === null ? current : { ...current, notes: change(current.notes) })),
-    [setLayout],
-  );
-
-
-  const save = useCallback(
-    (changes: Record<string, Point>, replace = false) => {
+  const updateArrangement = useCallback(
+    (change: (arrangement: Arrangement) => Arrangement) =>
       setLayout((current) =>
         current === null
           ? current
-          : { ...current, positions: replace ? changes : { ...current.positions, ...changes } },
-      );
-      rpc.call("positions_set", { origin: CLIENT_ID, positions: changes, replace }).catch((error: unknown) => {
-        toast.error(`Could not save the layout: ${error instanceof Error ? error.message : String(error)}`);
+          : {
+              ...current,
+              arrangements: { ...current.arrangements, [grouping]: change(current.arrangements[grouping]) },
+            },
+      ),
+    [setLayout, grouping],
+  );
+  const setNotes = useCallback(
+    (change: (notes: Note[]) => Note[]) =>
+      updateArrangement((current) => ({ ...current, notes: change(current.notes) })),
+    [updateArrangement],
+  );
+
+  const save = useCallback(
+    (changes: Record<string, Point | null>, replace = false) => {
+      updateArrangement((current) => {
+        const next = replace ? {} : { ...current.positions };
+        for (const [id, point] of Object.entries(changes)) {
+          if (point === null) delete next[id];
+          else next[id] = point;
+        }
+        return { ...current, positions: next };
+      });
+      rpc.call("positions_set", { origin: CLIENT_ID, grouping, positions: changes, replace }).catch((error: unknown) => {
+        toast.error(`Could not save the layout: ${errorText(error)}`);
       });
     },
-    [rpc],
+    [rpc, grouping, updateArrangement],
+  );
+
+  const layoutThreads = useMemo(
+    () => threads.map((thread) => ({ ...thread, group: groups.get(thread.id)?.key ?? NO_GROUP })),
+    [threads, groups],
   );
 
   useEffect(() => {
     if (layout === null || dragging.current) return;
-    const stored = new Map(
-      Object.entries(layout.positions).filter(([id]) => threads.some((thread) => thread.id === id)),
-    );
-    const noteRects = layout.notes.map((note) => ({ x: note.x, y: note.y, width: note.width, height: note.height }));
+    const ids = new Set(threads.map((thread) => thread.id));
+    const stored = new Map(Object.entries(arrangement.positions).filter(([id]) => ids.has(id)));
+    const noteRects = arrangement.notes.map((note) => ({ x: note.x, y: note.y, width: note.width, height: note.height }));
     const placed =
-      stored.size === 0 && layout.notes.length === 0 ? autoLayout(threads) : placeNew(threads, stored, noteRects);
+      stored.size === 0 && arrangement.notes.length === 0
+        ? autoLayout(layoutThreads)
+        : placeNew(layoutThreads, stored, noteRects);
     setPositions(Object.fromEntries(placed));
     const fresh = [...placed].filter(([id]) => !stored.has(id));
     if (fresh.length > 0 && sidebar.status === "ready") save(Object.fromEntries(fresh));
-  }, [layout, threads, sidebar.status, save]);
+  }, [layout, arrangement, threads, layoutThreads, sidebar.status, save]);
+
+  // Frames with their members and bounds; also what Shift+HJKL moves between.
+  const frames = useMemo(() => {
+    const byGroup = new Map<string, { group: Group; members: PluginSidebarThread[] }>();
+    for (const thread of threads) {
+      const group = groups.get(thread.id)!;
+      const entry = byGroup.get(group.key) ?? { group, members: [] };
+      entry.members.push(thread);
+      byGroup.set(group.key, entry);
+    }
+    return [...byGroup.values()].flatMap(({ group, members }) => {
+      const bounds = frameBounds(members.flatMap((thread) => positions[thread.id] ?? []));
+      return bounds === null ? [] : [{ group, members, bounds }];
+    });
+  }, [threads, groups, positions]);
+
+  const newThreadIn = useCallback(
+    (frame: { grouping: Grouping; projectId: string | null; sectionId: string | null; groupKey: string }) => {
+      if (frame.grouping === "project" && frame.projectId !== null) {
+        navigate.toCompose({ projectId: frame.projectId, focusPrompt: true });
+      } else if (frame.grouping === "section") {
+        navigate.toCompose({ placement: { sectionId: frame.sectionId, pinned: false }, focusPrompt: true });
+      } else if (frame.grouping === "machine" && frame.groupKey !== NO_GROUP) {
+        navigate.toCompose({ hostId: frame.groupKey, focusPrompt: true });
+      } else navigate.toCompose({ focusPrompt: true });
+    },
+    [navigate],
+  );
+
+  /** Files a thread under a section and lets the canvas re-place it there. */
+  const moveToSection = useCallback(
+    async (threadId: string, sectionId: string | null, keepPosition: boolean) => {
+      try {
+        await sdk.threads.update({ threadId, sectionId });
+        if (grouping === "section" && !keepPosition) save({ [threadId]: null });
+        const name = sectionId === null ? "No section" : (sectionNames.get(sectionId) ?? "the section");
+        toast.success(`Moved to ${name}`);
+      } catch (error) {
+        toast.error(`Could not move the thread: ${errorText(error)}`);
+      }
+    },
+    [sdk, grouping, save, sectionNames],
+  );
 
   const actions = useMemo<CanvasActions>(
     () => ({
       select: (id) => setSelectedId(id),
       open: (id, split) => navigate.toThread(id, { split }),
-      newThread: (projectId) => navigate.toCompose({ projectId, focusPrompt: true }),
-      setFrameColor: (projectId: string, color: FrameColor) => {
+      newThreadIn: (frame: FrameNodeData) => newThreadIn(frame),
+      setFrameColor: (frameKey: string, color: FrameColor) => {
         record();
         setLayout((current) =>
-          current === null ? current : { ...current, frameColors: { ...current.frameColors, [projectId]: color } },
+          current === null ? current : { ...current, frameColors: { ...current.frameColors, [frameKey]: color } },
         );
-        rpc.call("frame_color_set", { origin: CLIENT_ID, projectId, color }).catch(() => undefined);
+        rpc.call("frame_color_set", { origin: CLIENT_ID, frameKey, color }).catch(() => undefined);
+      },
+      renameSection: (id, name) => {
+        sdk.threadSections.update({ id, name }).catch((error: unknown) => {
+          toast.error(`Could not rename the section: ${errorText(error)}`);
+        });
+      },
+      deleteSection: (id) => {
+        sdk.threadSections.delete({ id }).catch((error: unknown) => {
+          toast.error(`Could not delete the section: ${errorText(error)}`);
+        });
       },
       updateNote: (note) => {
         record();
         setNotes((current) => current.map((existing) => (existing.id === note.id ? note : existing)));
-        rpc.call("note_upsert", { origin: CLIENT_ID, note }).catch((error: unknown) => {
-          toast.error(`Could not save the note: ${error instanceof Error ? error.message : String(error)}`);
+        rpc.call("note_upsert", { origin: CLIENT_ID, grouping, note }).catch((error: unknown) => {
+          toast.error(`Could not save the note: ${errorText(error)}`);
         });
       },
       deleteNote: (id) => {
         record();
         setNotes((current) => current.filter((note) => note.id !== id));
-        rpc.call("note_delete", { origin: CLIENT_ID, id }).catch(() => undefined);
+        rpc.call("note_delete", { origin: CLIENT_ID, grouping, id }).catch(() => undefined);
       },
     }),
-    [navigate, rpc, setLayout, setNotes, record],
+    [navigate, rpc, sdk, setLayout, setNotes, record, grouping, newThreadIn],
   );
 
   // Nodes derived from threads, positions, and notes.
@@ -271,25 +510,24 @@ function CanvasInner() {
       }
     }
     const result: CanvasNode[] = [];
-    const byProject = new Map<string, PluginSidebarThread[]>();
-    for (const thread of threads) {
-      byProject.set(thread.projectId, [...(byProject.get(thread.projectId) ?? []), thread]);
-    }
-    for (const [projectId, list] of byProject) {
-      const bounds = frameBounds(list.flatMap((thread) => positions[thread.id] ?? []));
-      if (bounds === null) continue;
+    for (const { group, members, bounds } of frames) {
+      const frameKey = `${grouping}:${group.key}`;
       result.push({
-        id: `frame:${projectId}`,
+        id: `frame:${group.key}`,
         type: "frame",
         position: { x: bounds.x, y: bounds.y },
         zIndex: -1,
         selectable: false,
         data: {
-          projectId,
-          name: projectNames.get(projectId) ?? projectId,
-          count: list.length,
-          attention: list.filter((thread) => buckets.get(thread.id) === "needs-you").length,
-          color: layout?.frameColors[projectId] ?? "none",
+          grouping,
+          groupKey: group.key,
+          frameKey,
+          projectId: group.projectId,
+          sectionId: group.sectionId,
+          name: group.name,
+          count: members.length,
+          attention: members.filter((thread) => buckets.get(thread.id) === "needs-you").length,
+          color: layout?.frameColors[frameKey] ?? "none",
           width: bounds.width,
           height: bounds.height,
         },
@@ -310,7 +548,7 @@ function CanvasInner() {
           bucket,
           now,
           childCount: childCounts.get(thread.id) ?? 0,
-          dimmed: hidden.has(bucket) || !matches(thread, projectNames.get(thread.projectId) ?? "", lowered),
+          dimmed: hidden.has(bucket) || !matches(thread, groups.get(thread.id)?.name ?? "", lowered),
         },
       });
     }
@@ -326,7 +564,7 @@ function CanvasInner() {
       });
     }
     return result;
-  }, [threads, positions, notes, projectNames, buckets, hidden, query, now, layout?.frameColors]);
+  }, [threads, frames, positions, notes, groups, buckets, hidden, query, now, grouping, layout?.frameColors]);
 
   // React Flow owns transient state (measured size, selection, drag); merge
   // it into each rebuild.
@@ -351,8 +589,8 @@ function CanvasInner() {
   }, [derived, selectedId]);
 
   const membersOf = useCallback(
-    (projectId: string) => threads.filter((thread) => thread.projectId === projectId).map((thread) => thread.id),
-    [threads],
+    (groupKey: string) => threads.filter((thread) => groups.get(thread.id)?.key === groupKey).map((thread) => thread.id),
+    [threads, groups],
   );
 
   const onNodesChange = useCallback(
@@ -366,7 +604,7 @@ function CanvasInner() {
         if (node?.type === "frame") {
           const dx = change.position.x - node.position.x;
           const dy = change.position.y - node.position.y;
-          for (const id of membersOf(node.data.projectId)) {
+          for (const id of membersOf(node.data.groupKey)) {
             const point = moved[id] ?? positionsRef.current[id];
             if (point !== undefined) moved[id] = { x: point.x + dx, y: point.y + dy };
           }
@@ -378,18 +616,38 @@ function CanvasInner() {
     [membersOf],
   );
 
+  // Frame bounds as they were when a drag began, for drop-to-file.
+  const framesAtDragStart = useRef(frames);
   const onNodeDragStart = useCallback(() => {
     dragging.current = true;
-  }, []);
+    framesAtDragStart.current = frames;
+  }, [frames]);
   const onNodeDragStop = useCallback(
     (_event: unknown, _node: CanvasNode, dragged: CanvasNode[]) => {
       dragging.current = false;
       record();
       const changes: Record<string, Point> = {};
       for (const node of dragged) {
-        if (node.type === "thread") changes[node.id] = positionsRef.current[node.id] ?? node.position;
+        if (node.type === "thread") {
+          const point = positionsRef.current[node.id] ?? node.position;
+          changes[node.id] = point;
+          // In the section grouping, dropping a card on another section files it there.
+          if (grouping === "section") {
+            const center = { x: point.x + CARD_W / 2, y: point.y + CARD_H / 2 };
+            const own = groups.get(node.id)?.key;
+            const target = framesAtDragStart.current.find(
+              ({ group, bounds }) =>
+                group.key !== own &&
+                center.x >= bounds.x &&
+                center.x <= bounds.x + bounds.width &&
+                center.y >= bounds.y &&
+                center.y <= bounds.y + bounds.height,
+            );
+            if (target !== undefined) void moveToSection(node.id, target.group.sectionId, true);
+          }
+        }
         if (node.type === "frame") {
-          for (const id of membersOf(node.data.projectId)) {
+          for (const id of membersOf(node.data.groupKey)) {
             const point = positionsRef.current[id];
             if (point !== undefined) changes[id] = point;
           }
@@ -398,7 +656,7 @@ function CanvasInner() {
       }
       if (Object.keys(changes).length > 0) save(changes);
     },
-    [membersOf, save, actions, record],
+    [membersOf, save, actions, record, grouping, groups, moveToSection],
   );
 
   const edges = useMemo<Edge[]>(() => {
@@ -457,22 +715,106 @@ function CanvasInner() {
     requestAnimationFrame(() => flow.fitView({ padding: 0.15, maxZoom: 1 }));
   }, [nodes, flow]);
 
+  const releaseFocus = useCallback(() => {
+    (document.activeElement as HTMLElement | null)?.blur();
+    wrapperRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  const fitAll = useCallback(() => flow.fitView({ padding: 0.15, maxZoom: 1, duration: 300 }), [flow]);
+
+  const cardRect = useCallback((id: string): Rect | null => {
+    const point = positionsRef.current[id];
+    return point === undefined ? null : { ...point, width: CARD_W, height: CARD_H };
+  }, []);
+
+  /** Pans just enough to show the card, keeping the zoom unless it's too far out to read. */
+  const reveal = useCallback(
+    (id: string, always = false) => {
+      const rect = cardRect(id);
+      const wrapper = wrapperRef.current?.getBoundingClientRect();
+      if (rect === null || wrapper === undefined) return;
+      const zoom = flow.getZoom();
+      const topLeft = flow.flowToScreenPosition({ x: rect.x, y: rect.y });
+      const bottomRight = flow.flowToScreenPosition({ x: rect.x + rect.width, y: rect.y + rect.height });
+      const margin = 48;
+      const inView =
+        topLeft.x >= wrapper.left + margin &&
+        topLeft.y >= wrapper.top + margin &&
+        bottomRight.x <= wrapper.right - margin &&
+        bottomRight.y <= wrapper.bottom - margin;
+      if (inView && !always && zoom >= 0.5) return;
+      flow.setCenter(rect.x + rect.width / 2, rect.y + rect.height / 2, {
+        zoom: Math.max(zoom, always ? 0.8 : 0.5),
+        duration: 250,
+      });
+    },
+    [flow, cardRect],
+  );
+
   const focusThread = useCallback(
     (id: string) => {
-      const point = positionsRef.current[id];
       setSelectedId(id);
-      if (point !== undefined) {
-        flow.setCenter(point.x + CARD_W / 2, point.y + CARD_H / 2, { zoom: Math.max(flow.getZoom(), 0.8), duration: 300 });
+      reveal(id, true);
+    },
+    [reveal],
+  );
+
+  /** Card rects for navigation; dimmed (filtered-out) cards are skipped unless asked for. */
+  const navItems = useCallback(
+    (ids: readonly string[], includeDimmed = false): NavItem[] =>
+      ids.flatMap((id) => {
+        const rect = cardRect(id);
+        const node = nodesRef.current.find((candidate) => candidate.id === id);
+        const dimmed = node?.type === "thread" && node.data.dimmed;
+        return rect === null || (dimmed && !includeDimmed) ? [] : [{ id, rect }];
+      }),
+    [cardRect],
+  );
+
+  /** hjkl within the selected card's frame; Shift moves between frames. */
+  const navigate2d = useCallback(
+    (direction: Direction, acrossFrames: boolean) => {
+      const wrapper = wrapperRef.current?.getBoundingClientRect();
+      const viewCenter =
+        wrapper === undefined
+          ? { x: 0, y: 0 }
+          : flow.screenToFlowPosition({ x: wrapper.left + wrapper.width / 2, y: wrapper.top + wrapper.height / 2 });
+      const current = selectedId === null ? null : cardRect(selectedId);
+      if (current === null || selectedId === null) {
+        const first = nearestTo(viewCenter, navItems(threads.map((thread) => thread.id)));
+        if (first !== null) focusThread(first);
+        return;
+      }
+      const ownKey = groups.get(selectedId)?.key;
+      if (!acrossFrames) {
+        const next = nearestInDirection(current, navItems(membersOf(ownKey ?? NO_GROUP)), direction);
+        if (next !== null) {
+          setSelectedId(next);
+          reveal(next);
+        }
+        return;
+      }
+      const own = frames.find((frame) => frame.group.key === ownKey);
+      const targetKey = nearestInDirection(
+        own?.bounds ?? current,
+        frames.filter((frame) => frame.group.key !== ownKey).map((frame) => ({ id: frame.group.key, rect: frame.bounds })),
+        direction,
+      );
+      if (targetKey === null) return;
+      const centerPoint = { x: current.x + CARD_W / 2, y: current.y + CARD_H / 2 };
+      const candidates = navItems(membersOf(targetKey));
+      const next = nearestTo(centerPoint, candidates.length > 0 ? candidates : navItems(membersOf(targetKey), true));
+      if (next !== null) {
+        setSelectedId(next);
+        reveal(next);
       }
     },
-    [flow],
+    [flow, selectedId, cardRect, navItems, threads, focusThread, groups, membersOf, frames, reveal],
   );
 
   const addNote = useCallback(
     (at?: Point) => {
-      const center =
-        at ??
-        flow.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+      const center = at ?? flow.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
       const note: Note = {
         id: Math.random().toString(36).slice(2, 12),
         x: center.x - 110,
@@ -484,20 +826,33 @@ function CanvasInner() {
       };
       record();
       setNotes((current) => [...current, note]);
-      rpc.call("note_upsert", { origin: CLIENT_ID, note }).catch((error: unknown) => {
-        toast.error(`Could not save the note: ${error instanceof Error ? error.message : String(error)}`);
+      rpc.call("note_upsert", { origin: CLIENT_ID, grouping, note }).catch((error: unknown) => {
+        toast.error(`Could not save the note: ${errorText(error)}`);
       });
     },
-    [flow, rpc, setNotes, record],
+    [flow, rpc, setNotes, record, grouping],
   );
 
   const autoArrange = useCallback(() => {
     record();
-    const next = Object.fromEntries(autoLayout(threads));
+    const next = Object.fromEntries(autoLayout(layoutThreads));
     setPositions(next);
     save(next, true);
-    requestAnimationFrame(() => flow.fitView({ padding: 0.15, maxZoom: 1, duration: 300 }));
-  }, [threads, save, flow, record]);
+    requestAnimationFrame(fitAll);
+  }, [layoutThreads, save, fitAll, record]);
+
+  const changeGrouping = useCallback(
+    (next: Grouping) => {
+      if (next === grouping) return;
+      setGrouping(next);
+      // Positions differ per grouping; refit once the new arrangement renders.
+      setTimeout(() => {
+        if (selectedId !== null) reveal(selectedId, true);
+        else fitAll();
+      }, 50);
+    },
+    [grouping, setGrouping, selectedId, reveal, fitAll],
+  );
 
   // Needs-you queue for the `n` key: oldest attention first.
   const attentionQueue = useMemo(
@@ -508,48 +863,138 @@ function CanvasInner() {
     [threads, buckets],
   );
 
+  const threadItems = useMemo<PickerItem[]>(
+    () =>
+      threads.map((thread) => {
+        const bucket = buckets.get(thread.id) ?? "idle";
+        const group = groups.get(thread.id);
+        return {
+          id: thread.id,
+          title: thread.displayTitle,
+          detail: [group?.name, thread.environment?.branchName].filter(Boolean).join(" · "),
+          keywords: [projectNames.get(thread.projectId), thread.providerId, BUCKET_LABEL[bucket], thread.id].join(" "),
+          dot: `var(--status-${bucket})`,
+          // Threads that need you float up when the query is empty.
+          recency: thread.latestAttentionAt + (bucket === "needs-you" ? 1e13 : 0),
+        };
+      }),
+    [threads, buckets, groups, projectNames],
+  );
+  const sectionItems = useMemo<PickerItem[]>(
+    () => [
+      { id: NO_GROUP, title: "No section", icon: "Rows3", recency: -1 },
+      ...sidebar.sections.map((section) => ({ id: section.id, title: section.name, icon: "Rows3" as const, recency: section.updatedAt })),
+    ],
+    [sidebar.sections],
+  );
+
+  const createSection = useCallback(
+    async (name: string, threadId?: string) => {
+      setOverlay(null);
+      try {
+        const section = await sdk.threadSections.create({ name });
+        if (threadId !== undefined) await moveToSection(threadId, section.id, false);
+        else toast.success(`Created section ${section.name}`);
+      } catch (error) {
+        toast.error(`Could not create the section: ${errorText(error)}`);
+      }
+    },
+    [sdk, moveToSection],
+  );
+
+  // Keyboard. The window listener runs in the capture phase so ⌘K reaches the
+  // canvas before bb's own thread picker; the chat panel keeps bb's keys.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target !== null && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) {
+      const inInspector = target?.closest("[data-bb-canvas-inspector]") != null;
+      const typing = target !== null && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
+      const mod = event.metaKey || event.ctrlKey;
+      const key = event.key.toLowerCase();
+
+      // Shift+Esc leaves the chat panel for the canvas.
+      if (inInspector && event.key === "Escape" && event.shiftKey) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        releaseFocus();
+        return;
+      }
+      if (mod && !event.shiftKey && !event.altKey && key === "k" && !inInspector) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        setOverlay((current) => (current?.kind === "goto" ? null : { kind: "goto" }));
+        return;
+      }
+      if (overlay !== null || typing || inInspector) {
         if (event.key === "Escape" && target === searchRef.current) {
           setQuery("");
-          target.blur();
+          target?.blur();
         }
         return;
       }
-      const mod = event.metaKey || event.ctrlKey;
-      const key = event.key.toLowerCase();
       if (mod && !event.altKey && (key === "z" || (key === "y" && !event.metaKey))) {
         event.preventDefault();
         restore(key === "y" || event.shiftKey ? "redo" : "undo");
         return;
       }
       if (mod || event.altKey) return;
-      if (event.key === "Escape") setSelectedId(null);
-      else if (event.key === "/") {
-        event.preventDefault();
-        searchRef.current?.focus();
-      } else if (event.key === "Enter" && selectedId !== null) navigate.toThread(selectedId);
-      else if (event.key === "n" && attentionQueue.length > 0) {
+
+      const direction =
+        DIRECTION_KEYS[key] ??
+        ({ ArrowLeft: "left", ArrowDown: "down", ArrowUp: "up", ArrowRight: "right" } as const)[
+          event.key as "ArrowLeft"
+        ];
+      if (direction !== undefined) navigate2d(direction, event.shiftKey || /^[HJKL]$/.test(event.key));
+      else if (event.key === "Escape") {
+        if (inspectorOpen) setInspectorOpen(false);
+        else setSelectedId(null);
+      } else if (event.key === "/") searchRef.current?.focus();
+      else if (event.key === "?") setOverlay({ kind: "help" });
+      else if (key === "g") setOverlay({ kind: "goto" });
+      else if (event.key === " " && selectedId !== null) setInspectorOpen((open) => !open);
+      else if (key === "r" && selectedId !== null) {
+        setInspectorOpen(true);
+        setChatFocus((value) => value + 1);
+      } else if (event.key === "Enter" && selectedId !== null) navigate.toThread(selectedId, { split: event.shiftKey });
+      else if (key === "m" && selectedId !== null) setOverlay({ kind: "move", threadId: selectedId });
+      else if (key === "n" && attentionQueue.length > 0) {
         const index = attentionQueue.findIndex((thread) => thread.id === selectedId);
-        focusThread(attentionQueue[(index + 1) % attentionQueue.length]!.id);
-      } else if (event.key === "f") flow.fitView({ padding: 0.15, maxZoom: 1, duration: 300 });
+        const step = event.shiftKey ? -1 : 1;
+        const next = index === -1 ? (step === 1 ? 0 : attentionQueue.length - 1) : index + step;
+        focusThread(attentionQueue[(next + attentionQueue.length) % attentionQueue.length]!.id);
+      } else if (key === "c" && selectedId !== null) reveal(selectedId, true);
+      else if (key === "f") fitAll();
+      else if (event.key === "1" || event.key === "2" || event.key === "3") changeGrouping(GROUPINGS[Number(event.key) - 1]!);
       else return;
       event.preventDefault();
     };
-    // Scoped to the canvas page; React Flow's own keys stay on its pane.
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [selectedId, attentionQueue, focusThread, navigate, flow, restore]);
+    window.addEventListener("keydown", onKey, { capture: true });
+    return () => window.removeEventListener("keydown", onKey, { capture: true });
+  }, [
+    overlay,
+    selectedId,
+    inspectorOpen,
+    attentionQueue,
+    focusThread,
+    navigate,
+    navigate2d,
+    restore,
+    reveal,
+    fitAll,
+    changeGrouping,
+    releaseFocus,
+  ]);
 
   const loading = sidebar.status === "loading" || layout === null;
+  const moving = overlay?.kind === "move" ? threads.find((thread) => thread.id === overlay.threadId) : undefined;
 
   return (
     <CanvasActionsContext.Provider value={actions}>
       <div className="flex h-full min-h-0 w-full flex-1">
         <div
-          className="relative min-w-0 flex-1"
+          ref={wrapperRef}
+          tabIndex={-1}
+          className="relative min-w-0 flex-1 outline-none"
           onDoubleClick={(event) => {
             // React Flow has no pane double-click callback.
             if (!(event.target as HTMLElement).classList.contains("react-flow__pane")) return;
@@ -564,7 +1009,9 @@ function CanvasInner() {
             onNodeDragStart={onNodeDragStart}
             onNodeDragStop={onNodeDragStop}
             onNodeClick={(_event, node) => {
-              if (node.type === "thread") setSelectedId(node.id);
+              if (node.type !== "thread") return;
+              setSelectedId(node.id);
+              setInspectorOpen(true);
             }}
             onPaneClick={() => setSelectedId(null)}
             onMoveEnd={(_event, viewport) => {
@@ -578,6 +1025,7 @@ function CanvasInner() {
             zoomOnDoubleClick={false}
             nodesConnectable={false}
             selectionOnDrag={false}
+            disableKeyboardA11y
             panOnScroll
             minZoom={0.08}
             maxZoom={2}
@@ -601,8 +1049,18 @@ function CanvasInner() {
             />
             <Panel position="top-left" className="!m-3">
               <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-background/95 p-1.5 shadow-sm backdrop-blur">
+                <ToolButton
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5 px-2.5 text-muted-foreground"
+                  onClick={() => setOverlay({ kind: "goto" })}
+                  title="Go to a thread on the canvas (⌘K or g)"
+                >
+                  <Icon name="Search" className="size-3.5" />
+                  Go to
+                  <kbd className="ml-1 rounded border border-border px-1 font-mono text-[10px]">⌘K</kbd>
+                </ToolButton>
                 <div className="relative">
-                  <Icon name="Search" className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     ref={searchRef}
                     value={query}
@@ -610,14 +1068,35 @@ function CanvasInner() {
                     onKeyDown={(event) => {
                       if (event.key !== "Enter") return;
                       const first = threads.find((thread) =>
-                        matches(thread, projectNames.get(thread.projectId) ?? "", query.trim()),
+                        matches(thread, groups.get(thread.id)?.name ?? "", query.trim()),
                       );
-                      if (first !== undefined) focusThread(first.id);
+                      if (first !== undefined) {
+                        focusThread(first.id);
+                        event.currentTarget.blur();
+                      }
                     }}
-                    placeholder="Filter threads  /"
+                    placeholder="Filter  /"
                     aria-label="Filter threads"
-                    className="h-8 w-52 pl-7 text-sm"
+                    className="h-8 w-36 text-sm"
                   />
+                </div>
+                <div className="flex items-center rounded-md border border-border p-0.5" role="radiogroup" aria-label="Group by">
+                  {GROUPINGS.map((option, index) => (
+                    <button
+                      key={option}
+                      type="button"
+                      role="radio"
+                      aria-checked={grouping === option}
+                      title={`Group by ${GROUPING_LABEL[option].toLowerCase()} (${index + 1})`}
+                      onClick={() => changeGrouping(option)}
+                      className={cn(
+                        "h-6 rounded px-2 text-xs text-muted-foreground hover:text-foreground",
+                        grouping === option && "bg-state-active text-foreground",
+                      )}
+                    >
+                      {GROUPING_LABEL[option]}
+                    </button>
+                  ))}
                 </div>
                 <div className="flex items-center gap-1">
                   {BUCKETS.map((bucket) => {
@@ -656,6 +1135,11 @@ function CanvasInner() {
                   })}
                 </div>
                 <div className="flex items-center gap-0.5 border-l border-border pl-1.5">
+                  {grouping === "section" ? (
+                    <ToolButton variant="ghost" size="sm" className="h-7 px-2" onClick={() => setOverlay({ kind: "new-section" })} title="New section">
+                      <Icon name="FolderInput" className="size-3.5" />
+                    </ToolButton>
+                  ) : null}
                   <ToolButton
                     variant="ghost"
                     size="sm"
@@ -694,14 +1178,11 @@ function CanvasInner() {
                   <ToolButton variant="ghost" size="sm" className="h-7 px-2" onClick={autoArrange} title="Rearrange automatically">
                     <Icon name="LayoutGrid" className="size-3.5" />
                   </ToolButton>
-                  <ToolButton
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2"
-                    onClick={() => flow.fitView({ padding: 0.15, maxZoom: 1, duration: 300 })}
-                    title="Fit everything (f)"
-                  >
+                  <ToolButton variant="ghost" size="sm" className="h-7 px-2" onClick={fitAll} title="Fit everything (f)">
                     <Icon name="Maximize" className="size-3.5" />
+                  </ToolButton>
+                  <ToolButton variant="ghost" size="sm" className="h-7 px-2" onClick={() => setOverlay({ kind: "help" })} title="Keyboard shortcuts (?)">
+                    <Icon name="Keyboard" className="size-3.5" />
                   </ToolButton>
                   <ToolButton size="sm" className="ml-1 h-7 gap-1 px-2.5" onClick={() => navigate.toCompose({ focusPrompt: true })}>
                     <Icon name="Plus" className="size-3.5" />
@@ -747,8 +1228,51 @@ function CanvasInner() {
               </Panel>
             ) : null}
           </ReactFlow>
+          {overlay?.kind === "goto" ? (
+            <Picker
+              title="Go to thread"
+              placeholder="Jump to a thread on the canvas…"
+              items={threadItems}
+              onClose={() => setOverlay(null)}
+              onPick={(item) => {
+                setOverlay(null);
+                focusThread(item.id);
+              }}
+            />
+          ) : null}
+          {overlay?.kind === "move" && moving !== undefined ? (
+            <Picker
+              title="Move to section"
+              placeholder={`Move "${moving.displayTitle}" to…`}
+              items={sectionItems}
+              onClose={() => setOverlay(null)}
+              onPick={(item) => {
+                setOverlay(null);
+                void moveToSection(moving.id, item.id === NO_GROUP ? null : item.id, false);
+              }}
+              create={{ label: (name) => `New section "${name}"`, run: (name) => void createSection(name, moving.id) }}
+            />
+          ) : null}
+          {overlay?.kind === "new-section" ? (
+            <Picker
+              title="New section"
+              placeholder="Section name…"
+              items={[]}
+              onClose={() => setOverlay(null)}
+              onPick={() => setOverlay(null)}
+              create={{ label: (name) => `Create section "${name}"`, run: (name) => void createSection(name) }}
+            />
+          ) : null}
+          {overlay?.kind === "help" ? <ShortcutHelp onClose={() => setOverlay(null)} /> : null}
         </div>
-        {selected === null ? null : <Inspector thread={selected} onClose={() => setSelectedId(null)} />}
+        {selected === null || !inspectorOpen ? null : (
+          <Inspector
+            thread={selected}
+            focusRequest={chatFocus}
+            onClose={() => setInspectorOpen(false)}
+            onReleaseFocus={releaseFocus}
+          />
+        )}
       </div>
     </CanvasActionsContext.Provider>
   );
