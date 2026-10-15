@@ -206,3 +206,31 @@ export function frameBounds(points: readonly Point[]): Rect | null {
     height: bottom - top + FRAME_PAD * 2 + FRAME_HEADER,
   };
 }
+
+export type Side = "left" | "right" | "top" | "bottom";
+
+const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), Math.max(min, max));
+
+/**
+ * Where a line between two boxes should attach: on the sides that face each
+ * other, at the point on each side nearest the other box's center. Picks
+ * left/right when the boxes are further apart horizontally than vertically.
+ */
+export function facingSides(a: Rect, b: Rect, inset = 12): { from: Point & { side: Side }; to: Point & { side: Side } } {
+  const ca = { x: a.x + a.width / 2, y: a.y + a.height / 2 };
+  const cb = { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+  const gapX = Math.max(b.x - (a.x + a.width), a.x - (b.x + b.width));
+  const gapY = Math.max(b.y - (a.y + a.height), a.y - (b.y + b.height));
+  if (gapX >= gapY) {
+    const bIsRight = cb.x >= ca.x;
+    return {
+      from: { side: bIsRight ? "right" : "left", x: bIsRight ? a.x + a.width : a.x, y: clamp(cb.y, a.y + inset, a.y + a.height - inset) },
+      to: { side: bIsRight ? "left" : "right", x: bIsRight ? b.x : b.x + b.width, y: clamp(ca.y, b.y + inset, b.y + b.height - inset) },
+    };
+  }
+  const bIsBelow = cb.y >= ca.y;
+  return {
+    from: { side: bIsBelow ? "bottom" : "top", y: bIsBelow ? a.y + a.height : a.y, x: clamp(cb.x, a.x + inset, a.x + a.width - inset) },
+    to: { side: bIsBelow ? "top" : "bottom", y: bIsBelow ? b.y : b.y + b.height, x: clamp(ca.x, b.x + inset, b.x + b.width - inset) },
+  };
+}

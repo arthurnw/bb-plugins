@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { Icon, type IconName } from "./icons.tsx";
 import type { Note } from "../server";
 import { FRAME_COLORS, NOTE_COLORS, type FrameColor, type Grouping } from "./shared.ts";
+import { ChatNode, type ChatFlowNode } from "./ChatNode.tsx";
 import { useCanvasActions } from "./context";
 import { CARD_H, CARD_W, FRAME_HEADER } from "./layout.ts";
 import { BUCKET_LABEL, age, type Bucket } from "./status.ts";
@@ -49,7 +50,7 @@ export type NoteNodeData = { note: Note };
 export type ThreadFlowNode = Node<ThreadNodeData, "thread">;
 export type FrameFlowNode = Node<FrameNodeData, "frame">;
 export type NoteFlowNode = Node<NoteNodeData, "note">;
-export type CanvasNode = ThreadFlowNode | FrameFlowNode | NoteFlowNode;
+export type CanvasNode = ThreadFlowNode | FrameFlowNode | NoteFlowNode | ChatFlowNode;
 
 
 function PullRequestBadge({ pullRequest }: { pullRequest: PluginSidebarPullRequest }) {
@@ -460,4 +461,4 @@ export const NoteNode = memo(function NoteNode({ data, selected }: NodeProps<Not
   );
 });
 
-export const nodeTypes = { thread: ThreadNode, frame: FrameNode, note: NoteNode };
+export const nodeTypes = { thread: ThreadNode, frame: FrameNode, note: NoteNode, chat: ChatNode };

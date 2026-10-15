@@ -1,10 +1,11 @@
 import { useEffect, useRef, type RefObject } from "react";
 
 /**
- * bb's ThreadChat focuses its composer when it mounts, which would swallow the
- * canvas's single-key shortcuts. After `key` changes (a new thread is shown),
- * hand focus back for a short while. A change in `focusRequest` is the user
- * asking to reply, so that ends the watch, as does clicking into the chat.
+ * bb's ThreadChat focuses its composer when it mounts or its timeline loads,
+ * which would swallow the canvas's single-key shortcuts. Until the user shows
+ * they want the chat (clicking into it, or a change in `focusRequest` from
+ * `r`), hand any focus it takes back to the canvas. Showing a new thread
+ * (`key`) starts the watch again.
  */
 export function useReleaseChatFocus(
   ref: RefObject<HTMLElement | null>,
@@ -20,10 +21,7 @@ export function useReleaseChatFocus(
     }
     const element = ref.current;
     if (element === null) return;
-    const until = Date.now() + 2500;
-    const onFocusIn = () => {
-      if (Date.now() < until) onRelease();
-    };
+    const onFocusIn = () => onRelease();
     const onPointerDown = () => element.removeEventListener("focusin", onFocusIn);
     element.addEventListener("focusin", onFocusIn);
     element.addEventListener("pointerdown", onPointerDown, { capture: true });

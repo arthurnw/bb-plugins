@@ -1,5 +1,5 @@
 import { createContext, useContext } from "react";
-import type { Note } from "../server";
+import type { Note, PinnedChat } from "../server";
 import type { FrameNodeData } from "./nodes";
 import type { FrameColor } from "./shared.ts";
 
@@ -12,6 +12,12 @@ export interface CanvasActions {
   renameSection(sectionId: string, name: string): void;
   deleteSection(sectionId: string): void;
   updateNote(note: Note): void;
+  updateChat(chat: PinnedChat): void;
+  unpinChat(threadId: string): void;
+  /** Marks a pinned chat as the one being worked with. */
+  focusChat(threadId: string): void;
+  /** Hands keyboard focus back to the canvas. */
+  releaseFocus(): void;
   deleteNote(id: string): void;
 }
 

@@ -12,6 +12,7 @@ import {
   ReactFlowProvider,
   applyNodeChanges,
   useReactFlow,
+  useStore,
   type Edge,
   type NodeChange,
   type Viewport,
@@ -32,7 +33,7 @@ import {
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import type { Arrangement, Layout, Note, rpcContract } from "../server";
+import type { Arrangement, Layout, Note, PinnedChat, rpcContract } from "../server";
 import { CanvasActionsContext, type CanvasActions } from "./context";
 import { Icon } from "./icons.tsx";
 import { CARD_H, CARD_W, autoLayout, frameBounds, placeNew, type Point, type Rect } from "./layout.ts";
@@ -40,7 +41,8 @@ import { DIRECTION_KEYS, nearestInDirection, nearestTo, type Direction, type Nav
 import { nodeTypes, type CanvasNode, type FrameNodeData } from "./nodes";
 import { useReleaseChatFocus } from "./chatFocus.ts";
 import { Picker, type PickerItem } from "./Picker.tsx";
-import { PinnedWindows, WINDOW_H, WINDOW_W, clampWindow, nextWindowSpot, type Area, type PinnedWindow } from "./PinnedWindows.tsx";
+import { CHAT_H, CHAT_HEADER_H, CHAT_W } from "./ChatNode.tsx";
+import { edgeTypes } from "./TetherEdge.tsx";
 import { Triage, needsAttention } from "./Triage.tsx";
 import { GROUPINGS, type FrameColor, type Grouping } from "./shared.ts";
 import { BUCKETS, BUCKET_LABEL, bucketOf, type Bucket } from "./status.ts";
@@ -48,7 +50,7 @@ import { BUCKETS, BUCKET_LABEL, bucketOf, type Bucket } from "./status.ts";
 const CLIENT_ID = Math.random().toString(36).slice(2, 10);
 const UNDO_LIMIT = 50;
 const NO_GROUP = "none";
-const EMPTY_ARRANGEMENT: Arrangement = { positions: {}, notes: [] };
+const EMPTY_ARRANGEMENT: Arrangement = { positions: {}, notes: [], chats: [] };
 const EMPTY_LAYOUT: Layout = {
   version: 2,
   arrangements: { project: EMPTY_ARRANGEMENT, section: EMPTY_ARRANGEMENT, machine: EMPTY_ARRANGEMENT },
@@ -170,7 +172,7 @@ function Inspector({
         <span className="min-w-0 flex-1 truncate text-sm font-medium" title={thread.displayTitle}>
           {thread.displayTitle}
         </span>
-        <ToolButton variant="ghost" size="icon" className="size-7" title="Pin as a floating window (p)" aria-label="Pin as a floating window" onClick={onPin}>
+        <ToolButton variant="ghost" size="icon" className="size-7" title="Pin to the canvas (p)" aria-label="Pin to the canvas" onClick={onPin}>
           <Icon name="Pin" className="size-4" />
         </ToolButton>
         <ToolButton variant="ghost" size="icon" className="size-7" title="Open in a split (⇧↵)" aria-label="Open in a split" onClick={() => navigate.toThread(thread.id, { split: true })}>
@@ -194,10 +196,10 @@ const SHORTCUTS: [string, string][] = [
   ["⌘K or g", "Go to a thread"],
   ["h j k l", "Move between threads in a frame"],
   ["⇧ H J K L", "Move between frames"],
-  ["Space", "Show or hide the chat panel (or raise a pinned window)"],
-  ["p", "Pin or unpin the thread's chat as a floating window"],
-  ["Tab / ⇧Tab", "Cycle through pinned windows"],
-  ["-", "Minimize or restore the pinned window"],
+  ["Space", "Show or hide the chat panel (or go to the pinned chat)"],
+  ["p", "Pin or unpin the thread's chat to the canvas"],
+  ["Tab / ⇧Tab", "Go to the next / previous pinned chat"],
+  ["-", "Minimize or restore the pinned chat"],
   ["t", "Triage the threads that need you"],
   ["r", "Reply to the selected thread"],
   ["⇧Esc", "Leave the chat panel for the canvas"],
@@ -268,16 +270,9 @@ function CanvasInner() {
   const settings = useSettings();
   const maxPinned = Math.min(12, Math.max(1, Math.round(Number(settings.values?.maxPinnedWindows ?? 4)) || 4));
 
-  // The canvas area's size, for placing and clamping pinned windows.
-  const [area, setArea] = useState<Area>({ width: 0, height: 0 });
-  useEffect(() => {
-    const element = wrapperRef.current;
-    if (element === null) return;
-    const observer = new ResizeObserver(([entry]) => {
-      if (entry !== undefined) setArea({ width: entry.contentRect.width, height: entry.contentRect.height });
-    });
-    observer.observe(element);
-    return () => observer.disconnect();
+  const releaseFocus = useCallback(() => {
+    (document.activeElement as HTMLElement | null)?.blur();
+    wrapperRef.current?.focus({ preventScroll: true });
   }, []);
 
   const threads = useMemo(
@@ -332,6 +327,19 @@ function CanvasInner() {
   const positionsRef = useRef(positions);
   positionsRef.current = positions;
   const notes = arrangement.notes;
+  // Pinned chats live on the canvas like notes, per grouping.
+  const chats = arrangement.chats;
+  const [focusedChat, setFocusedChat] = useState<string | null>(null);
+  // Pinned chats lay out at screen size for this zoom (see ChatNode). It
+  // follows the live zoom once it has been still briefly, which covers
+  // gestures and animated moves alike.
+  const liveZoom = useStore((state) => state.transform[2]);
+  const [settledZoom, setSettledZoom] = useState(liveZoom);
+  useEffect(() => {
+    const timer = setTimeout(() => setSettledZoom(liveZoom), 150);
+    return () => clearTimeout(timer);
+  }, [liveZoom]);
+  const [chatFocusRequests, setChatFocusRequests] = useState<Record<string, number>>({});
   const dragging = useRef(false);
 
   // Undo and redo hold whole-layout snapshots, kept per window in memory.
@@ -383,6 +391,12 @@ function CanvasInner() {
   const setNotes = useCallback(
     (change: (notes: Note[]) => Note[]) =>
       updateArrangement((current) => ({ ...current, notes: change(current.notes) })),
+    [updateArrangement],
+  );
+
+  const setChats = useCallback(
+    (change: (chats: PinnedChat[]) => PinnedChat[]) =>
+      updateArrangement((current) => ({ ...current, chats: change(current.chats) })),
     [updateArrangement],
   );
 
@@ -494,13 +508,30 @@ function CanvasInner() {
           toast.error(`Could not save the note: ${errorText(error)}`);
         });
       },
+      updateChat: (chat) => {
+        record();
+        setChats((current) => current.map((existing) => (existing.threadId === chat.threadId ? chat : existing)));
+        rpc.call("chat_upsert", { origin: CLIENT_ID, grouping, chat }).catch((error: unknown) => {
+          toast.error(`Could not save the pinned chat: ${errorText(error)}`);
+        });
+      },
+      unpinChat: (threadId) => {
+        record();
+        setChats((current) => current.filter((chat) => chat.threadId !== threadId));
+        rpc.call("chat_delete", { origin: CLIENT_ID, grouping, threadId }).catch(() => undefined);
+      },
+      focusChat: (threadId) => {
+        setFocusedChat(threadId);
+        setSelectedId(threadId);
+      },
+      releaseFocus,
       deleteNote: (id) => {
         record();
         setNotes((current) => current.filter((note) => note.id !== id));
         rpc.call("note_delete", { origin: CLIENT_ID, grouping, id }).catch(() => undefined);
       },
     }),
-    [navigate, rpc, sdk, setLayout, setNotes, record, grouping, newThreadIn],
+    [navigate, rpc, sdk, setLayout, setNotes, setChats, record, grouping, newThreadIn, releaseFocus],
   );
 
   // Nodes derived from threads, positions, and notes.
@@ -566,8 +597,31 @@ function CanvasInner() {
         data: { note },
       });
     }
+    const byId = new Map(threads.map((thread) => [thread.id, thread]));
+    for (const chat of chats) {
+      const thread = byId.get(chat.threadId);
+      if (thread === undefined) continue;
+      result.push({
+        id: `chat:${chat.threadId}`,
+        type: "chat",
+        position: { x: chat.x, y: chat.y },
+        width: chat.width,
+        height: chat.minimized ? CHAT_HEADER_H : chat.height,
+        // Above cards and notes; the focused chat on top.
+        zIndex: chat.threadId === focusedChat ? 3 : 2,
+        dragHandle: ".bb-canvas-chat-handle",
+        data: {
+          chat,
+          thread,
+          bucket: buckets.get(thread.id) ?? "idle",
+          focused: chat.threadId === focusedChat,
+          focusRequest: chatFocusRequests[chat.threadId] ?? 0,
+          zoom: settledZoom,
+        },
+      });
+    }
     return result;
-  }, [threads, frames, positions, notes, groups, buckets, hidden, query, now, grouping, layout?.frameColors]);
+  }, [threads, frames, positions, notes, chats, focusedChat, chatFocusRequests, settledZoom, groups, buckets, hidden, query, now, grouping, layout?.frameColors]);
 
   // React Flow owns transient state (measured size, selection, drag); merge
   // it into each rebuild.
@@ -656,6 +710,7 @@ function CanvasInner() {
           }
         }
         if (node.type === "note") actions.updateNote({ ...node.data.note, x: node.position.x, y: node.position.y });
+        if (node.type === "chat") actions.updateChat({ ...node.data.chat, x: node.position.x, y: node.position.y });
       }
       if (Object.keys(changes).length > 0) save(changes);
     },
@@ -690,8 +745,23 @@ function CanvasInner() {
         });
       }
     }
+    for (const chat of chats) {
+      if (!visible.has(chat.threadId)) continue;
+      result.push({
+        id: `pin:${chat.threadId}`,
+        type: "tether",
+        source: chat.threadId,
+        target: `chat:${chat.threadId}`,
+        style: {
+          stroke: `var(--status-${buckets.get(chat.threadId) ?? "idle"})`,
+          strokeDasharray: "5 4",
+          strokeWidth: 1.5,
+          opacity: chat.threadId === focusedChat ? 1 : 0.6,
+        },
+      });
+    }
     return result;
-  }, [threads, buckets]);
+  }, [threads, buckets, chats, focusedChat]);
 
   const counts = useMemo(() => {
     const result = new Map<Bucket, number>(BUCKETS.map((bucket) => [bucket, 0]));
@@ -703,93 +773,13 @@ function CanvasInner() {
 
   const threadsById = useMemo(() => new Map(threads.map((thread) => [thread.id, thread])), [threads]);
 
-  // Pinned chat windows, kept per browser.
-  const windowsKey = `${pluginId}:pinned-windows`;
-  const [pinned, setPinned] = useState<PinnedWindow[]>(() => {
-    try {
-      const raw = localStorage.getItem(windowsKey);
-      return raw === null ? [] : (JSON.parse(raw) as PinnedWindow[]);
-    } catch {
-      return [];
-    }
-  });
-  const savePinned = useCallback(
-    (next: PinnedWindow[]) => {
-      try {
-        localStorage.setItem(windowsKey, JSON.stringify(next));
-      } catch {
-        // Blocked storage only loses the windows on reload.
-      }
-    },
-    [windowsKey],
-  );
-  // Drop windows for threads that were archived or deleted.
-  useEffect(() => {
-    if (sidebar.status !== "ready" || showArchived) return;
-    setPinned((current) => {
-      const kept = current.filter((window) => threadsById.has(window.threadId));
-      if (kept.length === current.length) return current;
-      savePinned(kept);
-      return kept;
-    });
-  }, [sidebar.status, showArchived, threadsById, savePinned]);
-  const [focusedWindow, setFocusedWindow] = useState<string | null>(null);
-  const [windowFocus, setWindowFocus] = useState<Record<string, number>>({});
   const pinnedOpen = useCallback(
-    (id: string) => pinned.some((window) => window.threadId === id && !window.minimized),
-    [pinned],
-  );
-  const updateWindow = useCallback(
-    (next: PinnedWindow, done: boolean) => {
-      setPinned((current) => {
-        const updated = current.map((window) => (window.threadId === next.threadId ? next : window));
-        if (done) savePinned(updated);
-        return updated;
-      });
-    },
-    [savePinned],
-  );
-  const raiseWindow = useCallback((id: string) => {
-    setFocusedWindow(id);
-    setSelectedId(id);
-  }, []);
-  const togglePin = useCallback(
-    (id: string) => {
-      const existing = pinned.find((window) => window.threadId === id);
-      if (existing !== undefined) {
-        const next = pinned.filter((window) => window.threadId !== id);
-        setPinned(next);
-        savePinned(next);
-        return;
-      }
-      if (pinned.length >= maxPinned) {
-        toast.error(`${maxPinned} windows are pinned, the most allowed. Unpin one, or raise the limit in the Canvas plugin settings.`);
-        return;
-      }
-      const spot = nextWindowSpot(pinned, area);
-      const next = [
-        ...pinned,
-        clampWindow({ threadId: id, ...spot, width: WINDOW_W, height: WINDOW_H, minimized: false }, area),
-      ];
-      setPinned(next);
-      savePinned(next);
-      setFocusedWindow(id);
-    },
-    [pinned, maxPinned, area, savePinned],
+    (id: string) => chats.some((chat) => chat.threadId === id && !chat.minimized),
+    [chats],
   );
   useEffect(() => {
-    if (selectedId !== null && pinned.some((window) => window.threadId === selectedId)) setFocusedWindow(selectedId);
-  }, [selectedId, pinned]);
-  // Keep windows inside the canvas when it shrinks.
-  useEffect(() => {
-    if (area.width === 0) return;
-    setPinned((current) => {
-      const clamped = current.map((window) => clampWindow(window, area));
-      return clamped.some((window, index) => window !== current[index] && JSON.stringify(window) !== JSON.stringify(current[index]))
-        ? clamped
-        : current;
-    });
-  }, [area]);
+    if (selectedId !== null && chats.some((chat) => chat.threadId === selectedId)) setFocusedChat(selectedId);
+  }, [selectedId, chats]);
 
   // Triage: the threads that need you, one at a time.
   const [triage, setTriage] = useState<{ queue: string[]; index: number } | null>(null);
@@ -811,11 +801,6 @@ function CanvasInner() {
     fitted.current = true;
     requestAnimationFrame(() => flow.fitView({ padding: 0.15, maxZoom: 1 }));
   }, [nodes, flow]);
-
-  const releaseFocus = useCallback(() => {
-    (document.activeElement as HTMLElement | null)?.blur();
-    wrapperRef.current?.focus({ preventScroll: true });
-  }, []);
 
   const fitAll = useCallback(() => flow.fitView({ padding: 0.15, maxZoom: 1, duration: 300 }), [flow]);
 
@@ -856,19 +841,79 @@ function CanvasInner() {
     [reveal],
   );
 
-  /** A card's right-edge midpoint in canvas-area pixels, where a window's line attaches. */
-  const anchorOf = useCallback(
-    (id: string): Point | null => {
-      const rect = cardRect(id);
-      const wrapper = wrapperRef.current?.getBoundingClientRect();
-      if (rect === null || wrapper === undefined) return null;
-      const screen = flow.flowToScreenPosition({ x: rect.x + rect.width, y: rect.y + rect.height / 2 });
-      return { x: screen.x - wrapper.left, y: screen.y - wrapper.top };
+  /** Pans to a pinned chat, keeping the zoom when it's readable. */
+  const revealChat = useCallback(
+    (chat: PinnedChat) => {
+      const height = chat.minimized ? CHAT_HEADER_H : chat.height;
+      flow.setCenter(chat.x + chat.width / 2, chat.y + height / 2, {
+        zoom: Math.max(flow.getZoom(), 0.6),
+        duration: 250,
+      });
     },
-    [cardRect, flow],
+    [flow],
   );
 
-  /** Card rects for navigation; dimmed (filtered-out) cards are skipped unless asked for. */
+  /** Pins a thread's chat beside its card, or unpins it. */
+  const togglePin = useCallback(
+    (id: string) => {
+      if (chats.some((chat) => chat.threadId === id)) {
+        actions.unpinChat(id);
+        return;
+      }
+      if (chats.length >= maxPinned) {
+        toast.error(`${maxPinned} chats are pinned in this grouping, the most allowed. Unpin one, or raise the limit in the Canvas plugin settings.`);
+        return;
+      }
+      const card = cardRect(id);
+      const chat: PinnedChat = {
+        threadId: id,
+        x: (card?.x ?? 0) + CARD_W + 56,
+        y: card?.y ?? 0,
+        width: CHAT_W,
+        height: CHAT_H,
+        minimized: false,
+      };
+      record();
+      setChats((current) => [...current, chat]);
+      setFocusedChat(id);
+      rpc.call("chat_upsert", { origin: CLIENT_ID, grouping, chat }).catch((error: unknown) => {
+        toast.error(`Could not pin the chat: ${errorText(error)}`);
+      });
+      revealChat(chat);
+    },
+    [chats, maxPinned, cardRect, record, setChats, rpc, grouping, actions, revealChat],
+  );
+
+  // One-time move of chats pinned by the earlier per-browser version, whose
+  // windows were placed in screen space: re-pin them beside their cards.
+  const legacyPinsKey = `${pluginId}:pinned-windows`;
+  useEffect(() => {
+    if (layout === null || sidebar.status !== "ready" || Object.keys(positions).length === 0) return;
+    let legacy: { threadId: string }[];
+    try {
+      const raw = localStorage.getItem(legacyPinsKey);
+      if (raw === null) return;
+      localStorage.removeItem(legacyPinsKey);
+      legacy = JSON.parse(raw) as { threadId: string }[];
+    } catch {
+      return;
+    }
+    const room = Math.max(0, maxPinned - chats.length);
+    const toPin = legacy
+      .map((entry) => entry.threadId)
+      .filter((id) => positions[id] !== undefined && !chats.some((chat) => chat.threadId === id))
+      .slice(0, room);
+    let offset = 0;
+    for (const id of toPin) {
+      const card = positions[id]!;
+      const chat: PinnedChat = { threadId: id, x: card.x + CARD_W + 56 + offset, y: card.y + offset, width: CHAT_W, height: CHAT_H, minimized: false };
+      offset += 24;
+      setChats((current) => [...current, chat]);
+      rpc.call("chat_upsert", { origin: CLIENT_ID, grouping, chat }).catch(() => undefined);
+    }
+  }, [layout, sidebar.status, positions, legacyPinsKey, maxPinned, chats, setChats, rpc, grouping]);
+
+  /** Card rects for navigation;  /** Card rects for navigation; dimmed (filtered-out) cards are skipped unless asked for. */
   const navItems = useCallback(
     (ids: readonly string[], includeDimmed = false): NavItem[] =>
       ids.flatMap((id) => {
@@ -1120,32 +1165,38 @@ function CanvasInner() {
       else if (event.key === "?") setOverlay({ kind: "help" });
       else if (key === "g") setOverlay({ kind: "goto" });
       else if (event.key === " " && selectedId !== null) {
-        const window = pinned.find((candidate) => candidate.threadId === selectedId);
-        if (window === undefined) setInspectorOpen((open) => !open);
+        const chat = chats.find((candidate) => candidate.threadId === selectedId);
+        if (chat === undefined) setInspectorOpen((open) => !open);
         else {
-          if (window.minimized) updateWindow({ ...window, minimized: false }, true);
-          raiseWindow(selectedId);
+          const shown = chat.minimized ? { ...chat, minimized: false } : chat;
+          if (chat.minimized) actions.updateChat(shown);
+          setFocusedChat(selectedId);
+          revealChat(shown);
         }
       } else if (key === "r" && selectedId !== null) {
-        if (pinned.some((window) => window.threadId === selectedId)) {
-          const window = pinned.find((candidate) => candidate.threadId === selectedId)!;
-          if (window.minimized) updateWindow({ ...window, minimized: false }, true);
-          raiseWindow(selectedId);
-          setWindowFocus((current) => ({ ...current, [selectedId]: (current[selectedId] ?? 0) + 1 }));
+        const chat = chats.find((candidate) => candidate.threadId === selectedId);
+        if (chat !== undefined) {
+          const shown = chat.minimized ? { ...chat, minimized: false } : chat;
+          if (chat.minimized) actions.updateChat(shown);
+          setFocusedChat(selectedId);
+          revealChat(shown);
+          setChatFocusRequests((current) => ({ ...current, [selectedId]: (current[selectedId] ?? 0) + 1 }));
         } else {
           setInspectorOpen(true);
           setChatFocus((value) => value + 1);
         }
       } else if (key === "p" && selectedId !== null) togglePin(selectedId);
       else if (event.key === "-" && selectedId !== null) {
-        const window = pinned.find((candidate) => candidate.threadId === selectedId);
-        if (window !== undefined) updateWindow({ ...window, minimized: !window.minimized }, true);
+        const chat = chats.find((candidate) => candidate.threadId === selectedId);
+        if (chat !== undefined) actions.updateChat({ ...chat, minimized: !chat.minimized });
       } else if (event.key === "Tab") {
-        const open = pinned.filter((window) => !window.minimized && threadsById.has(window.threadId));
-        if (open.length === 0) return;
-        const index = open.findIndex((window) => window.threadId === focusedWindow);
-        const next = open[(index + (event.shiftKey ? -1 : 1) + open.length) % open.length]!;
-        raiseWindow(next.threadId);
+        const pinned = chats.filter((chat) => threadsById.has(chat.threadId));
+        if (pinned.length === 0) return;
+        const index = pinned.findIndex((chat) => chat.threadId === focusedChat);
+        const next = pinned[(index + (event.shiftKey ? -1 : 1) + pinned.length) % pinned.length]!;
+        setFocusedChat(next.threadId);
+        setSelectedId(next.threadId);
+        revealChat(next);
       } else if (key === "t") startTriage(); else if (event.key === "Enter" && selectedId !== null) navigate.toThread(selectedId, { split: event.shiftKey });
       else if (key === "m" && selectedId !== null) setOverlay({ kind: "move", threadId: selectedId });
       else if (key === "n" && attentionQueue.length > 0) {
@@ -1177,12 +1228,12 @@ function CanvasInner() {
     triage,
     stepTriage,
     startTriage,
-    pinned,
-    focusedWindow,
+    chats,
+    focusedChat,
     threadsById,
     togglePin,
-    updateWindow,
-    raiseWindow,
+    actions,
+    revealChat,
   ]);
 
   const loading = sidebar.status === "loading" || layout === null;
@@ -1205,6 +1256,7 @@ function CanvasInner() {
             nodes={nodes}
             edges={edges}
             nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
             onNodesChange={onNodesChange}
             onNodeDragStart={onNodeDragStart}
             onNodeDragStop={onNodeDragStop}
@@ -1244,6 +1296,7 @@ function CanvasInner() {
                 const canvasNode = node as CanvasNode;
                 if (canvasNode.type === "frame") return "bb-canvas-mini-frame";
                 if (canvasNode.type === "note") return "bb-canvas-mini-note";
+                if (canvasNode.type === "chat") return "bb-canvas-mini-chat";
                 return `bb-canvas-mini-${canvasNode.data.bucket}`;
               }}
             />
@@ -1476,20 +1529,6 @@ function CanvasInner() {
               create={{ label: (name) => `Create section "${name}"`, run: (name) => void createSection(name) }}
             />
           ) : null}
-          <PinnedWindows
-            windows={pinned}
-            threads={threadsById}
-            buckets={buckets}
-            focusedId={focusedWindow}
-            focusRequests={windowFocus}
-            area={area}
-            anchorOf={anchorOf}
-            onChange={updateWindow}
-            onFocus={raiseWindow}
-            onUnpin={togglePin}
-            onOpen={(id) => navigate.toThread(id)}
-            onReleaseFocus={releaseFocus}
-          />
           {triage !== null ? (
             <Triage
               queue={triage.queue}

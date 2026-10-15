@@ -63,3 +63,4 @@
 @keyframes bb-canvas-pulse {
   50% { box-shadow: 0 0 0 4px color-mix(in oklab, var(--status-needs-you) 30%, transparent); }
 }
+.bb-canvas .react-flow__minimap .bb-canvas-mini-chat { fill: var(--background); stroke: var(--ring); }

@@ -19,10 +19,22 @@ const noteSchema = z.object({
 export type Note = z.infer<typeof noteSchema>;
 const groupingSchema = z.enum(GROUPINGS);
 
+/** A thread's chat pinned to the canvas, in canvas coordinates. */
+const pinnedChatSchema = z.object({
+  threadId: z.string().min(1).max(64),
+  x: z.number().finite(),
+  y: z.number().finite(),
+  width: z.number().finite().min(240).max(2400),
+  height: z.number().finite().min(160).max(2400),
+  minimized: z.boolean(),
+});
+export type PinnedChat = z.infer<typeof pinnedChatSchema>;
+
 /** Each grouping keeps its own arrangement, so switching never scrambles another. */
 const arrangementSchema = z.object({
   positions: z.record(z.string(), pointSchema),
   notes: z.array(noteSchema),
+  chats: z.array(pinnedChatSchema).default([]),
 });
 export type Arrangement = z.infer<typeof arrangementSchema>;
 
@@ -45,7 +57,7 @@ const legacyLayoutSchema = z.object({
   frameColors: z.record(z.string(), z.enum(FRAME_COLORS)),
 });
 
-const emptyArrangement = (): Arrangement => ({ positions: {}, notes: [] });
+const emptyArrangement = (): Arrangement => ({ positions: {}, notes: [], chats: [] });
 function emptyLayout(): Layout {
   return {
     version: 2,
@@ -60,7 +72,7 @@ function parseLayout(raw: unknown): Layout {
   const legacy = legacyLayoutSchema.safeParse(raw);
   if (!legacy.success) return emptyLayout();
   const layout = emptyLayout();
-  layout.arrangements.project = { positions: legacy.data.positions, notes: legacy.data.notes };
+  layout.arrangements.project = { positions: legacy.data.positions, notes: legacy.data.notes, chats: [] };
   for (const [projectId, color] of Object.entries(legacy.data.frameColors)) {
     layout.frameColors[`project:${projectId}`] = color;
   }
@@ -87,6 +99,8 @@ export const rpcContract = defineRpcContract({
   },
   note_upsert: { input: z.object({ origin, grouping: groupingSchema, note: noteSchema }), output: ok },
   note_delete: { input: z.object({ origin, grouping: groupingSchema, id: z.string() }), output: ok },
+  chat_upsert: { input: z.object({ origin, grouping: groupingSchema, chat: pinnedChatSchema }), output: ok },
+  chat_delete: { input: z.object({ origin, grouping: groupingSchema, threadId: z.string() }), output: ok },
   frame_color_set: {
     input: z.object({ origin, frameKey: z.string().max(200), color: z.enum(FRAME_COLORS) }),
     output: ok,
@@ -96,6 +110,8 @@ export const rpcContract = defineRpcContract({
 export const LAYOUT_CHANGED = "layout-changed";
 const KEY = "layout";
 const MAX_NOTES = 500;
+/** Upper bound on the maxPinnedWindows setting; the app enforces the setting itself. */
+const MAX_CHATS = 12;
 
 export default async function plugin(bb: BbPluginApi) {
   // Read by the app through useSettings(); edit in bb's plugin settings or
@@ -104,7 +120,7 @@ export default async function plugin(bb: BbPluginApi) {
     maxPinnedWindows: {
       type: "number",
       label: "Pinned chat windows",
-      description: "How many chat windows can be pinned on the canvas at once (1–12).",
+      description: "How many chats can be pinned to the canvas at once, per grouping (1–12).",
       default: 4,
       experimental_schema: z.number().int().min(1).max(12),
     },
@@ -160,6 +176,19 @@ export default async function plugin(bb: BbPluginApi) {
       update(origin, (layout) => {
         const arrangement = layout.arrangements[grouping];
         arrangement.notes = arrangement.notes.filter((note) => note.id !== id);
+      }),
+    chat_upsert: ({ origin, grouping, chat }) =>
+      update(origin, (layout) => {
+        const chats = layout.arrangements[grouping].chats;
+        const index = chats.findIndex((existing) => existing.threadId === chat.threadId);
+        if (index >= 0) chats[index] = chat;
+        else if (chats.length < MAX_CHATS) chats.push(chat);
+        else throw new Error(`The canvas holds at most ${MAX_CHATS} pinned chats per grouping.`);
+      }),
+    chat_delete: ({ origin, grouping, threadId }) =>
+      update(origin, (layout) => {
+        const arrangement = layout.arrangements[grouping];
+        arrangement.chats = arrangement.chats.filter((chat) => chat.threadId !== threadId);
       }),
     frame_color_set: ({ origin, frameKey, color }) =>
       update(origin, (layout) => {

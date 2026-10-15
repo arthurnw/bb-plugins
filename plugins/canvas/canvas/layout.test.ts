@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CARD_H, CARD_W, autoLayout, frameBounds, placeNew, type LayoutThread } from "./layout.ts";
+import { CARD_H, CARD_W, autoLayout, facingSides, frameBounds, placeNew, type LayoutThread } from "./layout.ts";
 
 const thread = (id: string, group: string, extra: Partial<LayoutThread> = {}): LayoutThread => ({
   id,
@@ -79,4 +79,21 @@ test("frameBounds wraps cards with padding and a header", () => {
   assert.ok(bounds.x + bounds.width > 400 + CARD_W);
   assert.ok(bounds.y + bounds.height > 200 + CARD_H);
   assert.equal(frameBounds([]), null);
+});
+
+test("facingSides joins the sides that face each other", () => {
+  const card = { x: 400, y: 0, width: 300, height: 100 };
+  // A chat down and to the left, as in a real report: top of the chat, bottom of the card.
+  const below = facingSides(card, { x: 0, y: 300, width: 400, height: 400 });
+  assert.equal(below.from.side, "bottom");
+  assert.equal(below.to.side, "top");
+  assert.equal(below.from.y, 100);
+  assert.equal(below.to.y, 300);
+  // Directly to the right: card's right side to the chat's left, level with the card.
+  const right = facingSides(card, { x: 800, y: -100, width: 400, height: 400 });
+  assert.equal(right.from.side, "right");
+  assert.equal(right.to.side, "left");
+  assert.equal(right.to.y, 50);
+  // To the left.
+  assert.equal(facingSides(card, { x: -500, y: 0, width: 400, height: 400 }).from.side, "left");
 });
