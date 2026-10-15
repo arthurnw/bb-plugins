@@ -43,27 +43,6 @@ export type FrameFlowNode = Node<FrameNodeData, "frame">;
 export type NoteFlowNode = Node<NoteNodeData, "note">;
 export type CanvasNode = ThreadFlowNode | FrameFlowNode | NoteFlowNode;
 
-const BUCKET_ACCENT: Record<Bucket, string> = {
-  "needs-you": "border-l-amber-500",
-  working: "border-l-sky-500",
-  error: "border-l-red-500",
-  done: "border-l-emerald-500",
-  idle: "border-l-border",
-};
-const BUCKET_FAR: Record<Bucket, string> = {
-  "needs-you": "bg-amber-500/25",
-  working: "bg-sky-500/20",
-  error: "bg-red-500/20",
-  done: "bg-emerald-500/20",
-  idle: "bg-card",
-};
-const BUCKET_TEXT: Record<Bucket, string> = {
-  "needs-you": "text-amber-600 dark:text-amber-400",
-  working: "text-sky-600 dark:text-sky-400",
-  error: "text-red-600 dark:text-red-400",
-  done: "text-emerald-600 dark:text-emerald-400",
-  idle: "text-muted-foreground",
-};
 
 function PullRequestBadge({ pullRequest }: { pullRequest: PluginSidebarPullRequest }) {
   const checks = pullRequest.experimental_checks.state;
@@ -145,12 +124,12 @@ export const ThreadNode = memo(function ThreadNode({ data, selected }: NodeProps
           actions.open(thread.id, event.metaKey || event.ctrlKey);
         }}
         className={cn(
-          "group relative flex flex-col overflow-hidden rounded-lg border border-l-4 bg-card text-card-foreground shadow-sm transition-[opacity,box-shadow]",
-          BUCKET_ACCENT[bucket],
+          "bb-canvas-card group relative flex flex-col overflow-hidden rounded-lg text-card-foreground shadow-sm transition-[opacity,box-shadow]",
+          `status-${bucket}`,
           selected ? "ring-2 ring-ring" : "hover:shadow-md",
           dimmed && "opacity-30",
           thread.isArchived && "border-dashed opacity-60",
-          far && BUCKET_FAR[bucket],
+          far && "far",
         )}
       >
         <Handle type="target" position={Position.Left} isConnectable={false} className="!opacity-0" />
@@ -182,7 +161,7 @@ export const ThreadNode = memo(function ThreadNode({ data, selected }: NodeProps
             </div>
             <div className="mt-auto flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
               <span className="flex size-3.5 shrink-0 items-center justify-center" title={thread.providerId}>
-                <ProviderIcon providerKind="agent" provider={provider} />
+                <ProviderIcon providerKind="agent" provider={provider} className="size-3.5" />
               </span>
               {location === null ? null : (
                 <span className="flex min-w-0 items-center gap-1" title={environment?.path ?? undefined}>
@@ -198,7 +177,7 @@ export const ThreadNode = memo(function ThreadNode({ data, selected }: NodeProps
               </span>
             </div>
             <div className="flex min-w-0 items-center gap-2 text-xs">
-              <span className={cn("shrink-0 font-medium", BUCKET_TEXT[bucket])}>
+              <span className="bb-canvas-status shrink-0 font-medium">
                 {thread.indicatorLabel ?? BUCKET_LABEL[bucket]}
               </span>
               {activity.length > 0 ? (

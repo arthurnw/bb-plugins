@@ -36,6 +36,11 @@ const origin = z.string().max(64);
 
 export const rpcContract = defineRpcContract({
   layout_get: { input: z.null(), output: layoutSchema },
+  /** Replaces the whole arrangement; undo and redo restore snapshots with it. */
+  layout_set: {
+    input: z.object({ origin, layout: layoutSchema }),
+    output: z.object({ ok: z.literal(true) }),
+  },
   positions_set: {
     input: z.object({
       origin,
@@ -85,6 +90,11 @@ export default async function plugin(bb: BbPluginApi) {
 
   bb.rpc.register(rpcContract, {
     layout_get: () => read(),
+    layout_set: ({ origin, layout }) =>
+      update(origin, (current) => {
+        if (layout.notes.length > MAX_NOTES) throw new Error(`The canvas holds at most ${MAX_NOTES} notes.`);
+        Object.assign(current, layout);
+      }),
     positions_set: ({ origin, positions, replace }) =>
       update(origin, (layout) => {
         if (replace) layout.positions = {};

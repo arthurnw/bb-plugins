@@ -1,5 +1,10 @@
 /* React Flow chrome in the host theme's colors. */
 .bb-canvas {
+  --status-needs-you: oklch(0.72 0.17 70);
+  --status-working: oklch(0.6 0.17 255);
+  --status-error: oklch(0.6 0.21 25);
+  --status-done: oklch(0.62 0.16 150);
+  --status-idle: oklch(0.62 0.01 260);
   --xy-background-color: transparent;
   --xy-background-pattern-color: var(--border);
   --xy-edge-stroke: var(--muted-foreground);
@@ -35,8 +40,26 @@
 }
 .bb-canvas .react-flow__minimap .bb-canvas-mini-frame { fill: var(--muted); }
 .bb-canvas .react-flow__minimap .bb-canvas-mini-note { fill: #fde68a; }
-.bb-canvas .react-flow__minimap .bb-canvas-mini-needs-you { fill: #f59e0b; }
-.bb-canvas .react-flow__minimap .bb-canvas-mini-working { fill: #0ea5e9; }
-.bb-canvas .react-flow__minimap .bb-canvas-mini-error { fill: #ef4444; }
-.bb-canvas .react-flow__minimap .bb-canvas-mini-done { fill: #10b981; }
-.bb-canvas .react-flow__minimap .bb-canvas-mini-idle { fill: var(--muted-foreground); }
+.bb-canvas .react-flow__minimap .bb-canvas-mini-needs-you { fill: var(--status-needs-you); }
+.bb-canvas .react-flow__minimap .bb-canvas-mini-working { fill: var(--status-working); }
+.bb-canvas .react-flow__minimap .bb-canvas-mini-error { fill: var(--status-error); }
+.bb-canvas .react-flow__minimap .bb-canvas-mini-done { fill: var(--status-done); }
+.bb-canvas .react-flow__minimap .bb-canvas-mini-idle { fill: var(--status-idle); }
+
+/* Status shows as a wash of its color across the whole card, as in herdr-map. */
+.bb-canvas-card {
+  --c: var(--status-idle);
+  background: color-mix(in oklab, var(--c) 16%, var(--card));
+  border: 1px solid color-mix(in oklab, var(--c) 55%, var(--border));
+}
+.bb-canvas-card.status-needs-you { --c: var(--status-needs-you); animation: bb-canvas-pulse 1.6s ease-in-out infinite; }
+.bb-canvas-card.status-working { --c: var(--status-working); }
+.bb-canvas-card.status-error { --c: var(--status-error); }
+.bb-canvas-card.status-done { --c: var(--status-done); }
+.bb-canvas-card.status-idle { --c: var(--status-idle); }
+.bb-canvas-card.far { background: color-mix(in oklab, var(--c) 45%, var(--card)); }
+.bb-canvas-status { color: color-mix(in oklab, var(--c) 70%, var(--foreground)); }
+
+@keyframes bb-canvas-pulse {
+  50% { box-shadow: 0 0 0 4px color-mix(in oklab, var(--status-needs-you) 30%, transparent); }
+}

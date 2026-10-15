@@ -38,15 +38,8 @@ import { nodeTypes, type CanvasNode } from "./nodes";
 import { BUCKETS, BUCKET_LABEL, bucketOf, type Bucket } from "./status.ts";
 
 const CLIENT_ID = Math.random().toString(36).slice(2, 10);
+const UNDO_LIMIT = 50;
 const EMPTY_LAYOUT: Layout = { positions: {}, notes: [], frameColors: {} };
-
-const BUCKET_CHIP: Record<Bucket, string> = {
-  "needs-you": "bg-amber-500",
-  working: "bg-sky-500",
-  error: "bg-red-500",
-  done: "bg-emerald-500",
-  idle: "bg-muted-foreground/50",
-};
 
 /** The stored arrangement, refetched when another window changes it. */
 function useStoredLayout() {
@@ -172,6 +165,38 @@ function CanvasInner() {
   notesRef.current = notes;
   const dragging = useRef(false);
 
+  // Undo and redo hold whole-layout snapshots, kept per window in memory.
+  // record() runs before each user edit; one event that makes several edits
+  // (a drag that moves cards and a note) sees the same snapshot and records once.
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
+  const [history, setHistory] = useState<{ undo: Layout[]; redo: Layout[] }>({ undo: [], redo: [] });
+  const record = useCallback(() => {
+    const snapshot = layoutRef.current;
+    if (snapshot === null) return;
+    setHistory((current) =>
+      current.undo.at(-1) === snapshot
+        ? current
+        : { undo: [...current.undo, snapshot].slice(-UNDO_LIMIT), redo: [] },
+    );
+  }, []);
+  const restore = useCallback(
+    (direction: "undo" | "redo") => {
+      const current = layoutRef.current;
+      const stack = history[direction];
+      const target = stack.at(-1);
+      if (current === null || target === undefined) return;
+      const other = direction === "undo" ? "redo" : "undo";
+      setHistory({ [direction]: stack.slice(0, -1), [other]: [...history[other], current] } as typeof history);
+      layoutRef.current = target;
+      setLayout(target);
+      rpc.call("layout_set", { origin: CLIENT_ID, layout: target }).catch((error: unknown) => {
+        toast.error(`Could not save the layout: ${error instanceof Error ? error.message : String(error)}`);
+      });
+    },
+    [history, rpc, setLayout],
+  );
+
   // Local edits go into `layout` first so later re-derivations see them; the
   // server's echo to this window is skipped.
   const setNotes = useCallback(
@@ -214,35 +239,26 @@ function CanvasInner() {
       open: (id, split) => navigate.toThread(id, { split }),
       newThread: (projectId) => navigate.toCompose({ projectId, focusPrompt: true }),
       setFrameColor: (projectId: string, color: FrameColor) => {
+        record();
         setLayout((current) =>
           current === null ? current : { ...current, frameColors: { ...current.frameColors, [projectId]: color } },
         );
         rpc.call("frame_color_set", { origin: CLIENT_ID, projectId, color }).catch(() => undefined);
       },
       updateNote: (note) => {
+        record();
         setNotes((current) => current.map((existing) => (existing.id === note.id ? note : existing)));
         rpc.call("note_upsert", { origin: CLIENT_ID, note }).catch((error: unknown) => {
           toast.error(`Could not save the note: ${error instanceof Error ? error.message : String(error)}`);
         });
       },
       deleteNote: (id) => {
-        const removed = notesRef.current.find((note) => note.id === id);
+        record();
         setNotes((current) => current.filter((note) => note.id !== id));
         rpc.call("note_delete", { origin: CLIENT_ID, id }).catch(() => undefined);
-        if (removed !== undefined && removed.text.trim() !== "") {
-          toast("Note deleted", {
-            action: {
-              label: "Undo",
-              onClick: () => {
-                setNotes((current) => [...current, removed]);
-                rpc.call("note_upsert", { origin: CLIENT_ID, note: removed }).catch(() => undefined);
-              },
-            },
-          });
-        }
       },
     }),
-    [navigate, rpc, setLayout, setNotes],
+    [navigate, rpc, setLayout, setNotes, record],
   );
 
   // Nodes derived from threads, positions, and notes.
@@ -368,6 +384,7 @@ function CanvasInner() {
   const onNodeDragStop = useCallback(
     (_event: unknown, _node: CanvasNode, dragged: CanvasNode[]) => {
       dragging.current = false;
+      record();
       const changes: Record<string, Point> = {};
       for (const node of dragged) {
         if (node.type === "thread") changes[node.id] = positionsRef.current[node.id] ?? node.position;
@@ -381,7 +398,7 @@ function CanvasInner() {
       }
       if (Object.keys(changes).length > 0) save(changes);
     },
-    [membersOf, save, actions],
+    [membersOf, save, actions, record],
   );
 
   const edges = useMemo<Edge[]>(() => {
@@ -465,30 +482,22 @@ function CanvasInner() {
         text: "",
         color: "yellow",
       };
+      record();
       setNotes((current) => [...current, note]);
       rpc.call("note_upsert", { origin: CLIENT_ID, note }).catch((error: unknown) => {
         toast.error(`Could not save the note: ${error instanceof Error ? error.message : String(error)}`);
       });
     },
-    [flow, rpc, setNotes],
+    [flow, rpc, setNotes, record],
   );
 
   const autoArrange = useCallback(() => {
-    const previous = positionsRef.current;
+    record();
     const next = Object.fromEntries(autoLayout(threads));
     setPositions(next);
     save(next, true);
     requestAnimationFrame(() => flow.fitView({ padding: 0.15, maxZoom: 1, duration: 300 }));
-    toast("Canvas rearranged", {
-      action: {
-        label: "Undo",
-        onClick: () => {
-          setPositions(previous);
-          save(previous, true);
-        },
-      },
-    });
-  }, [threads, save, flow]);
+  }, [threads, save, flow, record]);
 
   // Needs-you queue for the `n` key: oldest attention first.
   const attentionQueue = useMemo(
@@ -509,7 +518,14 @@ function CanvasInner() {
         }
         return;
       }
-      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const mod = event.metaKey || event.ctrlKey;
+      const key = event.key.toLowerCase();
+      if (mod && !event.altKey && (key === "z" || (key === "y" && !event.metaKey))) {
+        event.preventDefault();
+        restore(key === "y" || event.shiftKey ? "redo" : "undo");
+        return;
+      }
+      if (mod || event.altKey) return;
       if (event.key === "Escape") setSelectedId(null);
       else if (event.key === "/") {
         event.preventDefault();
@@ -525,7 +541,7 @@ function CanvasInner() {
     // Scoped to the canvas page; React Flow's own keys stay on its pane.
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedId, attentionQueue, focusThread, navigate, flow]);
+  }, [selectedId, attentionQueue, focusThread, navigate, flow, restore]);
 
   const loading = sidebar.status === "loading" || layout === null;
 
@@ -632,7 +648,7 @@ function CanvasInner() {
                           off && "opacity-40",
                         )}
                       >
-                        <span className={cn("size-2 rounded-full", BUCKET_CHIP[bucket])} />
+                        <span className="size-2 rounded-full" style={{ background: `var(--status-${bucket})` }} />
                         <span className="tabular-nums">{count}</span>
                         <span className="text-muted-foreground">{BUCKET_LABEL[bucket].toLowerCase()}</span>
                       </button>
@@ -652,6 +668,28 @@ function CanvasInner() {
                   </ToolButton>
                   <ToolButton variant="ghost" size="sm" className="h-7 px-2" onClick={() => addNote()} title="New sticky note (or double-click the canvas)">
                     <Icon name="StickyNote" className="size-3.5" />
+                  </ToolButton>
+                  <ToolButton
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2"
+                    disabled={history.undo.length === 0}
+                    onClick={() => restore("undo")}
+                    title="Undo layout change (⌘Z)"
+                    aria-label="Undo"
+                  >
+                    <Icon name="Undo2" className="size-3.5" />
+                  </ToolButton>
+                  <ToolButton
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2"
+                    disabled={history.redo.length === 0}
+                    onClick={() => restore("redo")}
+                    title="Redo layout change (⇧⌘Z)"
+                    aria-label="Redo"
+                  >
+                    <Icon name="Redo2" className="size-3.5" />
                   </ToolButton>
                   <ToolButton variant="ghost" size="sm" className="h-7 px-2" onClick={autoArrange} title="Rearrange automatically">
                     <Icon name="LayoutGrid" className="size-3.5" />
@@ -690,7 +728,7 @@ function CanvasInner() {
                             thread.id === selectedId && "bg-state-active",
                           )}
                         >
-                          <span className={cn("size-2 shrink-0 rounded-full", BUCKET_CHIP[buckets.get(thread.id) ?? "idle"])} />
+                          <span className="size-2 shrink-0 rounded-full" style={{ background: `var(--status-${buckets.get(thread.id) ?? "idle"})` }} />
                           <span className="min-w-0 flex-1 truncate">{thread.displayTitle}</span>
                         </button>
                       </li>
