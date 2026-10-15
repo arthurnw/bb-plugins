@@ -81,19 +81,21 @@ test("frameBounds wraps cards with padding and a header", () => {
   assert.equal(frameBounds([]), null);
 });
 
-test("facingSides joins the sides that face each other", () => {
+test("facingSides joins the middles of the sides that face each other", () => {
   const card = { x: 400, y: 0, width: 300, height: 100 };
   // A chat down and to the left, as in a real report: top of the chat, bottom of the card.
   const below = facingSides(card, { x: 0, y: 300, width: 400, height: 400 });
   assert.equal(below.from.side, "bottom");
   assert.equal(below.to.side, "top");
-  assert.equal(below.from.y, 100);
-  assert.equal(below.to.y, 300);
-  // Directly to the right: card's right side to the chat's left, level with the card.
+  // Each end sits at the middle of its side.
+  assert.deepEqual({ x: below.from.x, y: below.from.y }, { x: 550, y: 100 });
+  assert.deepEqual({ x: below.to.x, y: below.to.y }, { x: 200, y: 300 });
+  // To the right: card's right side to the chat's left, each at its middle.
   const right = facingSides(card, { x: 800, y: -100, width: 400, height: 400 });
   assert.equal(right.from.side, "right");
   assert.equal(right.to.side, "left");
-  assert.equal(right.to.y, 50);
+  assert.deepEqual({ x: right.from.x, y: right.from.y }, { x: 700, y: 50 });
+  assert.deepEqual({ x: right.to.x, y: right.to.y }, { x: 800, y: 100 });
   // To the left.
   assert.equal(facingSides(card, { x: -500, y: 0, width: 400, height: 400 }).from.side, "left");
 });
