@@ -40,6 +40,24 @@ export const ChatNode = memo(function ChatNode({ data }: NodeProps<ChatFlowNode>
   const collapsed = chat.minimized || far;
 
   return (
+    <>
+      <Handle type="target" position={Position.Left} isConnectable={false} className="!opacity-0" style={{ top: CHAT_HEADER_H / 2 }} />
+      {/* Outside the chat's frame, whose overflow clipping cut the corner hit
+          areas in half and whose body covered the bottom ones. While resizing, only this outline follows the pointer; the chat keeps
+          its stored size and takes the new one on release, so its text lays out
+          once instead of on every frame. */}
+      <NodeResizer
+        isVisible={focused && !collapsed}
+        minWidth={280}
+        minHeight={200}
+        lineClassName="!z-20 !border-dashed !border-ring/40"
+        // Invisible 16px corner hit areas above the chat; the cursor and the
+        // grip show they're there.
+        handleClassName="!z-20 !size-4 !border-0 !bg-transparent"
+        onResizeEnd={(_event, params) =>
+          actions.updateChat({ ...chat, x: params.x, y: params.y, width: params.width, height: params.height })
+        }
+      />
     <div
       ref={ref}
       data-bb-canvas-chat=""
@@ -50,21 +68,6 @@ export const ChatNode = memo(function ChatNode({ data }: NodeProps<ChatFlowNode>
         focused ? "border-ring shadow-2xl" : "border-border shadow-lg",
       )}
     >
-      <Handle type="target" position={Position.Left} isConnectable={false} className="!opacity-0" style={{ top: CHAT_HEADER_H / 2 }} />
-      {/* While resizing, only this outline follows the pointer; the chat keeps
-          its stored size and takes the new one on release, so its text lays out
-          once instead of on every frame. */}
-      <NodeResizer
-        isVisible={focused && !collapsed}
-        minWidth={280}
-        minHeight={200}
-        lineClassName="!border-dashed !border-ring/40"
-        // Invisible corner hit areas; the cursor and the grip below show they're there.
-        handleClassName="!size-3 !border-0 !bg-transparent"
-        onResizeEnd={(_event, params) =>
-          actions.updateChat({ ...chat, x: params.x, y: params.y, width: params.width, height: params.height })
-        }
-      />
       <div
         style={far && !chat.minimized ? undefined : { height: CHAT_HEADER_H }}
         className={cn(
@@ -142,5 +145,6 @@ export const ChatNode = memo(function ChatNode({ data }: NodeProps<ChatFlowNode>
         </div>
       )}
     </div>
+    </>
   );
 });
