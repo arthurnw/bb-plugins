@@ -46,7 +46,7 @@ export const ChatNode = memo(function ChatNode({ data }: NodeProps<ChatFlowNode>
       onPointerDownCapture={() => actions.focusChat(thread.id)}
       style={{ width: chat.width, height: chat.minimized ? CHAT_HEADER_H : chat.height }}
       className={cn(
-        "flex flex-col overflow-hidden rounded-xl border bg-background",
+        "relative flex flex-col overflow-hidden rounded-xl border bg-background",
         focused ? "border-ring shadow-2xl" : "border-border shadow-lg",
       )}
     >
@@ -58,8 +58,9 @@ export const ChatNode = memo(function ChatNode({ data }: NodeProps<ChatFlowNode>
         isVisible={focused && !collapsed}
         minWidth={280}
         minHeight={200}
-        lineClassName="!border-dashed !border-ring/60"
-        handleClassName="!size-2.5 !rounded-sm !border-ring !bg-background"
+        lineClassName="!border-dashed !border-ring/40"
+        // Invisible corner hit areas; the cursor and the grip below show they're there.
+        handleClassName="!size-3 !border-0 !bg-transparent"
         onResizeEnd={(_event, params) =>
           actions.updateChat({ ...chat, x: params.x, y: params.y, width: params.width, height: params.height })
         }
@@ -110,6 +111,15 @@ export const ChatNode = memo(function ChatNode({ data }: NodeProps<ChatFlowNode>
           ))
         )}
       </div>
+      {focused && !collapsed ? (
+        <svg
+          aria-hidden
+          viewBox="0 0 10 10"
+          className="pointer-events-none absolute bottom-1 right-1 z-10 size-2.5 text-muted-foreground/70"
+        >
+          <path d="M9 3 L3 9 M9 6.5 L6.5 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+        </svg>
+      ) : null}
       {collapsed ? null : (
         // bb's chat draws only the messages it thinks are on screen, measuring
         // its height on screen against unscaled scroll offsets. Under the
