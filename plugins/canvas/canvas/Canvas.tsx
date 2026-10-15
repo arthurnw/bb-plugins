@@ -197,7 +197,7 @@ const SHORTCUTS: [string, string][] = [
   ["h j k l", "Move between threads in a frame"],
   ["⇧ H J K L", "Move between frames"],
   ["Space", "Show or hide the chat panel (or go to the pinned chat)"],
-  ["p", "Pin or unpin the thread's chat to the canvas"],
+  ["p or ⌥-click", "Pin or unpin a thread's chat to the canvas"],
   ["Tab / ⇧Tab", "Go to the next / previous pinned chat"],
   ["-", "Minimize or restore the pinned chat"],
   ["t", "Triage the threads that need you"],
@@ -500,6 +500,8 @@ function CanvasInner() {
     [sdk, grouping, save, sectionNames],
   );
 
+  // togglePin is defined further down, after the helpers it needs.
+  const togglePinRef = useRef<(threadId: string) => void>(() => undefined);
   const actions = useMemo<CanvasActions>(
     () => ({
       select: (id) => setSelectedId(id),
@@ -546,6 +548,7 @@ function CanvasInner() {
         setSelectedId(threadId);
       },
       releaseFocus,
+      togglePin: (threadId) => togglePinRef.current(threadId),
       deleteNote: (id) => {
         record();
         setNotes((current) => current.filter((note) => note.id !== id));
@@ -603,6 +606,7 @@ function CanvasInner() {
           thread,
           bucket,
           highlighted: thread.id === selectedId,
+          pinned: chats.some((chat) => chat.threadId === thread.id),
           now,
           childCount: childCounts.get(thread.id) ?? 0,
           dimmed: hidden.has(bucket) || !matches(thread, groups.get(thread.id)?.name ?? "", lowered),
@@ -950,6 +954,7 @@ function CanvasInner() {
     },
     [chats, maxPinned, cardRect, record, setChats, rpc, grouping, actions, revealChat],
   );
+  togglePinRef.current = togglePin;
 
   // One-time move of chats pinned by the earlier per-browser version, whose
   // windows were placed in screen space: re-pin them beside their cards.
@@ -1327,10 +1332,12 @@ function CanvasInner() {
             onNodesChange={onNodesChange}
             onNodeDragStart={onNodeDragStart}
             onNodeDragStop={onNodeDragStop}
-            onNodeClick={(_event, node) => {
+            onNodeClick={(event, node) => {
               if (node.type !== "thread") return;
               setSelectedId(node.id);
-              setInspectorOpen(true);
+              // Option-click pins or unpins without opening the chat panel.
+              if (event.altKey) togglePin(node.id);
+              else setInspectorOpen(true);
             }}
             onPaneClick={() => setSelectedId(null)}
             onMoveEnd={(_event, viewport) => {

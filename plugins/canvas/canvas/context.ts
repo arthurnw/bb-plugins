@@ -13,6 +13,8 @@ export interface CanvasActions {
   deleteSection(sectionId: string): void;
   updateNote(note: Note): void;
   updateChat(chat: PinnedChat): void;
+  /** Pins a thread's chat beside its card, or unpins it. */
+  togglePin(threadId: string): void;
   unpinChat(threadId: string): void;
   /** Marks a pinned chat as the one being worked with. */
   focusChat(threadId: string): void;

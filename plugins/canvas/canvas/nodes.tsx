@@ -29,6 +29,8 @@ export type ThreadNodeData = {
   /** The canvas selection. Drawn by the card itself rather than React Flow's
    * `selected`, which would also drag selected nodes together. */
   highlighted: boolean;
+  /** The thread's chat is pinned to the canvas. */
+  pinned: boolean;
   now: number;
   childCount: number;
 };
@@ -195,12 +197,32 @@ export const ThreadNode = memo(function ThreadNode({ data }: NodeProps<ThreadFlo
               {activity.length > 0 ? (
                 <span className="truncate text-muted-foreground">· {activity.join(" · ")}</span>
               ) : null}
-              {childCount > 0 ? (
-                <span className="ml-auto flex shrink-0 items-center gap-0.5 text-muted-foreground" title={`${childCount} child threads`}>
-                  <Icon name="GitFork" className="size-3" />
-                  {childCount}
-                </span>
-              ) : null}
+              <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                {childCount > 0 ? (
+                  <span className="flex items-center gap-0.5 text-muted-foreground" title={`${childCount} child threads`}>
+                    <Icon name="GitFork" className="size-3" />
+                    {childCount}
+                  </span>
+                ) : null}
+                <button
+                  type="button"
+                  aria-label={data.pinned ? "Unpin chat" : "Pin chat to the canvas"}
+                  title={data.pinned ? "Unpin chat (⌥-click the card, or p)" : "Pin chat to the canvas (⌥-click the card, or p)"}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    actions.togglePin(thread.id);
+                  }}
+                  onDoubleClick={(event) => event.stopPropagation()}
+                  className={cn(
+                    "nodrag -my-1 flex size-5 items-center justify-center rounded hover:bg-state-hover",
+                    data.pinned
+                      ? "text-foreground/70"
+                      : "text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100",
+                  )}
+                >
+                  <Icon name="Pin" className={cn("size-3", data.pinned && "fill-current")} />
+                </button>
+              </span>
             </div>
           </div>
         )}
