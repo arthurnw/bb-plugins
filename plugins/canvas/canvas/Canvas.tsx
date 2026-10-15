@@ -45,7 +45,7 @@ import { CHAT_H, CHAT_HEADER_H, CHAT_W } from "./ChatNode.tsx";
 import { edgeTypes } from "./TetherEdge.tsx";
 import { Triage, needsAttention } from "./Triage.tsx";
 import { GROUPINGS, type FrameColor, type Grouping } from "./shared.ts";
-import { BUCKETS, BUCKET_LABEL, bucketOf, type Bucket } from "./status.ts";
+import { BUCKETS, BUCKET_LABEL, age, bucketOf, type Bucket } from "./status.ts";
 
 const CLIENT_ID = Math.random().toString(36).slice(2, 10);
 const UNDO_LIMIT = 50;
@@ -61,15 +61,30 @@ const GROUPING_LABEL: Record<Grouping, string> = { project: "Project", section: 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 /** The stored arrangement, refetched when another window changes it. */
+/**
+ * The last layout this app session saw. Leaving the canvas unmounts it, and
+ * coming back would otherwise wait on a round trip to the server (slow when
+ * bb runs on another machine) before drawing anything; this draws the last
+ * known layout at once and refreshes it in the background.
+ */
+let lastLayout: Layout | null = null;
+
 function useStoredLayout() {
   const rpc = useRpc<typeof rpcContract>();
-  const [layout, setLayout] = useState<Layout | null>(null);
+  const [layout, setLayoutState] = useState<Layout | null>(lastLayout);
+  const setLayout = useCallback((next: Layout | null | ((current: Layout | null) => Layout | null)) => {
+    setLayoutState((current) => {
+      const value = typeof next === "function" ? next(current) : next;
+      lastLayout = value;
+      return value;
+    });
+  }, []);
   const refetch = useCallback(() => {
     rpc.call("layout_get").then(setLayout, (error: unknown) => {
       toast.error(`Canvas layout failed to load: ${errorText(error)}`);
       setLayout((current) => current ?? EMPTY_LAYOUT);
     });
-  }, [rpc]);
+  }, [rpc, setLayout]);
   useEffect(refetch, [refetch]);
   useRealtime("layout-changed", (payload) => {
     const origin = (payload as { origin?: string } | null)?.origin;
@@ -265,6 +280,34 @@ function useHostDark(): boolean {
     return () => observer.disconnect();
   }, []);
   return dark;
+}
+
+/** Equal top-level fields, comparing nested objects one level deep. */
+function shallowEqual(a: unknown, b: unknown, depth = 1): boolean {
+  if (Object.is(a, b)) return true;
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const keysA = Object.keys(a);
+  if (keysA.length !== Object.keys(b).length) return false;
+  return keysA.every((key) => {
+    const valueA = (a as Record<string, unknown>)[key];
+    const valueB = (b as Record<string, unknown>)[key];
+    return depth > 0 ? shallowEqual(valueA, valueB, depth - 1) : Object.is(valueA, valueB);
+  });
+}
+
+/** Whether a rebuilt node would draw the same as the one on screen. */
+function sameNode(old: CanvasNode, next: CanvasNode): boolean {
+  return (
+    old.type === next.type &&
+    old.position.x === next.position.x &&
+    old.position.y === next.position.y &&
+    old.width === next.width &&
+    old.height === next.height &&
+    old.zIndex === next.zIndex &&
+    // bb rebuilds thread objects on every list update; compare their fields.
+    shallowEqual(old.data, next.data, 2)
+  );
 }
 
 function CanvasInner() {
@@ -568,12 +611,15 @@ function CanvasInner() {
       }
     }
     const result: CanvasNode[] = [];
+    const pinnedIds = new Set(chats.map((chat) => chat.threadId));
     for (const { group, members, bounds } of frames) {
       const frameKey = `${grouping}:${group.key}`;
       result.push({
         id: `frame:${group.key}`,
         type: "frame",
         position: { x: bounds.x, y: bounds.y },
+        width: bounds.width,
+        height: bounds.height,
         zIndex: -1,
         selectable: false,
         data: {
@@ -606,8 +652,8 @@ function CanvasInner() {
           thread,
           bucket,
           highlighted: thread.id === selectedId,
-          pinned: chats.some((chat) => chat.threadId === thread.id),
-          now,
+          pinned: pinnedIds.has(thread.id),
+          ageLabel: age(thread.updatedAt, now),
           childCount: childCounts.get(thread.id) ?? 0,
           dimmed: hidden.has(bucket) || !matches(thread, groups.get(thread.id)?.name ?? "", lowered),
         },
@@ -659,9 +705,20 @@ function CanvasInner() {
   useEffect(() => {
     setNodes((previous) => {
       const byId = new Map(previous.map((node) => [node.id, node]));
-      return derived.map((node) => {
+      let changed = previous.length !== derived.length;
+      const next = derived.map((node, index) => {
         const old = byId.get(node.id);
-        if (old === undefined) return node;
+        if (old === undefined) {
+          changed = true;
+          return node;
+        }
+        // Keep the previous object when nothing visible changed, so React Flow
+        // and the memoized node components skip it.
+        if (!old.dragging && sameNode(old, node)) {
+          if (previous[index] !== old) changed = true;
+          return old;
+        }
+        changed = true;
         return {
           ...node,
           measured: old.measured,
@@ -670,6 +727,7 @@ function CanvasInner() {
           position: old.dragging ? old.position : node.position,
         } as CanvasNode;
       });
+      return changed ? next : previous;
     });
   }, [derived]);
 
@@ -867,7 +925,7 @@ function CanvasInner() {
   }, [viewportKey]);
   const fitted = useRef(initialViewport !== undefined);
   useEffect(() => {
-    if (fitted.current || nodes.length === 0 || nodes.some((node) => node.measured === undefined)) return;
+    if (fitted.current || nodes.length === 0) return;
     fitted.current = true;
     requestAnimationFrame(() => flow.fitView({ padding: 0.15, maxZoom: 1 }));
   }, [nodes, flow]);
@@ -987,13 +1045,15 @@ function CanvasInner() {
 
   /** Card rects for navigation;  /** Card rects for navigation; dimmed (filtered-out) cards are skipped unless asked for. */
   const navItems = useCallback(
-    (ids: readonly string[], includeDimmed = false): NavItem[] =>
-      ids.flatMap((id) => {
+    (ids: readonly string[], includeDimmed = false): NavItem[] => {
+      const byId = new Map(nodesRef.current.map((node) => [node.id, node]));
+      return ids.flatMap((id) => {
         const rect = cardRect(id);
-        const node = nodesRef.current.find((candidate) => candidate.id === id);
+        const node = byId.get(id);
         const dimmed = node?.type === "thread" && node.data.dimmed;
         return rect === null || (dimmed && !includeDimmed) ? [] : [{ id, rect }];
-      }),
+      });
+    },
     [cardRect],
   );
 
@@ -1308,7 +1368,8 @@ function CanvasInner() {
     revealChat,
   ]);
 
-  const loading = sidebar.status === "loading" || layout === null;
+  // Only when there is nothing to draw yet; a refresh with cached data stays quiet.
+  const loading = layout === null || (sidebar.status === "loading" && threads.length === 0);
   const moving = overlay?.kind === "move" ? threads.find((thread) => thread.id === overlay.threadId) : undefined;
 
   return (
@@ -1352,6 +1413,7 @@ function CanvasInner() {
             nodesConnectable={false}
             selectionOnDrag={false}
             disableKeyboardA11y
+            onlyRenderVisibleElements
             panOnScroll
             minZoom={0.08}
             maxZoom={2}

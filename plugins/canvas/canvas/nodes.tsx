@@ -16,7 +16,7 @@ import { FRAME_COLORS, NOTE_COLORS, type FrameColor, type Grouping } from "./sha
 import { ChatNode, type ChatFlowNode } from "./ChatNode.tsx";
 import { useCanvasActions } from "./context";
 import { CARD_H, CARD_W, FRAME_HEADER } from "./layout.ts";
-import { BUCKET_LABEL, age, type Bucket } from "./status.ts";
+import { BUCKET_LABEL, type Bucket } from "./status.ts";
 
 /** Below this zoom cards switch to a large-title summary. */
 const FAR_ZOOM = 0.5;
@@ -31,7 +31,8 @@ export type ThreadNodeData = {
   highlighted: boolean;
   /** The thread's chat is pinned to the canvas. */
   pinned: boolean;
-  now: number;
+  /** "now", "4m", …; a string so the card re-renders only when it changes. */
+  ageLabel: string;
   childCount: number;
 };
 export type FrameNodeData = {
@@ -105,7 +106,7 @@ function activityParts(thread: PluginSidebarThread): string[] {
 }
 
 export const ThreadNode = memo(function ThreadNode({ data }: NodeProps<ThreadFlowNode>) {
-  const { thread, bucket, dimmed, now, childCount } = data;
+  const { thread, bucket, dimmed, ageLabel, childCount } = data;
   const actions = useCanvasActions();
   const far = useIsFar();
   const environment = thread.environment;
@@ -170,7 +171,7 @@ export const ThreadNode = memo(function ThreadNode({ data }: NodeProps<ThreadFlo
                 {thread.displayTitle}
               </div>
               <span className="shrink-0 text-xs tabular-nums text-muted-foreground" title={new Date(thread.updatedAt).toLocaleString()}>
-                {age(thread.updatedAt, now)}
+                {ageLabel}
               </span>
             </div>
             <div className="mt-auto flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
