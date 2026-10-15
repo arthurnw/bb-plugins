@@ -12,24 +12,40 @@ export interface NavItem {
 
 const center = (rect: Rect): Point => ({ x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 });
 
+/** Gap between two ranges; 0 when they overlap. */
+const gap = (startA: number, endA: number, startB: number, endB: number) =>
+  Math.max(0, startB - endA, startA - endB);
+
 /**
  * The item nearest `from` in `direction`. An item counts as in that direction
- * when its center is past `from`'s center on that axis. Distance along the
- * axis counts once and drift across it counts double, so moving right picks
- * the card beside you over one further right but higher up.
+ * when its center is past `from`'s center on that axis. Distance is measured
+ * edge to edge: the gap along the axis counts once, and the gap across it
+ * (0 when the two overlap on that axis) counts double. Edges rather than
+ * centers matter for tall or wide frames, whose centers sit far from a
+ * neighbor that lines up with their top.
  */
 export function nearestInDirection(from: Rect, items: readonly NavItem[], direction: Direction): string | null {
   const origin = center(from);
-  let best: { id: string; score: number } | null = null;
+  const horizontal = direction === "left" || direction === "right";
+  let best: { id: string; score: number; drift: number } | null = null;
   for (const item of items) {
     const point = center(item.rect);
-    const dx = point.x - origin.x;
-    const dy = point.y - origin.y;
-    const along = direction === "left" ? -dx : direction === "right" ? dx : direction === "up" ? -dy : dy;
-    const across = direction === "left" || direction === "right" ? Math.abs(dy) : Math.abs(dx);
-    if (along <= 1) continue;
+    const ahead =
+      direction === "left" ? origin.x - point.x : direction === "right" ? point.x - origin.x : direction === "up" ? origin.y - point.y : point.y - origin.y;
+    if (ahead <= 1) continue;
+    const { rect } = item;
+    const along = horizontal
+      ? gap(from.x, from.x + from.width, rect.x, rect.x + rect.width)
+      : gap(from.y, from.y + from.height, rect.y, rect.y + rect.height);
+    const across = horizontal
+      ? gap(from.y, from.y + from.height, rect.y, rect.y + rect.height)
+      : gap(from.x, from.x + from.width, rect.x, rect.x + rect.width);
     const score = along + across * 2;
-    if (best === null || score < best.score) best = { id: item.id, score };
+    // Among equal scores, prefer the item most in line with `from`.
+    const drift = horizontal ? Math.abs(point.y - origin.y) : Math.abs(point.x - origin.x);
+    if (best === null || score < best.score || (score === best.score && drift < best.drift)) {
+      best = { id: item.id, score, drift };
+    }
   }
   return best?.id ?? null;
 }

@@ -22,6 +22,30 @@ test("nearestInDirection returns null at the edge and ignores the current card",
   assert.equal(nearestInDirection(box(0, 0), [{ id: "self", rect: box(0, 0) }], "right"), null);
 });
 
+test("nearestInDirection reaches a tall frame beside you before a farther one in line", () => {
+  // The project frames from a real canvas: Personal is tall, so its center is far below the others'.
+  const frames: NavItem[] = [
+    { id: "bb-canvas", rect: { x: 0, y: 0, width: 348, height: 208 } },
+    { id: "Personal", rect: { x: 437, y: -1, width: 348, height: 752 } },
+    { id: "bb-nav", rect: { x: 888, y: 0, width: 348, height: 208 } },
+    { id: "bb-vim", rect: { x: 1332, y: 0, width: 348, height: 208 } },
+  ];
+  const others = (id: string) => frames.filter((frame) => frame.id !== id);
+  const rect = (id: string) => frames.find((frame) => frame.id === id)!.rect;
+  assert.equal(nearestInDirection(rect("bb-nav"), others("bb-nav"), "left"), "Personal");
+  assert.equal(nearestInDirection(rect("bb-canvas"), others("bb-canvas"), "right"), "Personal");
+  assert.equal(nearestInDirection(rect("Personal"), others("Personal"), "right"), "bb-nav");
+  assert.equal(nearestInDirection(rect("Personal"), others("Personal"), "left"), "bb-canvas");
+});
+
+test("nearestInDirection breaks ties toward the item most in line", () => {
+  const column: NavItem[] = [
+    { id: "a", rect: box(0, 100) },
+    { id: "b", rect: box(30, 100) },
+  ];
+  assert.equal(nearestInDirection(box(28, 0), column, "down"), "b");
+});
+
 test("nearestTo picks the closest center", () => {
   assert.equal(nearestTo({ x: 190, y: 10 }, items), "right");
 });
