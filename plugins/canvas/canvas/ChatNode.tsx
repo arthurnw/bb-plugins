@@ -50,7 +50,7 @@ export const ChatNode = memo(function ChatNode({ data }: NodeProps<ChatFlowNode>
         isVisible={focused && !collapsed}
         minWidth={280}
         minHeight={200}
-        lineClassName="!z-20 !border-dashed !border-ring/40"
+        lineClassName="!z-20 !border-transparent"
         // Invisible 16px corner hit areas above the chat; the cursor and the
         // grip show they're there.
         handleClassName="!z-20 !size-4 !border-0 !bg-transparent"
