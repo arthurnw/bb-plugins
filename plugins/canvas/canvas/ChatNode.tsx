@@ -1,4 +1,4 @@
-import { memo, useRef } from "react";
+import { memo, useRef, useState } from "react";
 import { Handle, NodeResizer, Position, useStore, type Node, type NodeProps } from "@xyflow/react";
 import { ThreadChat, type PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
@@ -38,6 +38,8 @@ export const ChatNode = memo(function ChatNode({ data }: NodeProps<ChatFlowNode>
   const ref = useRef<HTMLDivElement>(null);
   useReleaseChatFocus(ref, thread.id, focusRequest, actions.releaseFocus);
   const collapsed = chat.minimized || far;
+  // The outline shows only while resizing, to preview the new size.
+  const [resizing, setResizing] = useState(false);
 
   return (
     <>
@@ -50,13 +52,15 @@ export const ChatNode = memo(function ChatNode({ data }: NodeProps<ChatFlowNode>
         isVisible={focused && !collapsed}
         minWidth={280}
         minHeight={200}
-        lineClassName="!z-20 !border-transparent"
+        lineClassName={cn("!z-20", resizing ? "!border-dashed !border-ring/60" : "!border-transparent")}
+        onResizeStart={() => setResizing(true)}
         // Invisible 16px corner hit areas above the chat; the cursor and the
         // grip show they're there.
         handleClassName="!z-20 !size-4 !border-0 !bg-transparent"
-        onResizeEnd={(_event, params) =>
-          actions.updateChat({ ...chat, x: params.x, y: params.y, width: params.width, height: params.height })
-        }
+        onResizeEnd={(_event, params) => {
+          setResizing(false);
+          actions.updateChat({ ...chat, x: params.x, y: params.y, width: params.width, height: params.height });
+        }}
       />
     <div
       ref={ref}
