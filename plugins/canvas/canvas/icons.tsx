@@ -1,0 +1,51 @@
+// The canvas draws its own lucide icons; bb's built-in icon set does not
+// include all of these names.
+import {
+  Archive,
+  ArrowUpRight,
+  Columns2,
+  Folder,
+  FolderGit2,
+  GitBranch,
+  GitFork,
+  GitPullRequest,
+  LayoutGrid,
+  Maximize,
+  Palette,
+  Plus,
+  Search,
+  StickyNote,
+  Workflow,
+  X,
+  type LucideIcon,
+} from "lucide-react";
+
+const ICONS = {
+  Archive,
+  ArrowUpRight,
+  Columns2,
+  Folder,
+  FolderGit2,
+  GitBranch,
+  GitFork,
+  GitPullRequest,
+  LayoutGrid,
+  Maximize,
+  Palette,
+  Plus,
+  Search,
+  StickyNote,
+  Workflow,
+  X,
+} satisfies Record<string, LucideIcon>;
+
+export type IconName = keyof typeof ICONS;
+
+export function Icon({ name, className }: { name: IconName; className?: string }) {
+  const Glyph = ICONS[name];
+  return <Glyph className={className} aria-hidden />;
+}
+
+export const CanvasNavIcon = ({ className }: { className?: string }) => (
+  <Workflow className={className} aria-hidden />
+);

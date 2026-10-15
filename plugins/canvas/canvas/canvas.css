@@ -1,0 +1,42 @@
+/* React Flow chrome in the host theme's colors. */
+.bb-canvas {
+  --xy-background-color: transparent;
+  --xy-background-pattern-color: var(--border);
+  --xy-edge-stroke: var(--muted-foreground);
+  --xy-edge-stroke-selected: var(--foreground);
+  --xy-edge-label-background-color: var(--background);
+  --xy-edge-label-color: var(--muted-foreground);
+  --xy-minimap-background-color: var(--background);
+  --xy-minimap-mask-background-color: color-mix(in oklab, var(--muted) 70%, transparent);
+  --xy-minimap-node-background-color: var(--muted-foreground);
+  --xy-controls-button-background-color: var(--background);
+  --xy-controls-button-background-color-hover: var(--muted);
+  --xy-controls-button-color: var(--foreground);
+  --xy-controls-button-color-hover: var(--foreground);
+  --xy-controls-button-border-color: var(--border);
+  --xy-controls-box-shadow: none;
+  --xy-node-boxshadow-selected: none;
+  --xy-selection-background-color: color-mix(in oklab, var(--ring) 12%, transparent);
+  --xy-selection-border: 1px dashed var(--ring);
+}
+.bb-canvas .react-flow__controls,
+.bb-canvas .react-flow__minimap {
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+.bb-canvas .react-flow__node {
+  /* Custom nodes draw their own boxes. */
+  background: none;
+  border: none;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.bb-canvas .react-flow__minimap .bb-canvas-mini-frame { fill: var(--muted); }
+.bb-canvas .react-flow__minimap .bb-canvas-mini-note { fill: #fde68a; }
+.bb-canvas .react-flow__minimap .bb-canvas-mini-needs-you { fill: #f59e0b; }
+.bb-canvas .react-flow__minimap .bb-canvas-mini-working { fill: #0ea5e9; }
+.bb-canvas .react-flow__minimap .bb-canvas-mini-error { fill: #ef4444; }
+.bb-canvas .react-flow__minimap .bb-canvas-mini-done { fill: #10b981; }
+.bb-canvas .react-flow__minimap .bb-canvas-mini-idle { fill: var(--muted-foreground); }
