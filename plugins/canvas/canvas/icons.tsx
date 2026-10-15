@@ -1,6 +1,12 @@
 // The canvas draws its own lucide icons; bb's built-in icon set does not
 // include all of these names.
 import {
+  ChevronLeft,
+  ChevronRight,
+  ListChecks,
+  Minus,
+  Pin,
+  PinOff,
   CornerDownLeft,
   FolderInput,
   Keyboard,
@@ -30,6 +36,12 @@ import {
 } from "lucide-react";
 
 const ICONS = {
+  ChevronLeft,
+  ChevronRight,
+  ListChecks,
+  Minus,
+  Pin,
+  PinOff,
   CornerDownLeft,
   FolderInput,
   Keyboard,

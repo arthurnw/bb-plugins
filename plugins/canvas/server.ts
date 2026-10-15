@@ -98,6 +98,18 @@ const KEY = "layout";
 const MAX_NOTES = 500;
 
 export default async function plugin(bb: BbPluginApi) {
+  // Read by the app through useSettings(); edit in bb's plugin settings or
+  // with `bb plugin config canvas`.
+  bb.settings.define({
+    maxPinnedWindows: {
+      type: "number",
+      label: "Pinned chat windows",
+      description: "How many chat windows can be pinned on the canvas at once (1–12).",
+      default: 4,
+      experimental_schema: z.number().int().min(1).max(12),
+    },
+  });
+
   async function read(): Promise<Layout> {
     return parseLayout(await bb.storage.kv.get(KEY));
   }

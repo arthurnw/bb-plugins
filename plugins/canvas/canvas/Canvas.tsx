@@ -26,6 +26,7 @@ import {
   useRealtimeConnectionState,
   useRpc,
   useSdk,
+  useSettings,
   type PluginSidebarThread,
 } from "@get-bb/plugin-sdk/app";
 import { buttonVariants } from "@/components/ui/button";
@@ -37,7 +38,10 @@ import { Icon } from "./icons.tsx";
 import { CARD_H, CARD_W, autoLayout, frameBounds, placeNew, type Point, type Rect } from "./layout.ts";
 import { DIRECTION_KEYS, nearestInDirection, nearestTo, type Direction, type NavItem } from "./nav.ts";
 import { nodeTypes, type CanvasNode, type FrameNodeData } from "./nodes";
+import { useReleaseChatFocus } from "./chatFocus.ts";
 import { Picker, type PickerItem } from "./Picker.tsx";
+import { PinnedWindows, WINDOW_H, WINDOW_W, clampWindow, nextWindowSpot, type Area, type PinnedWindow } from "./PinnedWindows.tsx";
+import { Triage, needsAttention } from "./Triage.tsx";
 import { GROUPINGS, type FrameColor, type Grouping } from "./shared.ts";
 import { BUCKETS, BUCKET_LABEL, bucketOf, type Bucket } from "./status.ts";
 
@@ -147,47 +151,28 @@ function Inspector({
   thread,
   focusRequest,
   onClose,
+  onPin,
   onReleaseFocus,
 }: {
   thread: PluginSidebarThread;
   focusRequest: number;
   onClose(): void;
+  onPin(): void;
   /** Hands keyboard focus back to the canvas. */
   onReleaseFocus(): void;
 }) {
   const navigate = useBbNavigate();
   const asideRef = useRef<HTMLElement>(null);
-  // bb's chat focuses its composer when it mounts. Unless the user asked to
-  // reply (`r`), give focus back so hjkl keeps moving around the canvas.
-  const replyRequest = useRef(focusRequest);
-  useEffect(() => {
-    if (focusRequest !== replyRequest.current) {
-      replyRequest.current = focusRequest;
-      return;
-    }
-    const aside = asideRef.current;
-    if (aside === null) return;
-    // The composer can take focus once its timeline loads, so watch for a while.
-    const until = Date.now() + 2500;
-    const onFocusIn = () => {
-      if (Date.now() < until) onReleaseFocus();
-    };
-    // Clicking into the chat on purpose ends the watch.
-    const onPointerDown = () => aside.removeEventListener("focusin", onFocusIn);
-    aside.addEventListener("focusin", onFocusIn);
-    aside.addEventListener("pointerdown", onPointerDown, { capture: true });
-    if (aside.contains(document.activeElement)) onReleaseFocus();
-    return () => {
-      aside.removeEventListener("focusin", onFocusIn);
-      aside.removeEventListener("pointerdown", onPointerDown, { capture: true });
-    };
-  }, [thread.id, focusRequest, onReleaseFocus]);
+  useReleaseChatFocus(asideRef, thread.id, focusRequest, onReleaseFocus);
   return (
-    <aside ref={asideRef} data-bb-canvas-inspector="" className="flex h-full w-[min(480px,45%)] shrink-0 flex-col border-l border-border bg-background">
+    <aside ref={asideRef} data-bb-canvas-chat="" className="flex h-full w-[min(480px,45%)] shrink-0 flex-col border-l border-border bg-background">
       <div className="flex h-11 shrink-0 items-center gap-1 border-b border-border px-3">
         <span className="min-w-0 flex-1 truncate text-sm font-medium" title={thread.displayTitle}>
           {thread.displayTitle}
         </span>
+        <ToolButton variant="ghost" size="icon" className="size-7" title="Pin as a floating window (p)" aria-label="Pin as a floating window" onClick={onPin}>
+          <Icon name="Pin" className="size-4" />
+        </ToolButton>
         <ToolButton variant="ghost" size="icon" className="size-7" title="Open in a split (⇧↵)" aria-label="Open in a split" onClick={() => navigate.toThread(thread.id, { split: true })}>
           <Icon name="Columns2" className="size-4" />
         </ToolButton>
@@ -209,7 +194,11 @@ const SHORTCUTS: [string, string][] = [
   ["⌘K or g", "Go to a thread"],
   ["h j k l", "Move between threads in a frame"],
   ["⇧ H J K L", "Move between frames"],
-  ["Space", "Show or hide the chat panel"],
+  ["Space", "Show or hide the chat panel (or raise a pinned window)"],
+  ["p", "Pin or unpin the thread's chat as a floating window"],
+  ["Tab / ⇧Tab", "Cycle through pinned windows"],
+  ["-", "Minimize or restore the pinned window"],
+  ["t", "Triage the threads that need you"],
   ["r", "Reply to the selected thread"],
   ["⇧Esc", "Leave the chat panel for the canvas"],
   ["↵ / ⇧↵", "Open the thread / in a split"],
@@ -276,6 +265,20 @@ function CanvasInner() {
   const [overlay, setOverlay] = useState<Overlay>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const settings = useSettings();
+  const maxPinned = Math.min(12, Math.max(1, Math.round(Number(settings.values?.maxPinnedWindows ?? 4)) || 4));
+
+  // The canvas area's size, for placing and clamping pinned windows.
+  const [area, setArea] = useState<Area>({ width: 0, height: 0 });
+  useEffect(() => {
+    const element = wrapperRef.current;
+    if (element === null) return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry !== undefined) setArea({ width: entry.contentRect.width, height: entry.contentRect.height });
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   const threads = useMemo(
     () => sidebar.threads.filter((thread) => !thread.isHidden && (showArchived || !thread.isArchived)),
@@ -698,6 +701,100 @@ function CanvasInner() {
 
   const selected = threads.find((thread) => thread.id === selectedId) ?? null;
 
+  const threadsById = useMemo(() => new Map(threads.map((thread) => [thread.id, thread])), [threads]);
+
+  // Pinned chat windows, kept per browser.
+  const windowsKey = `${pluginId}:pinned-windows`;
+  const [pinned, setPinned] = useState<PinnedWindow[]>(() => {
+    try {
+      const raw = localStorage.getItem(windowsKey);
+      return raw === null ? [] : (JSON.parse(raw) as PinnedWindow[]);
+    } catch {
+      return [];
+    }
+  });
+  const savePinned = useCallback(
+    (next: PinnedWindow[]) => {
+      try {
+        localStorage.setItem(windowsKey, JSON.stringify(next));
+      } catch {
+        // Blocked storage only loses the windows on reload.
+      }
+    },
+    [windowsKey],
+  );
+  // Drop windows for threads that were archived or deleted.
+  useEffect(() => {
+    if (sidebar.status !== "ready" || showArchived) return;
+    setPinned((current) => {
+      const kept = current.filter((window) => threadsById.has(window.threadId));
+      if (kept.length === current.length) return current;
+      savePinned(kept);
+      return kept;
+    });
+  }, [sidebar.status, showArchived, threadsById, savePinned]);
+  const [focusedWindow, setFocusedWindow] = useState<string | null>(null);
+  const [windowFocus, setWindowFocus] = useState<Record<string, number>>({});
+  const pinnedOpen = useCallback(
+    (id: string) => pinned.some((window) => window.threadId === id && !window.minimized),
+    [pinned],
+  );
+  const updateWindow = useCallback(
+    (next: PinnedWindow, done: boolean) => {
+      setPinned((current) => {
+        const updated = current.map((window) => (window.threadId === next.threadId ? next : window));
+        if (done) savePinned(updated);
+        return updated;
+      });
+    },
+    [savePinned],
+  );
+  const raiseWindow = useCallback((id: string) => {
+    setFocusedWindow(id);
+    setSelectedId(id);
+  }, []);
+  const togglePin = useCallback(
+    (id: string) => {
+      const existing = pinned.find((window) => window.threadId === id);
+      if (existing !== undefined) {
+        const next = pinned.filter((window) => window.threadId !== id);
+        setPinned(next);
+        savePinned(next);
+        return;
+      }
+      if (pinned.length >= maxPinned) {
+        toast.error(`${maxPinned} windows are pinned, the most allowed. Unpin one, or raise the limit in the Canvas plugin settings.`);
+        return;
+      }
+      const spot = nextWindowSpot(pinned, area);
+      const next = [
+        ...pinned,
+        clampWindow({ threadId: id, ...spot, width: WINDOW_W, height: WINDOW_H, minimized: false }, area),
+      ];
+      setPinned(next);
+      savePinned(next);
+      setFocusedWindow(id);
+    },
+    [pinned, maxPinned, area, savePinned],
+  );
+  useEffect(() => {
+    if (selectedId !== null && pinned.some((window) => window.threadId === selectedId)) setFocusedWindow(selectedId);
+  }, [selectedId, pinned]);
+  // Keep windows inside the canvas when it shrinks.
+  useEffect(() => {
+    if (area.width === 0) return;
+    setPinned((current) => {
+      const clamped = current.map((window) => clampWindow(window, area));
+      return clamped.some((window, index) => window !== current[index] && JSON.stringify(window) !== JSON.stringify(current[index]))
+        ? clamped
+        : current;
+    });
+  }, [area]);
+
+  // Triage: the threads that need you, one at a time.
+  const [triage, setTriage] = useState<{ queue: string[]; index: number } | null>(null);
+  const [triageFocus, setTriageFocus] = useState(0);
+
   // Viewport is per browser: restore it, or fit everything on first visit.
   const viewportKey = `${pluginId}:viewport`;
   const initialViewport = useMemo<Viewport | undefined>(() => {
@@ -757,6 +854,18 @@ function CanvasInner() {
       reveal(id, true);
     },
     [reveal],
+  );
+
+  /** A card's right-edge midpoint in canvas-area pixels, where a window's line attaches. */
+  const anchorOf = useCallback(
+    (id: string): Point | null => {
+      const rect = cardRect(id);
+      const wrapper = wrapperRef.current?.getBoundingClientRect();
+      if (rect === null || wrapper === undefined) return null;
+      const screen = flow.flowToScreenPosition({ x: rect.x + rect.width, y: rect.y + rect.height / 2 });
+      return { x: screen.x - wrapper.left, y: screen.y - wrapper.top };
+    },
+    [cardRect, flow],
   );
 
   /** Card rects for navigation; dimmed (filtered-out) cards are skipped unless asked for. */
@@ -863,6 +972,53 @@ function CanvasInner() {
     [threads, buckets],
   );
 
+  const startTriage = useCallback(() => {
+    const queue = attentionQueue.map((thread) => thread.id);
+    if (queue.length === 0) {
+      toast("Nothing needs you right now");
+      return;
+    }
+    setOverlay(null);
+    setInspectorOpen(false);
+    setTriage({ queue, index: 0 });
+  }, [attentionQueue]);
+
+  /** Steps through the queue, preferring threads that still need you. */
+  const stepTriage = useCallback(
+    (delta: number) => {
+      setTriage((current) => {
+        if (current === null) return current;
+        const { queue, index } = current;
+        for (let step = 1; step <= queue.length; step += 1) {
+          const next = (index + delta * step + queue.length * step) % queue.length;
+          if (needsAttention(buckets.get(queue[next]!))) return { queue, index: next };
+        }
+        return { queue, index: (index + delta + queue.length) % queue.length };
+      });
+    },
+    [buckets],
+  );
+
+  // Pan the canvas behind triage to the current thread.
+  const triageThread = triage?.queue[triage.index] ?? null;
+  useEffect(() => {
+    if (triageThread !== null) focusThread(triageThread);
+  }, [triageThread, focusThread]);
+
+  // Once the current thread is answered, move on, or finish when none are left.
+  const triageCurrentDone = triageThread !== null && !needsAttention(buckets.get(triageThread));
+  useEffect(() => {
+    if (!triageCurrentDone || triage === null) return;
+    const timer = setTimeout(() => {
+      if (triage.queue.some((id) => needsAttention(buckets.get(id)))) stepTriage(1);
+      else {
+        setTriage(null);
+        toast.success("All caught up");
+      }
+    }, 900);
+    return () => clearTimeout(timer);
+  }, [triageCurrentDone, triage, buckets, stepTriage]);
+
   const threadItems = useMemo<PickerItem[]>(
     () =>
       threads.map((thread) => {
@@ -907,7 +1063,7 @@ function CanvasInner() {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      const inInspector = target?.closest("[data-bb-canvas-inspector]") != null;
+      const inInspector = target?.closest("[data-bb-canvas-chat]") != null;
       const typing = target !== null && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
       const mod = event.metaKey || event.ctrlKey;
       const key = event.key.toLowerCase();
@@ -917,6 +1073,18 @@ function CanvasInner() {
         event.preventDefault();
         event.stopImmediatePropagation();
         releaseFocus();
+        return;
+      }
+      if (triage !== null) {
+        if (typing || inInspector || mod || event.altKey) return;
+        if (event.key === "Escape") setTriage(null);
+        else if (key === "n") stepTriage(event.shiftKey ? -1 : 1);
+        else if (key === "o") navigate.toThread(triage.queue[triage.index]!);
+        else if (key === "r") setTriageFocus((value) => value + 1);
+        else if (key === "t") setTriage(null);
+        else return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
         return;
       }
       if (mod && !event.shiftKey && !event.altKey && key === "k" && !inInspector) {
@@ -951,11 +1119,34 @@ function CanvasInner() {
       } else if (event.key === "/") searchRef.current?.focus();
       else if (event.key === "?") setOverlay({ kind: "help" });
       else if (key === "g") setOverlay({ kind: "goto" });
-      else if (event.key === " " && selectedId !== null) setInspectorOpen((open) => !open);
-      else if (key === "r" && selectedId !== null) {
-        setInspectorOpen(true);
-        setChatFocus((value) => value + 1);
-      } else if (event.key === "Enter" && selectedId !== null) navigate.toThread(selectedId, { split: event.shiftKey });
+      else if (event.key === " " && selectedId !== null) {
+        const window = pinned.find((candidate) => candidate.threadId === selectedId);
+        if (window === undefined) setInspectorOpen((open) => !open);
+        else {
+          if (window.minimized) updateWindow({ ...window, minimized: false }, true);
+          raiseWindow(selectedId);
+        }
+      } else if (key === "r" && selectedId !== null) {
+        if (pinned.some((window) => window.threadId === selectedId)) {
+          const window = pinned.find((candidate) => candidate.threadId === selectedId)!;
+          if (window.minimized) updateWindow({ ...window, minimized: false }, true);
+          raiseWindow(selectedId);
+          setWindowFocus((current) => ({ ...current, [selectedId]: (current[selectedId] ?? 0) + 1 }));
+        } else {
+          setInspectorOpen(true);
+          setChatFocus((value) => value + 1);
+        }
+      } else if (key === "p" && selectedId !== null) togglePin(selectedId);
+      else if (event.key === "-" && selectedId !== null) {
+        const window = pinned.find((candidate) => candidate.threadId === selectedId);
+        if (window !== undefined) updateWindow({ ...window, minimized: !window.minimized }, true);
+      } else if (event.key === "Tab") {
+        const open = pinned.filter((window) => !window.minimized && threadsById.has(window.threadId));
+        if (open.length === 0) return;
+        const index = open.findIndex((window) => window.threadId === focusedWindow);
+        const next = open[(index + (event.shiftKey ? -1 : 1) + open.length) % open.length]!;
+        raiseWindow(next.threadId);
+      } else if (key === "t") startTriage(); else if (event.key === "Enter" && selectedId !== null) navigate.toThread(selectedId, { split: event.shiftKey });
       else if (key === "m" && selectedId !== null) setOverlay({ kind: "move", threadId: selectedId });
       else if (key === "n" && attentionQueue.length > 0) {
         const index = attentionQueue.findIndex((thread) => thread.id === selectedId);
@@ -983,6 +1174,15 @@ function CanvasInner() {
     fitAll,
     changeGrouping,
     releaseFocus,
+    triage,
+    stepTriage,
+    startTriage,
+    pinned,
+    focusedWindow,
+    threadsById,
+    togglePin,
+    updateWindow,
+    raiseWindow,
   ]);
 
   const loading = sidebar.status === "loading" || layout === null;
@@ -1184,6 +1384,17 @@ function CanvasInner() {
                   <ToolButton variant="ghost" size="sm" className="h-7 px-2" onClick={() => setOverlay({ kind: "help" })} title="Keyboard shortcuts (?)">
                     <Icon name="Keyboard" className="size-3.5" />
                   </ToolButton>
+                  <ToolButton
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 gap-1 px-2"
+                    disabled={attentionQueue.length === 0}
+                    onClick={startTriage}
+                    title="Triage the threads that need you (t)"
+                  >
+                    <Icon name="ListChecks" className="size-3.5" />
+                    {attentionQueue.length > 0 ? <span className="tabular-nums">{attentionQueue.length}</span> : null}
+                  </ToolButton>
                   <ToolButton size="sm" className="ml-1 h-7 gap-1 px-2.5" onClick={() => navigate.toCompose({ focusPrompt: true })}>
                     <Icon name="Plus" className="size-3.5" />
                     New thread
@@ -1196,7 +1407,9 @@ function CanvasInner() {
                 <div className="w-64 rounded-lg border border-border bg-background/95 shadow-sm backdrop-blur">
                   <div className="flex items-center justify-between px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">
                     <span>Needs you</span>
-                    <kbd className="rounded border border-border px-1 font-mono text-[10px]">n</kbd>
+                    <button type="button" onClick={startTriage} className="rounded px-1.5 py-0.5 hover:bg-state-hover hover:text-foreground" title="Triage them one at a time (t)">
+                      Triage <kbd className="ml-0.5 rounded border border-border px-1 font-mono text-[10px]">t</kbd>
+                    </button>
                   </div>
                   <ul className="max-h-64 overflow-y-auto pb-1">
                     {attentionQueue.map((thread) => (
@@ -1263,13 +1476,42 @@ function CanvasInner() {
               create={{ label: (name) => `Create section "${name}"`, run: (name) => void createSection(name) }}
             />
           ) : null}
+          <PinnedWindows
+            windows={pinned}
+            threads={threadsById}
+            buckets={buckets}
+            focusedId={focusedWindow}
+            focusRequests={windowFocus}
+            area={area}
+            anchorOf={anchorOf}
+            onChange={updateWindow}
+            onFocus={raiseWindow}
+            onUnpin={togglePin}
+            onOpen={(id) => navigate.toThread(id)}
+            onReleaseFocus={releaseFocus}
+          />
+          {triage !== null ? (
+            <Triage
+              queue={triage.queue}
+              index={triage.index}
+              threads={threadsById}
+              buckets={buckets}
+              groupName={(id) => groups.get(id)?.name ?? ""}
+              focusRequest={triageFocus}
+              onStep={stepTriage}
+              onLeave={() => setTriage(null)}
+              onOpen={(id) => navigate.toThread(id)}
+              onReleaseFocus={releaseFocus}
+            />
+          ) : null}
           {overlay?.kind === "help" ? <ShortcutHelp onClose={() => setOverlay(null)} /> : null}
         </div>
-        {selected === null || !inspectorOpen ? null : (
+        {selected === null || !inspectorOpen || pinnedOpen(selected.id) ? null : (
           <Inspector
             thread={selected}
             focusRequest={chatFocus}
             onClose={() => setInspectorOpen(false)}
+            onPin={() => togglePin(selected.id)}
             onReleaseFocus={releaseFocus}
           />
         )}

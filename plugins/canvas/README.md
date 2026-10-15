@@ -9,6 +9,8 @@ A bb plugin that adds a **Canvas** page to bb's navigation rail: a zoomable map 
 - **Thread cards.** Each card shows bb's status glyph, the title, time since the last update, the agent provider, the branch or folder, a worktree tag, the PR with its check state, and background activity (subagents, commands, workflows, goals, plan mode, queued messages). The whole card is tinted by status, as in herdr-map: amber needs you (and pulses), blue working, red error, green finished and unread, gray idle.
 - **Links.** Child threads are joined to their parent with an arrow, animated while the child works. Forks and handoffs get a dashed line from their source thread.
 - **Chat panel.** Click a card (or press Space) to open the thread's live chat beside the canvas. Opening it leaves the keyboard on the canvas; press `r` to reply, and Shift+Esc to come back to the canvas.
+- **Pinned windows.** Press `p` (or the pin button in the chat panel) to pin a thread's chat as a floating window. It stays open as you move around, with a dashed line back to its card. Drag a window by its header, resize it from the corner, minimize it to a pill along the bottom edge, and `Tab` through open windows. The most you can pin is set by **Pinned chat windows** in the plugin's settings (default 4, up to 12; `bb plugin config canvas maxPinnedWindows 6`). Windows are remembered per browser.
+- **Triage.** Press `t` (or the checklist button, or Triage in the Needs you list) to go through the threads that need you one at a time, in a window over the dimmed canvas. The canvas behind pans to each one. When the current thread is answered, triage moves to the next; when none are left, it closes. The queue is fixed when triage starts, and its dots show which are done.
 - **Sticky notes.** Double-click empty canvas or use the note button. Type in the note, drag its top bar, resize it when selected, pick a color, or delete it.
 - **Zoomed out**, cards show only large titles over their status color, and frames show large names.
 
@@ -19,9 +21,13 @@ A bb plugin that adds a **Canvas** page to bb's navigation rail: a zoomable map 
 | `⌘K` or `g` | Go to a thread: pick it and the canvas jumps to its card |
 | `h` `j` `k` `l` (or arrows) | Move to the nearest thread in that direction within the frame |
 | `H` `J` `K` `L` (Shift) | Move to the nearest frame in that direction |
-| Space | Show or hide the chat panel for the selected thread |
-| `r` | Reply: open the chat panel with its reply box focused |
-| Shift+Esc | Leave the chat panel for the canvas |
+| Space | Show or hide the chat panel for the selected thread (raises its window if pinned) |
+| `p` | Pin or unpin the selected thread's chat as a floating window |
+| `Tab` / Shift+Tab | Cycle through pinned windows |
+| `-` | Minimize or restore the selected thread's window |
+| `t` | Triage: in it, `n` / `N` next / previous, `r` reply, `o` open, Esc leave |
+| `r` | Reply: focus the reply box in the chat panel, pinned window, or triage |
+| Shift+Esc | Leave a reply box for the canvas |
 | Enter / Shift+Enter | Open the thread / open it in a split |
 | `n` / `N` | Next / previous thread that needs you |
 | `m` | Move the selected thread to a section (or a new one) |
