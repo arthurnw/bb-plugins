@@ -26,6 +26,9 @@ export type ThreadNodeData = {
   thread: PluginSidebarThread;
   bucket: Bucket;
   dimmed: boolean;
+  /** The canvas selection. Drawn by the card itself rather than React Flow's
+   * `selected`, which would also drag selected nodes together. */
+  highlighted: boolean;
   now: number;
   childCount: number;
 };
@@ -99,7 +102,7 @@ function activityParts(thread: PluginSidebarThread): string[] {
   return parts;
 }
 
-export const ThreadNode = memo(function ThreadNode({ data, selected }: NodeProps<ThreadFlowNode>) {
+export const ThreadNode = memo(function ThreadNode({ data }: NodeProps<ThreadFlowNode>) {
   const { thread, bucket, dimmed, now, childCount } = data;
   const actions = useCanvasActions();
   const far = useIsFar();
@@ -135,7 +138,7 @@ export const ThreadNode = memo(function ThreadNode({ data, selected }: NodeProps
         className={cn(
           "bb-canvas-card group relative flex flex-col overflow-hidden rounded-lg text-card-foreground shadow-sm transition-[opacity,box-shadow]",
           `status-${bucket}`,
-          selected ? "ring-2 ring-ring" : "hover:shadow-md",
+          data.highlighted ? "ring-2 ring-ring" : "hover:shadow-md",
           dimmed && "opacity-30",
           thread.isArchived && "border-dashed opacity-60",
           far && "far",

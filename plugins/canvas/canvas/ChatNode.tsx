@@ -89,6 +89,11 @@ export const ChatNode = memo(function ChatNode({ data }: NodeProps<ChatFlowNode>
               label: chat.minimized ? "Restore (-)" : "Minimize (-)",
               run: () => actions.updateChat({ ...chat, minimized: !chat.minimized }),
             },
+            {
+              icon: chat.linked ? ("Link2" as const) : ("Unlink2" as const),
+              label: chat.linked ? "Linked: moves with its card (click to unlink)" : "Not linked: moves on its own (click to link to its card)",
+              run: () => actions.updateChat({ ...chat, linked: !chat.linked }),
+            },
             { icon: "ArrowUpRight" as const, label: "Open thread", run: () => actions.open(thread.id, false) },
             { icon: "PinOff" as const, label: "Unpin (p)", run: () => actions.unpinChat(thread.id) },
           ].map((button) => (

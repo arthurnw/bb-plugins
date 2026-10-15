@@ -247,7 +247,28 @@ interface Group {
 
 type Overlay = null | { kind: "goto" } | { kind: "move"; threadId: string } | { kind: "new-section" } | { kind: "help" };
 
+/**
+ * Whether bb is in its dark theme. React Flow puts a `light` or `dark` class on
+ * the canvas, and bb's theme tokens are scoped to those same classes, so the
+ * canvas must use bb's mode or everything inside it (cards, pinned chats)
+ * falls back to the light tokens.
+ */
+function useHostDark(): boolean {
+  const read = () =>
+    document.documentElement.classList.contains("dark") || document.body.classList.contains("dark");
+  const [dark, setDark] = useState(read);
+  useEffect(() => {
+    const observer = new MutationObserver(() => setDark(read()));
+    for (const element of [document.documentElement, document.body]) {
+      observer.observe(element, { attributes: true, attributeFilter: ["class"] });
+    }
+    return () => observer.disconnect();
+  }, []);
+  return dark;
+}
+
 function CanvasInner() {
+  const hostDark = useHostDark();
   const pluginId = usePluginId();
   const navigate = useBbNavigate();
   const sdk = useSdk();
@@ -577,9 +598,11 @@ function CanvasInner() {
         position,
         width: CARD_W,
         height: CARD_H,
+        selectable: false,
         data: {
           thread,
           bucket,
+          highlighted: thread.id === selectedId,
           now,
           childCount: childCounts.get(thread.id) ?? 0,
           dimmed: hidden.has(bucket) || !matches(thread, groups.get(thread.id)?.name ?? "", lowered),
@@ -610,6 +633,7 @@ function CanvasInner() {
         // Above cards and notes; the focused chat on top.
         zIndex: chat.threadId === focusedChat ? 3 : 2,
         dragHandle: ".bb-canvas-chat-handle",
+        selectable: false,
         data: {
           chat,
           thread,
@@ -621,7 +645,7 @@ function CanvasInner() {
       });
     }
     return result;
-  }, [threads, frames, positions, notes, chats, focusedChat, chatFocusRequests, settledZoom, groups, buckets, hidden, query, now, grouping, layout?.frameColors]);
+  }, [threads, frames, positions, notes, chats, focusedChat, chatFocusRequests, settledZoom, selectedId, groups, buckets, hidden, query, now, grouping, layout?.frameColors]);
 
   // React Flow owns transient state (measured size, selection, drag); merge
   // it into each rebuild.
@@ -633,44 +657,72 @@ function CanvasInner() {
       const byId = new Map(previous.map((node) => [node.id, node]));
       return derived.map((node) => {
         const old = byId.get(node.id);
-        if (old === undefined) return { ...node, selected: node.id === selectedId };
+        if (old === undefined) return node;
         return {
           ...node,
           measured: old.measured,
-          selected: node.type === "thread" ? node.id === selectedId : old.selected,
+          selected: node.type === "note" ? old.selected : false,
           dragging: old.dragging,
           position: old.dragging ? old.position : node.position,
         } as CanvasNode;
       });
     });
-  }, [derived, selectedId]);
+  }, [derived]);
 
   const membersOf = useCallback(
     (groupKey: string) => threads.filter((thread) => groups.get(thread.id)?.key === groupKey).map((thread) => thread.id),
     [threads, groups],
   );
 
+  const chatsRef = useRef(chats);
+  chatsRef.current = chats;
+  const linkedChat = useCallback(
+    (threadId: string) => chatsRef.current.find((chat) => chat.threadId === threadId && chat.linked),
+    [],
+  );
+
   const onNodesChange = useCallback(
     (changes: NodeChange<CanvasNode>[]) => {
       const current = new Map(nodesRef.current.map((node) => [node.id, node]));
       const moved: Record<string, Point> = {};
+      const extra: NodeChange<CanvasNode>[] = [];
+      // A linked chat follows its card by the same amount, and the reverse.
+      const followCard = (threadId: string, dx: number, dy: number) => {
+        if (linkedChat(threadId) === undefined) return;
+        const chatNode = current.get(`chat:${threadId}`);
+        if (chatNode === undefined) return;
+        extra.push({
+          type: "position",
+          id: chatNode.id,
+          position: { x: chatNode.position.x + dx, y: chatNode.position.y + dy },
+        });
+      };
       for (const change of changes) {
         if (change.type !== "position" || change.position === undefined) continue;
         const node = current.get(change.id);
-        if (node?.type === "thread") moved[change.id] = change.position;
-        if (node?.type === "frame") {
-          const dx = change.position.x - node.position.x;
-          const dy = change.position.y - node.position.y;
+        if (node === undefined) continue;
+        const dx = change.position.x - node.position.x;
+        const dy = change.position.y - node.position.y;
+        if (node.type === "thread") {
+          moved[change.id] = change.position;
+          followCard(change.id, dx, dy);
+        }
+        if (node.type === "frame") {
           for (const id of membersOf(node.data.groupKey)) {
             const point = moved[id] ?? positionsRef.current[id];
             if (point !== undefined) moved[id] = { x: point.x + dx, y: point.y + dy };
+            followCard(id, dx, dy);
           }
+        }
+        if (node.type === "chat" && node.data.chat.linked) {
+          const point = positionsRef.current[node.data.chat.threadId];
+          if (point !== undefined) moved[node.data.chat.threadId] = { x: point.x + dx, y: point.y + dy };
         }
       }
       if (Object.keys(moved).length > 0) setPositions((previous) => ({ ...previous, ...moved }));
-      setNodes((previous) => applyNodeChanges(changes, previous));
+      setNodes((previous) => applyNodeChanges([...changes, ...extra], previous));
     },
-    [membersOf],
+    [membersOf, linkedChat],
   );
 
   // Frame bounds as they were when a drag began, for drop-to-file.
@@ -684,10 +736,19 @@ function CanvasInner() {
       dragging.current = false;
       record();
       const changes: Record<string, Point> = {};
+      // Save where linked chats ended up after their cards moved.
+      const saveLinkedChat = (threadId: string) => {
+        const chat = linkedChat(threadId);
+        const chatNode = nodesRef.current.find((candidate) => candidate.id === `chat:${threadId}`);
+        if (chat !== undefined && chatNode !== undefined) {
+          actions.updateChat({ ...chat, x: chatNode.position.x, y: chatNode.position.y });
+        }
+      };
       for (const node of dragged) {
         if (node.type === "thread") {
           const point = positionsRef.current[node.id] ?? node.position;
           changes[node.id] = point;
+          saveLinkedChat(node.id);
           // In the section grouping, dropping a card on another section files it there.
           if (grouping === "section") {
             const center = { x: point.x + CARD_W / 2, y: point.y + CARD_H / 2 };
@@ -707,14 +768,19 @@ function CanvasInner() {
           for (const id of membersOf(node.data.groupKey)) {
             const point = positionsRef.current[id];
             if (point !== undefined) changes[id] = point;
+            saveLinkedChat(id);
           }
+        }
+        if (node.type === "chat" && node.data.chat.linked) {
+          const point = positionsRef.current[node.data.chat.threadId];
+          if (point !== undefined) changes[node.data.chat.threadId] = point;
         }
         if (node.type === "note") actions.updateNote({ ...node.data.note, x: node.position.x, y: node.position.y });
         if (node.type === "chat") actions.updateChat({ ...node.data.chat, x: node.position.x, y: node.position.y });
       }
       if (Object.keys(changes).length > 0) save(changes);
     },
-    [membersOf, save, actions, record, grouping, groups, moveToSection],
+    [membersOf, save, actions, record, grouping, groups, moveToSection, linkedChat],
   );
 
   const edges = useMemo<Edge[]>(() => {
@@ -872,6 +938,7 @@ function CanvasInner() {
         width: CHAT_W,
         height: CHAT_H,
         minimized: false,
+        linked: false,
       };
       record();
       setChats((current) => [...current, chat]);
@@ -906,7 +973,7 @@ function CanvasInner() {
     let offset = 0;
     for (const id of toPin) {
       const card = positions[id]!;
-      const chat: PinnedChat = { threadId: id, x: card.x + CARD_W + 56 + offset, y: card.y + offset, width: CHAT_W, height: CHAT_H, minimized: false };
+      const chat: PinnedChat = { threadId: id, x: card.x + CARD_W + 56 + offset, y: card.y + offset, width: CHAT_W, height: CHAT_H, minimized: false, linked: false };
       offset += 24;
       setChats((current) => [...current, chat]);
       rpc.call("chat_upsert", { origin: CLIENT_ID, grouping, chat }).catch(() => undefined);
@@ -1284,6 +1351,7 @@ function CanvasInner() {
             proOptions={{ hideAttribution: true }}
             deleteKeyCode={null}
             className="bb-canvas"
+            colorMode={hostDark ? "dark" : "light"}
           >
             <Background variant={BackgroundVariant.Dots} gap={24} size={1} />
             <Controls showInteractive={false} position="bottom-left" />

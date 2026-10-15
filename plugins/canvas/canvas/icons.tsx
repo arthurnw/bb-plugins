@@ -1,6 +1,8 @@
 // The canvas draws its own lucide icons; bb's built-in icon set does not
 // include all of these names.
 import {
+  Link2,
+  Unlink2,
   ChevronLeft,
   ChevronRight,
   ListChecks,
@@ -36,6 +38,8 @@ import {
 } from "lucide-react";
 
 const ICONS = {
+  Link2,
+  Unlink2,
   ChevronLeft,
   ChevronRight,
   ListChecks,

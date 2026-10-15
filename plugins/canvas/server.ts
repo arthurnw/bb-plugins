@@ -27,6 +27,8 @@ const pinnedChatSchema = z.object({
   width: z.number().finite().min(240).max(2400),
   height: z.number().finite().min(160).max(2400),
   minimized: z.boolean(),
+  /** Moves with its card, keeping their offset, when either is dragged. */
+  linked: z.boolean().default(false),
 });
 export type PinnedChat = z.infer<typeof pinnedChatSchema>;
 
