@@ -47,6 +47,10 @@ export interface TurnSummary {
   /** Null while the turn is still running. */
   endedAt: number | null;
   toolCount: number;
+  /** Files read and searches run; null when the turn's rows weren't loaded. */
+  sourceCount: number | null;
+  /** The newest step, including agent messages: what a running agent is doing. */
+  latest: string | null;
   steps: Step[];
   /** The agent's last message, or the last error, as plain text. */
   message: string | null;
@@ -56,6 +60,7 @@ export interface TurnSummary {
 }
 
 const MAX_STEPS = 4;
+const SOURCE_KINDS = new Set(["file-read", "search", "web-search", "web-fetch"]);
 
 const firstLine = (text: string) => text.trim().split("\n", 1)[0] ?? "";
 const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
@@ -173,12 +178,15 @@ export function summarizeTurn(rows: readonly TimelineRowLike[], running: boolean
       : null;
 
   const toolCount = flat.filter((row) => row.kind === "work").length || (collapsed?.summaryCount ?? 0);
+  const sourceCount = collapsed ? null : flat.filter((row) => row.workKind !== undefined && SOURCE_KINDS.has(row.workKind)).length;
 
   return {
     turnId: latestTurnId,
     startedAt,
     endedAt,
     toolCount,
+    sourceCount,
+    latest: steps.at(-1)?.label ?? null,
     // The final message shows in full above the steps, so it is not repeated as one.
     steps: steps.filter((step) => step.id !== lastAssistant?.id).slice(-MAX_STEPS),
     message,

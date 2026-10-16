@@ -12,26 +12,27 @@ Then open **Inbox** in bb's navigation rail. Its entry shows how many threads ne
 
 ## What it shows
 
-- **Rows.** One row per thread in bb's own list (archived and hidden threads are left out), with a status dot, the title, the agent provider, project, and branch, a status tag, and a time. Running threads show a live clock for the current turn; the rest show how long since they last needed attention. Child threads name their parent.
-- **Order.** Threads that need you come first, then failed, running, done, and idle, newest first within each. When a thread changes state, its row glides to its new place.
-- **Filter tabs.** All, Needs you, Running, Failed, and Done (finished and idle). The counts roll when they change. The project menu narrows the list to one project.
-- **Unfolded rows.** Click a row (or press Enter) to see the agent's last message or the error, the last few steps of the latest turn, its tool call count, and how long it ran.
-- **Actions.** Needs you: **Approve** and **Reject** for approvals, the options themselves for a single one-choice question, or **Answer** to open the thread. Failed: **Retry**. Running: **Stop**. Unread: **Mark read**. Every row: **Open** (Shift-click opens it in a split).
+- **Board and List.** Threads sit in three groups: **Needs you** (waiting on an approval or answer, or failed), **Running**, and **Done** (finished and idle). Board shows them as columns; List stacks them as sections. The choice is remembered. Done shows the 12 most recent, with a button for the rest.
+- **Cards.** Each card shows the title, one line on what's happening (the request waiting on you, the latest step of a running agent, the error, or the agent's last message), a status line (waiting, failed, a live clock, or how long ago it finished), and counts of files read and searches run, and of tool calls. Counts roll when they change, and a card glides to its new place when its thread changes state.
+- **Unfolded cards.** Click a card (or press Enter) to see the provider, project, and branch, the request waiting on you, the latest steps with their times, and the actions.
+- **Actions.** Needs you: **Approve** and **Reject** for approvals, the options themselves for a single one-choice question, or **Answer** to open the thread. Failed: **Retry**. Running: **Stop**. Unread: **Mark read**. Every card: **Open** (Shift-click opens it in a split). After an answer, the selection moves to the next card that needs you.
 
 ## Keyboard
 
 | Key | Action |
 | --- | --- |
 | `j` / `k` | Move the selection |
-| `Enter` | Unfold or fold the selected row |
+| `Enter` | Unfold or fold the selected card |
 | `o` | Open the thread (`⇧O` in a split) |
 | `a` / `x` | Approve / reject |
-| `1`–`9` | Pick an option, when the selected row is unfolded on a question |
+| `1`–`9` | Pick an answer to a question |
 | `r` | Retry |
 | `s` | Stop |
 | `e` | Mark read |
-| `1`–`5` | Switch filter tabs |
+| `v` | Switch between Board and List |
 | `?` | Show the shortcuts |
+
+Keys work while the inbox was the last thing you clicked, including after a button takes focus away.
 
 ## How it works
 

@@ -1,11 +1,11 @@
-/* Status hues sit beside the host theme's tokens; tags and dots mix them with
-   the theme's own surface so they read in light and dark themes alike. */
+/* Status hues sit beside the host theme's tokens and are mixed with the
+   theme's own colors, so they read in light and dark themes alike. */
 .bb-inbox {
-  --inbox-waiting: oklch(0.72 0.17 70);
-  --inbox-running: oklch(0.6 0.17 255);
-  --inbox-failed: oklch(0.6 0.21 25);
-  --inbox-done: oklch(0.62 0.16 150);
-  --inbox-idle: oklch(0.62 0.01 260);
+  --inbox-waiting: oklch(0.75 0.16 70);
+  --inbox-running: oklch(0.62 0.17 258);
+  --inbox-failed: oklch(0.62 0.21 25);
+  --inbox-done: oklch(0.64 0.15 152);
+  --inbox-idle: oklch(0.65 0.01 260);
 }
 
 .bb-inbox [data-status="waiting"] { --tone: var(--inbox-waiting); }
@@ -14,52 +14,43 @@
 .bb-inbox [data-status="done"] { --tone: var(--inbox-done); }
 .bb-inbox [data-status="idle"] { --tone: var(--inbox-idle); }
 
-.bb-inbox-tag {
-  color: color-mix(in oklab, var(--tone) 75%, var(--foreground));
-  background: color-mix(in oklab, var(--tone) 14%, transparent);
-  border: 1px solid color-mix(in oklab, var(--tone) 28%, transparent);
+.bb-inbox-tone { color: var(--tone); }
+.bb-inbox-tone-bg { background: var(--tone); }
+
+/* Columns and list sections sit on a muted well; cards float on it. */
+.bb-inbox-well {
+  background: color-mix(in oklab, var(--muted) 70%, var(--background));
 }
 
-.bb-inbox-dot {
-  position: relative;
-  background: var(--tone);
-}
-.bb-inbox-dot[data-status="waiting"]::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: var(--tone);
-  animation: bb-inbox-ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
-}
-.bb-inbox-dot[data-status="running"] {
-  background: transparent;
-  border: 2px solid color-mix(in oklab, var(--tone) 30%, transparent);
+.bb-inbox-spinner {
+  border: 1.5px solid color-mix(in oklab, var(--tone) 25%, transparent);
   border-top-color: var(--tone);
   animation: bb-inbox-spin 0.9s linear infinite;
 }
 
 .bb-inbox-ask {
-  background: color-mix(in oklab, var(--inbox-waiting) 8%, transparent);
-  border: 1px solid color-mix(in oklab, var(--inbox-waiting) 30%, transparent);
+  background: color-mix(in oklab, var(--inbox-waiting) 9%, transparent);
+  border: 1px solid color-mix(in oklab, var(--inbox-waiting) 28%, transparent);
 }
 .bb-inbox-error {
-  color: color-mix(in oklab, var(--inbox-failed) 70%, var(--foreground));
+  color: color-mix(in oklab, var(--inbox-failed) 75%, var(--foreground));
 }
+
 .bb-inbox-steps::before {
   content: "";
   position: absolute;
   left: 0;
-  top: 0.4rem;
-  bottom: 0.4rem;
+  top: 0.35rem;
+  bottom: 0.35rem;
   width: 1px;
   background: var(--border);
 }
-.bb-inbox-step-dot[data-tone="normal"] { background: var(--muted-foreground); }
+.bb-inbox-step-dot[data-tone="normal"] { background: var(--muted-foreground); opacity: 0.6; }
+.bb-inbox-step-dot[data-tone="last"] { background: var(--foreground); }
 .bb-inbox-step-dot[data-tone="error"] { background: var(--inbox-failed); }
 .bb-inbox-step-dot[data-tone="pending"] { background: var(--inbox-running); }
 
-/* A row unfolds by animating its grid track from 0fr to 1fr. */
+/* A card unfolds by animating its grid track from 0fr to 1fr. */
 .bb-inbox-fold {
   display: grid;
   grid-template-rows: 0fr;
@@ -99,14 +90,6 @@
   transition: transform 450ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* The active filter's pill slides between tabs. */
-.bb-inbox-pill {
-  transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), width 300ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-@keyframes bb-inbox-ping {
-  75%, 100% { transform: scale(2.2); opacity: 0; }
-}
 @keyframes bb-inbox-spin {
   to { transform: rotate(360deg); }
 }

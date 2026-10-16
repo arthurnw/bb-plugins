@@ -26,12 +26,12 @@ const prefersReducedMotion = () => window.matchMedia("(prefers-reduced-motion: r
 
 /**
  * Animates children carrying `data-flip-id` from their old position to their
- * new one whenever `order` changes (FLIP). Height changes from a row opening
- * do not change `order`, so they never trigger a glide.
+ * new one whenever `order` changes (FLIP), across columns too. Height changes
+ * from a card opening do not change `order`, so they never trigger a glide.
  */
 export function useFlip(container: RefObject<HTMLElement | null>, order: string) {
   const lastOrder = useRef<string | null>(null);
-  const snapshot = useRef<Map<string, number> | null>(null);
+  const snapshot = useRef<Map<string, { x: number; y: number }> | null>(null);
   // The old positions are read during render, while the DOM still has them.
   // getBoundingClientRect includes running glides, so an interrupted glide
   // continues from where it is.
@@ -45,7 +45,7 @@ export function useFlip(container: RefObject<HTMLElement | null>, order: string)
     lastOrder.current = order;
     snapshot.current = null;
     if (root === null || previous === null || prefersReducedMotion()) return;
-    const rootTop = root.getBoundingClientRect().top;
+    const origin = root.getBoundingClientRect();
     for (const item of items(root)) {
       const id = item.dataset.flipId!;
       const before = previous.get(id);
@@ -59,9 +59,11 @@ export function useFlip(container: RefObject<HTMLElement | null>, order: string)
         continue;
       }
       for (const running of item.getAnimations()) running.cancel();
-      const delta = before - (item.getBoundingClientRect().top - rootTop);
-      if (Math.abs(delta) < 1) continue;
-      item.animate([{ transform: `translateY(${delta}px)` }, { transform: "none" }], {
+      const now = item.getBoundingClientRect();
+      const dx = before.x - (now.left - origin.left);
+      const dy = before.y - (now.top - origin.top);
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
+      item.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }], {
         duration: 420,
         easing: "cubic-bezier(0.22, 1, 0.36, 1)",
       });
@@ -73,9 +75,14 @@ export function useFlip(container: RefObject<HTMLElement | null>, order: string)
 
 const items = (root: HTMLElement) => Array.from(root.querySelectorAll<HTMLElement>("[data-flip-id]"));
 
-function measure(root: HTMLElement): Map<string, number> {
-  const rootTop = root.getBoundingClientRect().top;
-  return new Map(items(root).map((item) => [item.dataset.flipId!, item.getBoundingClientRect().top - rootTop]));
+function measure(root: HTMLElement): Map<string, { x: number; y: number }> {
+  const origin = root.getBoundingClientRect();
+  return new Map(
+    items(root).map((item) => {
+      const box = item.getBoundingClientRect();
+      return [item.dataset.flipId!, { x: box.left - origin.left, y: box.top - origin.top }];
+    }),
+  );
 }
 
 /** The current time, updated every `intervalMs` while `active`. */

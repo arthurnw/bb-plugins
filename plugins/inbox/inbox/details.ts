@@ -1,8 +1,9 @@
-// Loads what a row shows beyond bb's live thread list: the latest turn's
-// steps and timing from the timeline, and the pending interaction to answer.
-// Results are cached per thread so collapsing and reopening a row is instant.
+// Loads what a card shows beyond bb's live thread list: the latest turn's
+// message, steps, and counts from the timeline, and the pending interaction to
+// answer. Results are cached per thread and refetched when the thread changes,
+// at most a few at a time, so a long list doesn't flood the server.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useSdk, type PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { askOf, type Ask } from "./interaction.ts";
 import type { Status } from "./status.ts";
@@ -15,12 +16,40 @@ export interface Details {
 
 type Sdk = ReturnType<typeof useSdk>;
 
-const cache = new Map<string, { key: string; details: Details }>();
+interface Entry {
+  key: string;
+  /** Whether the collapsed turn's rows were loaded too. */
+  full: boolean;
+  details: Details;
+  fetchedAt: number;
+}
 
-/** Refetches of an open, busy row are spaced at least this far apart. */
-const MIN_REFRESH_MS = 2000;
+const cache = new Map<string, Entry>();
 
-async function load(sdk: Sdk, thread: PluginSidebarThread, running: boolean, withSteps: boolean): Promise<Details> {
+/** A running thread changes constantly; its card refetches at most this often. */
+const RUNNING_REFRESH_MS = { open: 2_000, closed: 10_000 };
+const MAX_IN_FLIGHT = 4;
+
+let inFlight = 0;
+const queue: (() => void)[] = [];
+
+function limited<T>(work: () => Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const run = () => {
+      inFlight += 1;
+      work()
+        .then(resolve, reject)
+        .finally(() => {
+          inFlight -= 1;
+          queue.shift()?.();
+        });
+    };
+    if (inFlight < MAX_IN_FLIGHT) run();
+    else queue.push(run);
+  });
+}
+
+async function load(sdk: Sdk, thread: PluginSidebarThread, running: boolean, full: boolean): Promise<Details> {
   const threadId = thread.id;
   const [page, interactions] = await Promise.all([
     sdk.threads.timeline({ threadId, segmentLimit: "1", deferContent: "true" }),
@@ -29,7 +58,7 @@ async function load(sdk: Sdk, thread: PluginSidebarThread, running: boolean, wit
   const rows = page.rows as unknown as TimelineRowLike[];
   let summary = summarizeTurn(rows, running);
   const collapsed = summary.collapsedTurn;
-  if (withSteps && collapsed !== null) {
+  if (full && collapsed !== null) {
     const turn = await sdk.threads.timelineTurnSummaryDetails({
       threadId,
       turnId: collapsed.turnId,
@@ -42,40 +71,28 @@ async function load(sdk: Sdk, thread: PluginSidebarThread, running: boolean, wit
   return { summary, ask: askOf(interactions as unknown as Parameters<typeof askOf>[0]) };
 }
 
-/**
- * Details for `thread`, or null until loaded. An open row follows every
- * update; a closed running row loads once per run, for its clock.
- */
+/** Details for `thread`, or null until loaded. An open card also loads the steps of a finished turn. */
 export function useDetails(thread: PluginSidebarThread, status: Status, open: boolean) {
   const sdk = useSdk();
-  const wanted = open || status === "running" || status === "waiting";
-  const key = open
-    ? `open|${status}|${thread.hasPendingInteraction}|${thread.updatedAt}`
-    : `closed|${status}|${thread.hasPendingInteraction}`;
-  const cached = cache.get(thread.id);
-  const [details, setDetails] = useState<Details | null>(cached?.details ?? null);
+  const key = `${status}|${thread.hasPendingInteraction}|${thread.updatedAt}`;
+  const [details, setDetails] = useState<Details | null>(() => cache.get(thread.id)?.details ?? null);
   const [error, setError] = useState<string | null>(null);
-  const lastFetch = useRef(0);
-  const [nonce, setNonce] = useState(0);
-  const fetchedNonce = useRef(0);
 
   useEffect(() => {
-    if (!wanted) return;
     const hit = cache.get(thread.id);
     if (hit !== undefined) setDetails(hit.details);
-    // A closed row is also satisfied by an open row's fetch in the same state.
-    const fresh =
-      hit !== undefined &&
-      (hit.key === key || (!open && hit.key.startsWith(`open|${status}|${thread.hasPendingInteraction}|`)));
-    if (fresh && fetchedNonce.current === nonce) return;
-    fetchedNonce.current = nonce;
+    const complete = hit !== undefined && (hit.full || !open);
+    if (complete && hit.key === key) return;
+    // A running thread's updatedAt moves with every event; space those refetches out.
+    const sameRun = hit !== undefined && complete && hit.key.split("|", 2).join("|") === key.split("|", 2).join("|");
+    const spacing = status === "running" && sameRun ? RUNNING_REFRESH_MS[open ? "open" : "closed"] : 0;
+    const wait = hit === undefined ? 0 : Math.max(0, hit.fetchedAt + spacing - Date.now());
     let cancelled = false;
-    const wait = Math.max(0, lastFetch.current + MIN_REFRESH_MS - Date.now());
     const timer = setTimeout(() => {
-      lastFetch.current = Date.now();
-      load(sdk, thread, status === "running", open).then(
+      limited(() => (cancelled ? Promise.resolve(null) : load(sdk, thread, status === "running", open))).then(
         (next) => {
-          cache.set(thread.id, { key, details: next });
+          if (next === null) return;
+          cache.set(thread.id, { key, full: open, details: next, fetchedAt: Date.now() });
           if (!cancelled) {
             setDetails(next);
             setError(null);
@@ -92,8 +109,7 @@ export function useDetails(thread: PluginSidebarThread, status: Status, open: bo
     };
     // `thread` is read through `key`, which carries every field that matters.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sdk, thread.id, key, wanted, nonce]);
+  }, [sdk, thread.id, key, open]);
 
-  const refresh = useCallback(() => setNonce((value) => value + 1), []);
-  return { details: wanted ? details : (cached?.details ?? null), error, refresh };
+  return { details, error };
 }

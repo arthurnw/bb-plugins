@@ -13,15 +13,20 @@ export const STATUS_LABEL: Record<Status, string> = {
 /** Rows sort by this rank first, so what needs you is always on top. */
 const RANK: Record<Status, number> = { waiting: 0, failed: 1, running: 2, done: 3, idle: 4 };
 
-export type Filter = "all" | "waiting" | "running" | "failed" | "done";
+/** The board's columns, and the list's sections. */
+export type Group = "needs" | "running" | "done";
 
-export const FILTERS: readonly { id: Filter; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "waiting", label: "Needs you" },
+export const GROUPS: readonly { id: Group; label: string }[] = [
+  { id: "needs", label: "Needs you" },
   { id: "running", label: "Running" },
-  { id: "failed", label: "Failed" },
   { id: "done", label: "Done" },
 ];
+
+export function groupOf(status: Status): Group {
+  if (status === "waiting" || status === "failed") return "needs";
+  if (status === "running") return "running";
+  return "done";
+}
 
 export interface StatusFields {
   status: string;
@@ -41,12 +46,6 @@ export function statusOf(thread: StatusFields): Status {
   if (BUSY.has(thread.status) || BUSY.has(thread.runtimeStatus)) return "running";
   if (thread.indicator === "unread-success") return "done";
   return "idle";
-}
-
-export function matchesFilter(status: Status, filter: Filter): boolean {
-  if (filter === "all") return true;
-  if (filter === "done") return status === "done" || status === "idle";
-  return status === filter;
 }
 
 export function compareRows(

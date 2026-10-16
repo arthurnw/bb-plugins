@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { askOf } from "./interaction.ts";
-import { clock, compareRows, duration, matchesFilter, statusOf, type StatusFields } from "./status.ts";
+import { clock, compareRows, duration, groupOf, statusOf, type StatusFields } from "./status.ts";
 import { expandCollapsedTurn, plainText, summarizeTurn, type TimelineRowLike } from "./steps.ts";
 
 const base: StatusFields = {
@@ -20,11 +20,11 @@ test("statusOf puts a pending interaction above everything", () => {
   assert.equal(statusOf(base), "idle");
 });
 
-test("the Done tab holds finished and idle threads", () => {
-  assert.ok(matchesFilter("idle", "done"));
-  assert.ok(matchesFilter("done", "done"));
-  assert.ok(!matchesFilter("running", "done"));
-  assert.ok(matchesFilter("failed", "all"));
+test("failed threads need you, and idle ones count as done", () => {
+  assert.equal(groupOf("failed"), "needs");
+  assert.equal(groupOf("waiting"), "needs");
+  assert.equal(groupOf("running"), "running");
+  assert.equal(groupOf("idle"), "done");
 });
 
 test("rows sort by status, then newest attention first", () => {
@@ -71,6 +71,8 @@ test("summarizeTurn reads the latest turn's steps, timing, and message", () => {
   assert.equal(summary.startedAt, 100);
   assert.equal(summary.endedAt, 160);
   assert.equal(summary.toolCount, 3);
+  assert.equal(summary.sourceCount, 0);
+  assert.equal(summary.latest, "Done. See a.ts.");
   assert.equal(summary.message, "Done. See a.ts.");
   assert.deepEqual(
     summary.steps.map((step) => step.label),
@@ -98,6 +100,7 @@ test("a collapsed turn is reported, then expanded from its own rows", () => {
   const collapsed = summarizeTurn(page, false);
   assert.deepEqual(collapsed.collapsedTurn, { turnId: "t1", sourceSeqStart: 1, sourceSeqEnd: 50 });
   assert.equal(collapsed.toolCount, 9);
+  assert.equal(collapsed.sourceCount, null);
   const expanded = expandCollapsedTurn(page, [row({ id: "c", workKind: "command", command: "git commit", startedAt: 20 })], false);
   assert.deepEqual(expanded.steps.map((step) => step.label), ["git commit"]);
   assert.equal(expanded.message, "Committed.");
