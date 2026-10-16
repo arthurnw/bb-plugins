@@ -34,7 +34,12 @@ export function useCollapseHostSidebar(enabled: boolean) {
       collapsedByCanvas = true;
     }
     return () => {
-      if (collapsedByCanvas && !isExpanded()) toggleWithoutAnimation();
+      if (!collapsedByCanvas) return;
+      // This cleanup runs while React is committing the next page, and a
+      // click bb's sidebar receives then is lost; restore on the next frame.
+      requestAnimationFrame(() => {
+        if (!isExpanded()) toggleWithoutAnimation();
+      });
     };
   }, [enabled]);
 }
