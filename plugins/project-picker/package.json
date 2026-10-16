@@ -8,7 +8,7 @@
   },
   "bb": {
     "name": "Project Picker",
-    "description": "Keyboard shortcuts to pick or cycle the project in the New thread composer.",
+    "description": "Project shortcuts, a floating new-thread composer, and thread handoff.",
     "branding": {
       "icon": "FolderOpen"
     },
@@ -18,13 +18,16 @@
   },
   "scripts": {
     "build": "bb plugin build",
-    "test": "node --test projects.test.ts",
+    "test": "node --test *.test.ts",
     "typecheck": "tsc"
   },
   "devDependencies": {
     "@get-bb/plugin-sdk": "0.6.49",
+    "@radix-ui/react-tooltip": "^1.4.1",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
-    "typescript": "^5.7.0"
+    "sonner": "^2.0.8",
+    "typescript": "^5.7.0",
+    "zod": "^4.6.7"
   }
 }
