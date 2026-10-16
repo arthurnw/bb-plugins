@@ -14,6 +14,10 @@ A bb plugin that adds a **Canvas** page to bb's navigation rail: a zoomable map 
 - **Sticky notes.** Double-click empty canvas or use the note button. Type in the note, drag its top bar, resize it when selected, pick a color, or delete it.
 - **Zoomed out**, cards show only large titles over their status color, and frames show large names.
 
+## On a phone
+
+On screens narrower than 768px the toolbar and the Needs you list give way to a **Go to** button and, when threads need you, a triage button. Pinned chats, the minimap, and pin buttons are hidden (pins stay saved for larger screens). Tapping a card opens its chat in a drawer from the right; swipe it right, or tap the strip of canvas beside it, to close it.
+
 ## Keyboard
 
 | Keys | Action |

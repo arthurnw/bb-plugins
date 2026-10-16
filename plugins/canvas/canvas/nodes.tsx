@@ -31,6 +31,8 @@ export type ThreadNodeData = {
   highlighted: boolean;
   /** The thread's chat is pinned to the canvas. */
   pinned: boolean;
+  /** Phone-sized screen: no pinning from the card. */
+  compact: boolean;
   /** "now", "4m", …; a string so the card re-renders only when it changes. */
   ageLabel: string;
   childCount: number;
@@ -205,6 +207,7 @@ export const ThreadNode = memo(function ThreadNode({ data }: NodeProps<ThreadFlo
                     {childCount}
                   </span>
                 ) : null}
+                {data.compact ? null : (
                 <button
                   type="button"
                   aria-label={data.pinned ? "Unpin chat" : "Pin chat to the canvas"}
@@ -223,6 +226,7 @@ export const ThreadNode = memo(function ThreadNode({ data }: NodeProps<ThreadFlo
                 >
                   <Icon name="Pin" className={cn("size-3", data.pinned && "fill-current")} />
                 </button>
+                )}
               </span>
             </div>
           </div>

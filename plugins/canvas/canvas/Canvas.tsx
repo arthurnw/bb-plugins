@@ -18,6 +18,7 @@ import {
   type Viewport,
 } from "@xyflow/react";
 import { toast } from "sonner";
+import { Drawer } from "vaul";
 import {
   ThreadChat,
   experimental_usePluginId as usePluginId,
@@ -32,6 +33,8 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
+import { usePortalScopeProps } from "@/lib/portal-scope";
 import { cn } from "@/lib/utils";
 import type { Arrangement, Layout, Note, PinnedChat, rpcContract } from "../server";
 import { CanvasActionsContext, type CanvasActions } from "./context";
@@ -167,12 +170,15 @@ function ToolButton({
 function Inspector({
   thread,
   focusRequest,
+  compact,
   onClose,
   onPin,
   onReleaseFocus,
 }: {
   thread: PluginSidebarThread;
   focusRequest: number;
+  /** Phone-sized screens: a drawer from the right that swipes closed. */
+  compact: boolean;
   onClose(): void;
   onPin(): void;
   /** Hands keyboard focus back to the canvas. */
@@ -181,18 +187,24 @@ function Inspector({
   const navigate = useBbNavigate();
   const asideRef = useRef<HTMLElement>(null);
   useReleaseChatFocus(asideRef, thread.id, focusRequest, onReleaseFocus);
-  return (
-    <aside ref={asideRef} data-bb-canvas-chat="" className="flex h-full w-[min(480px,45%)] shrink-0 flex-col border-l border-border bg-background">
+  // The drawer portals outside the plugin's page; these attributes keep the
+  // plugin's styles applying to it.
+  const portalScope = usePortalScopeProps();
+  const header = (
       <div className="flex h-11 shrink-0 items-center gap-1 border-b border-border px-3">
         <span className="min-w-0 flex-1 truncate text-sm font-medium" title={thread.displayTitle}>
           {thread.displayTitle}
         </span>
-        <ToolButton variant="ghost" size="icon" className="size-7" title="Pin to the canvas (p)" aria-label="Pin to the canvas" onClick={onPin}>
-          <Icon name="Pin" className="size-4" />
-        </ToolButton>
-        <ToolButton variant="ghost" size="icon" className="size-7" title="Open in a split (⇧↵)" aria-label="Open in a split" onClick={() => navigate.toThread(thread.id, { split: true })}>
-          <Icon name="Columns2" className="size-4" />
-        </ToolButton>
+        {compact ? null : (
+          <ToolButton variant="ghost" size="icon" className="size-7" title="Pin to the canvas (p)" aria-label="Pin to the canvas" onClick={onPin}>
+            <Icon name="Pin" className="size-4" />
+          </ToolButton>
+        )}
+        {compact ? null : (
+          <ToolButton variant="ghost" size="icon" className="size-7" title="Open in a split (⇧↵)" aria-label="Open in a split" onClick={() => navigate.toThread(thread.id, { split: true })}>
+            <Icon name="Columns2" className="size-4" />
+          </ToolButton>
+        )}
         <ToolButton variant="ghost" size="icon" className="size-7" title="Open thread (↵)" aria-label="Open thread" onClick={() => navigate.toThread(thread.id)}>
           <Icon name="ArrowUpRight" className="size-4" />
         </ToolButton>
@@ -200,9 +212,36 @@ function Inspector({
           <Icon name="X" className="size-4" />
         </ToolButton>
       </div>
-      <div className="min-h-0 flex-1">
-        <ThreadChat key={thread.id} threadId={thread.id} variant="compact" focusRequest={focusRequest} />
-      </div>
+  );
+  const chat = (
+    <div className="min-h-0 flex-1">
+      <ThreadChat key={thread.id} threadId={thread.id} variant="compact" focusRequest={focusRequest} />
+    </div>
+  );
+  if (compact) {
+    return (
+      <Drawer.Root open direction="right" onOpenChange={(open) => (open ? undefined : onClose())}>
+        <Drawer.Portal>
+          <Drawer.Overlay {...portalScope} className="fixed inset-0 z-40 bg-black/40" />
+          <Drawer.Content
+            {...portalScope}
+            ref={asideRef as React.RefObject<HTMLDivElement>}
+            data-bb-canvas-chat=""
+            className="fixed bottom-0 right-0 top-0 z-50 flex w-[calc(100%-2.5rem)] max-w-[480px] flex-col border-l border-border bg-background outline-none"
+          >
+            <Drawer.Title className="sr-only">{thread.displayTitle}</Drawer.Title>
+            <Drawer.Description className="sr-only">Chat for this thread. Swipe right to close.</Drawer.Description>
+            {header}
+            {chat}
+          </Drawer.Content>
+        </Drawer.Portal>
+      </Drawer.Root>
+    );
+  }
+  return (
+    <aside ref={asideRef} data-bb-canvas-chat="" className="flex h-full w-[min(480px,45%)] shrink-0 flex-col border-l border-border bg-background">
+      {header}
+      {chat}
     </aside>
   );
 }
@@ -312,6 +351,8 @@ function sameNode(old: CanvasNode, next: CanvasNode): boolean {
 
 function CanvasInner() {
   const hostDark = useHostDark();
+  // Phone-sized screens: no toolbar or pinned chats; the chat is a drawer.
+  const compact = useIsCompactViewport();
   const pluginId = usePluginId();
   const navigate = useBbNavigate();
   const sdk = useSdk();
@@ -653,6 +694,7 @@ function CanvasInner() {
           bucket,
           highlighted: thread.id === selectedId,
           pinned: pinnedIds.has(thread.id),
+          compact,
           ageLabel: age(thread.updatedAt, now),
           childCount: childCounts.get(thread.id) ?? 0,
           dimmed: hidden.has(bucket) || !matches(thread, groups.get(thread.id)?.name ?? "", lowered),
@@ -671,7 +713,8 @@ function CanvasInner() {
       });
     }
     const byId = new Map(threads.map((thread) => [thread.id, thread]));
-    for (const chat of chats) {
+    // Pinned chats stay saved but aren't drawn on phone-sized screens.
+    for (const chat of compact ? [] : chats) {
       const thread = byId.get(chat.threadId);
       if (thread === undefined) continue;
       result.push({
@@ -695,7 +738,7 @@ function CanvasInner() {
       });
     }
     return result;
-  }, [threads, frames, positions, notes, chats, focusedChat, chatFocusRequests, settledZoom, selectedId, groups, buckets, hidden, query, now, grouping, layout?.frameColors]);
+  }, [compact, threads, frames, positions, notes, chats, focusedChat, chatFocusRequests, settledZoom, selectedId, groups, buckets, hidden, query, now, grouping, layout?.frameColors]);
 
   // React Flow owns transient state (measured size, selection, drag); merge
   // it into each rebuild.
@@ -873,7 +916,7 @@ function CanvasInner() {
         });
       }
     }
-    for (const chat of chats) {
+    for (const chat of compact ? [] : chats) {
       if (!visible.has(chat.threadId)) continue;
       result.push({
         id: `pin:${chat.threadId}`,
@@ -889,7 +932,7 @@ function CanvasInner() {
       });
     }
     return result;
-  }, [threads, buckets, chats, focusedChat]);
+  }, [threads, buckets, chats, focusedChat, compact]);
 
   const counts = useMemo(() => {
     const result = new Map<Bucket, number>(BUCKETS.map((bucket) => [bucket, 0]));
@@ -1424,6 +1467,7 @@ function CanvasInner() {
           >
             <Background variant={BackgroundVariant.Dots} gap={24} size={1} />
             <Controls showInteractive={false} position="bottom-left" />
+{compact ? null : (
             <MiniMap
               pannable
               zoomable
@@ -1437,6 +1481,34 @@ function CanvasInner() {
                 return `bb-canvas-mini-${canvasNode.data.bucket}`;
               }}
             />
+            )}
+            {compact ? (
+              // Phone-sized screens: just the picker and triage; the full toolbar doesn't fit.
+              <Panel position="top-left" className="!m-2 flex gap-1.5">
+                <ToolButton
+                  variant="outline"
+                  size="sm"
+                  className="h-9 gap-1.5 bg-background/95 px-3 shadow-sm"
+                  onClick={() => setOverlay({ kind: "goto" })}
+                  aria-label="Go to a thread"
+                >
+                  <Icon name="Search" className="size-4" />
+                  Go to
+                </ToolButton>
+                {attentionQueue.length > 0 ? (
+                  <ToolButton
+                    variant="outline"
+                    size="sm"
+                    className="h-9 gap-1.5 bg-background/95 px-3 shadow-sm"
+                    onClick={startTriage}
+                    aria-label="Triage the threads that need you"
+                  >
+                    <span className="size-2 rounded-full" style={{ background: "var(--status-needs-you)" }} />
+                    {attentionQueue.length}
+                  </ToolButton>
+                ) : null}
+              </Panel>
+            ) : (
             <Panel position="top-left" className="!m-3">
               <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-background/95 p-1.5 shadow-sm backdrop-blur">
                 <ToolButton
@@ -1592,7 +1664,8 @@ function CanvasInner() {
                 </div>
               </div>
             </Panel>
-            {attentionQueue.length > 0 ? (
+            )}
+            {attentionQueue.length > 0 && !compact ? (
               <Panel position="top-right" className="!m-3">
                 <div className="w-64 rounded-lg border border-border bg-background/95 shadow-sm backdrop-blur">
                   <div className="flex items-center justify-between px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">
@@ -1682,9 +1755,10 @@ function CanvasInner() {
           ) : null}
           {overlay?.kind === "help" ? <ShortcutHelp onClose={() => setOverlay(null)} /> : null}
         </div>
-        {selected === null || !inspectorOpen || pinnedOpen(selected.id) ? null : (
+        {selected === null || !inspectorOpen || (!compact && pinnedOpen(selected.id)) ? null : (
           <Inspector
             thread={selected}
+            compact={compact}
             focusRequest={chatFocus}
             onClose={() => setInspectorOpen(false)}
             onPin={() => togglePin(selected.id)}
