@@ -81,7 +81,6 @@ function Session({ session, kind, visible, focusRequest }: {
       <div style={{ display: "flex", marginBottom: 8 }}>
         <button onClick={() => setPopup(value => !value)}>Switch project…</button>
       </div>
-      <p style={{ fontSize: 12, color: "var(--muted-foreground)" }}>Project shortcuts reset execution and environment choices. Cycling starts from the last project chosen here.</p>
       {popup && <ProjectList selectedLabel="last chosen here" selectedId={projectId} onChoose={option => choose(option.id)} onClose={() => { setPopup(false); setFocus(n => n + 1); }} />}
       {source && <NewThreadComposer
         defaultProjectId={projectId ?? undefined}
