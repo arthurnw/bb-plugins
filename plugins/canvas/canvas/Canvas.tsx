@@ -1057,6 +1057,9 @@ function CanvasInner() {
   const selected = threads.find((thread) => thread.id === selectedId) ?? null;
 
   const threadsById = useMemo(() => new Map(threads.map((thread) => [thread.id, thread])), [threads]);
+  // Pins of archived or deleted threads stay saved but aren't drawn, so they
+  // don't count toward the limit.
+  const shownPinCount = useMemo(() => chats.filter((chat) => threadsById.has(chat.threadId)).length, [chats, threadsById]);
 
   const pinnedOpen = useCallback(
     (id: string) => chats.some((chat) => chat.threadId === id && !chat.minimized),
@@ -1150,7 +1153,7 @@ function CanvasInner() {
         actions.unpinChat(id);
         return;
       }
-      if (chats.length >= maxPinned) {
+      if (shownPinCount >= maxPinned) {
         toast.error(`${maxPinned} chats are pinned in this grouping, the most allowed. Unpin one, or raise the limit in the Canvas plugin settings.`);
         return;
       }
@@ -1172,7 +1175,7 @@ function CanvasInner() {
       });
       revealChat(chat);
     },
-    [chats, maxPinned, cardRect, record, setChats, rpc, grouping, actions, revealChat],
+    [chats, shownPinCount, maxPinned, cardRect, record, setChats, rpc, grouping, actions, revealChat],
   );
   togglePinRef.current = togglePin;
 
@@ -1215,7 +1218,7 @@ function CanvasInner() {
     } catch {
       return;
     }
-    const room = Math.max(0, maxPinned - chats.length);
+    const room = Math.max(0, maxPinned - shownPinCount);
     const toPin = legacy
       .map((entry) => entry.threadId)
       .filter((id) => positions[id] !== undefined && !chats.some((chat) => chat.threadId === id))
@@ -1228,7 +1231,7 @@ function CanvasInner() {
       setChats((current) => [...current, chat]);
       rpc.call("chat_upsert", { origin: CLIENT_ID, grouping, chat }).catch(() => undefined);
     }
-  }, [layout, sidebar.status, positions, legacyPinsKey, maxPinned, chats, setChats, rpc, grouping]);
+  }, [layout, sidebar.status, positions, legacyPinsKey, maxPinned, chats, shownPinCount, setChats, rpc, grouping]);
 
   /** Card rects for navigation;  /** Card rects for navigation; dimmed (filtered-out) cards are skipped unless asked for. */
   const navItems = useCallback(
