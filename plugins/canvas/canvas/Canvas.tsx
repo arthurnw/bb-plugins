@@ -42,6 +42,7 @@ import { Icon } from "./icons.tsx";
 import { CARD_H, CARD_W, autoLayout, frameBounds, placeNew, type Point, type Rect } from "./layout.ts";
 import { DIRECTION_KEYS, nearestInDirection, nearestTo, type Direction, type NavItem } from "./nav.ts";
 import { nodeTypes, type CanvasNode, type FrameNodeData } from "./nodes";
+import { matchesShortcut, shortcutLabel, useArchive, useArchiveShortcut } from "./archive.ts";
 import { useReleaseChatFocus } from "./chatFocus.ts";
 import { useCollapseHostSidebar } from "./hostSidebar.ts";
 import { Picker, type PickerItem } from "./Picker.tsx";
@@ -191,6 +192,7 @@ function Inspector({
   // The drawer portals outside the plugin's page; these attributes keep the
   // plugin's styles applying to it.
   const portalScope = usePortalScopeProps();
+  const archive = useArchive(thread);
   const header = (
       <div className="flex h-11 shrink-0 items-center gap-1 border-b border-border px-3">
         <span className="min-w-0 flex-1 truncate text-sm font-medium" title={thread.displayTitle}>
@@ -209,6 +211,11 @@ function Inspector({
         <ToolButton variant="ghost" size="icon" className="size-7" title="Open thread (↵)" aria-label="Open thread" onClick={() => navigate.toThread(thread.id)}>
           <Icon name="ArrowUpRight" className="size-4" />
         </ToolButton>
+        {archive === null ? null : (
+          <ToolButton variant="ghost" size="icon" className="size-7" title="Archive thread" aria-label="Archive thread" onClick={archive}>
+            <Icon name="Archive" className="size-4" />
+          </ToolButton>
+        )}
         <ToolButton variant="ghost" size="icon" className="size-7" title="Close (Space or Esc)" aria-label="Close" onClick={onClose}>
           <Icon name="X" className="size-4" />
         </ToolButton>
@@ -269,7 +276,8 @@ const SHORTCUTS: [string, string][] = [
   ["?", "Show or hide these shortcuts"],
 ];
 
-function ShortcutHelp({ onClose }: { onClose(): void }) {
+function ShortcutHelp({ archiveLabel, onClose }: { archiveLabel: string | null; onClose(): void }) {
+  const shortcuts: [string, string][] = archiveLabel === null ? SHORTCUTS : [...SHORTCUTS.slice(0, -1), [archiveLabel, "Archive the selected thread (bb's binding)"], SHORTCUTS.at(-1)!];
   return (
     <div className="absolute inset-0 z-20 flex items-start justify-center bg-black/10 pt-[12vh]" onMouseDown={onClose}>
       <div
@@ -280,7 +288,7 @@ function ShortcutHelp({ onClose }: { onClose(): void }) {
       >
         <div className="mb-3 font-medium">Keyboard shortcuts</div>
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
-          {SHORTCUTS.map(([keys, label]) => (
+          {shortcuts.map(([keys, label]) => (
             <div key={keys} className="contents">
               <dt className="font-mono text-xs leading-5 text-muted-foreground">{keys}</dt>
               <dd>{label}</dd>
@@ -320,6 +328,18 @@ function useHostDark(): boolean {
     return () => observer.disconnect();
   }, []);
   return dark;
+}
+
+/** Keeps `runRef` pointing at bb's archive action for the selected thread. */
+function ArchiveRunner({ thread, runRef }: { thread: PluginSidebarThread; runRef: { current: (() => void) | null } }) {
+  const archive = useArchive(thread);
+  useEffect(() => {
+    runRef.current = archive;
+    return () => {
+      runRef.current = null;
+    };
+  }, [archive, runRef]);
+  return null;
 }
 
 /** Equal top-level fields, comparing nested objects one level deep. */
@@ -374,6 +394,10 @@ function CanvasInner() {
   const searchRef = useRef<HTMLInputElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const settings = useSettings();
+  // bb's "Archive thread" shortcut does nothing on a plugin page (there's no
+  // thread in view), so the canvas handles the user's binding itself.
+  const archiveShortcut = useArchiveShortcut();
+  const archiveSelected = useRef<(() => void) | null>(null);
   // Phones show bb's sidebar as a slide-over, so there is nothing to collapse.
   useCollapseHostSidebar(!compact && settings.values !== undefined && settings.values.collapseSidebar !== false);
   const maxPinned = Math.min(12, Math.max(1, Math.round(Number(settings.values?.maxPinnedWindows ?? 4)) || 4));
@@ -1316,6 +1340,14 @@ function CanvasInner() {
         setOverlay((current) => (current?.kind === "goto" ? null : { kind: "goto" }));
         return;
       }
+      // The user's archive binding archives the selected thread, which is also
+      // the one whose chat has focus, from anywhere on the canvas.
+      if (archiveShortcut !== null && matchesShortcut(event, archiveShortcut) && overlay === null) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        archiveSelected.current?.();
+        return;
+      }
       // The shortcut list has no input of its own to catch keys; Esc or ? closes it.
       if (overlay?.kind === "help" && (event.key === "Escape" || event.key === "?")) {
         event.preventDefault();
@@ -1409,6 +1441,7 @@ function CanvasInner() {
     fitAll,
     changeGrouping,
     releaseFocus,
+    archiveShortcut,
     triage,
     stepTriage,
     startTriage,
@@ -1765,7 +1798,13 @@ function CanvasInner() {
               onReleaseFocus={releaseFocus}
             />
           ) : null}
-          {overlay?.kind === "help" ? <ShortcutHelp onClose={() => setOverlay(null)} /> : null}
+          {overlay?.kind === "help" ? (
+            <ShortcutHelp
+              archiveLabel={archiveShortcut === null ? null : shortcutLabel(archiveShortcut)}
+              onClose={() => setOverlay(null)}
+            />
+          ) : null}
+          {selected === null ? null : <ArchiveRunner thread={selected} runRef={archiveSelected} />}
         </div>
         {selected === null || !inspectorOpen || (!compact && pinnedOpen(selected.id)) ? null : (
           <Inspector

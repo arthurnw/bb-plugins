@@ -14,6 +14,7 @@ import { Icon, type IconName } from "./icons.tsx";
 import type { Note } from "../server";
 import { FRAME_COLORS, NOTE_COLORS, type FrameColor, type Grouping } from "./shared.ts";
 import { ChatNode, type ChatFlowNode } from "./ChatNode.tsx";
+import { threadTarget, useArchive } from "./archive.ts";
 import { useCanvasActions } from "./context";
 import { CARD_H, CARD_W, FRAME_HEADER } from "./layout.ts";
 import { BUCKET_LABEL, type Bucket } from "./status.ts";
@@ -112,18 +113,8 @@ export const ThreadNode = memo(function ThreadNode({ data }: NodeProps<ThreadFlo
   const actions = useCanvasActions();
   const far = useIsFar();
   const environment = thread.environment;
-  const target = {
-    id: thread.id,
-    projectId: thread.projectId,
-    parentThreadId: thread.parentThreadId,
-    archivedAt: thread.archivedAt,
-    pinnedAt: thread.pinnedAt,
-    sectionId: thread.sectionId,
-    isUnread: thread.isUnread,
-    status: thread.status,
-    environment:
-      environment?.id != null ? { id: environment.id, path: environment.path } : null,
-  };
+  const target = threadTarget(thread);
+  const archive = useArchive(thread);
   // Personal threads run in a folder named after the thread id; skip it.
   const folder = environment?.path?.split("/").filter(Boolean).at(-1);
   const location =
@@ -207,6 +198,21 @@ export const ThreadNode = memo(function ThreadNode({ data }: NodeProps<ThreadFlo
                     {childCount}
                   </span>
                 ) : null}
+                {archive === null ? null : (
+                  <button
+                    type="button"
+                    aria-label="Archive thread"
+                    title="Archive thread"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      archive();
+                    }}
+                    onDoubleClick={(event) => event.stopPropagation()}
+                    className="nodrag -my-1 flex size-5 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-state-hover group-hover:opacity-100 focus-visible:opacity-100 max-md:opacity-100"
+                  >
+                    <Icon name="Archive" className="size-3" />
+                  </button>
+                )}
                 {data.compact ? null : (
                 <button
                   type="button"

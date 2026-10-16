@@ -4,6 +4,7 @@ import { ThreadChat, type PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
 import type { PinnedChat } from "../server";
 import { useReleaseChatFocus } from "./chatFocus.ts";
+import { useArchive } from "./archive.ts";
 import { useCanvasActions } from "./context";
 import { Icon } from "./icons.tsx";
 import type { Bucket } from "./status.ts";
@@ -38,6 +39,7 @@ export const ChatNode = memo(function ChatNode({ data }: NodeProps<ChatFlowNode>
   const ref = useRef<HTMLDivElement>(null);
   useReleaseChatFocus(ref, thread.id, focusRequest, actions.releaseFocus);
   const collapsed = chat.minimized || far;
+  const archive = useArchive(thread);
   // The outline shows only while resizing, to preview the new size.
   const [resizing, setResizing] = useState(false);
 
@@ -103,6 +105,7 @@ export const ChatNode = memo(function ChatNode({ data }: NodeProps<ChatFlowNode>
               run: () => actions.updateChat({ ...chat, linked: !chat.linked }),
             },
             { icon: "ArrowUpRight" as const, label: "Open thread", run: () => actions.open(thread.id, false) },
+            ...(archive === null ? [] : [{ icon: "Archive" as const, label: "Archive thread", run: archive }]),
             { icon: "PinOff" as const, label: "Unpin (p)", run: () => actions.unpinChat(thread.id) },
           ].map((button) => (
             <button
