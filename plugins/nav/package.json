@@ -1,0 +1,30 @@
+{
+  "name": "bb-plugin-nav",
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "bb": ">=0.46",
+    "bbPluginSdk": ">=0.6.49"
+  },
+  "bb": {
+    "name": "Pane Navigator",
+    "description": "Move focus between the composer, terminals, the sidebar, and other panes with Ctrl+H/J/K/L, like vim-tmux-navigator.",
+    "branding": {
+      "icon": "Move"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx",
+    "skills": []
+  },
+  "scripts": {
+    "build": "bb plugin build",
+    "test": "node --test geometry.test.ts",
+    "typecheck": "tsc"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "0.6.49",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "typescript": "^5.7.0"
+  }
+}
