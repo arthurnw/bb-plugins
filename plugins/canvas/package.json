@@ -1,6 +1,13 @@
 {
   "name": "bb-plugin-canvas",
   "version": "0.1.0",
+  "description": "A zoomable canvas of your bb threads, with pinned chats, triage, and keyboard navigation.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arthurnw/bb-canvas.git"
+  },
+  "homepage": "https://github.com/arthurnw/bb-canvas#readme",
   "type": "module",
   "engines": {
     "bb": ">=0.46",
@@ -8,7 +15,7 @@
   },
   "bb": {
     "name": "Canvas",
-    "description": "A zoomable canvas of your bb threads: project frames, parent and fork links, live status, sticky notes, and a chat side panel.",
+    "description": "A zoomable canvas of your bb threads: project and section frames, parent and fork links, live status, pinned chats, triage, sticky notes, and keyboard navigation.",
     "branding": {
       "icon": "./assets/icon.svg"
     },

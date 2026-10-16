@@ -1,6 +1,14 @@
 # bb Canvas
 
-A bb plugin that adds a **Canvas** page to bb's navigation rail: a zoomable map of your threads, grouped by project, with live status and a chat panel.
+A [bb](https://getbb.app) plugin that adds a **Canvas** page to bb's navigation rail: a zoomable map of your threads, framed by project, section, or machine, with live status, chats you can pin to the canvas, a triage queue for threads that need you, and keyboard navigation throughout.
+
+## Install
+
+```sh
+bb plugin install https://github.com/arthurnw/bb-canvas
+```
+
+Then open **Canvas** in bb's navigation rail. bb builds the plugin when it installs it. `bb plugin update canvas` pulls new commits.
 
 ## What it shows
 
@@ -61,3 +69,7 @@ bb plugin dev       # rebuild and reload on save
 ```
 
 `server.ts` stores the arrangement in the plugin's key-value storage and exposes it over RPC. The page itself (`canvas/`) reads threads from bb's live thread list, so it updates as threads change without polling.
+
+## License
+
+MIT
