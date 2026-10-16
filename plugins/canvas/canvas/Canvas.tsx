@@ -1456,7 +1456,10 @@ function CanvasInner() {
             nodesConnectable={false}
             selectionOnDrag={false}
             disableKeyboardA11y
-            onlyRenderVisibleElements
+            // Not onlyRenderVisibleElements: it unmounts pinned chats that leave
+            // the screen, and bb's chat reloads and re-lays out when it comes
+            // back. Panning only moves the viewport transform, so keeping every
+            // node mounted costs little per frame.
             panOnScroll
             minZoom={0.08}
             maxZoom={2}
