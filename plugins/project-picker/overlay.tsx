@@ -120,7 +120,7 @@ function Session({ session, kind, visible, focusRequest }: {
   const close = (e: { target: EventTarget; currentTarget: EventTarget }) => { if (e.target === e.currentTarget) quickCompose.close(); };
   return <div style={{ display: visible ? "block" : "none", position: "fixed", inset: 0, zIndex: 50, background: "rgb(0 0 0 / .3)" }} onPointerDown={close}>
     <div style={{ position: "absolute", top: 0, bottom: 0, left: bounds?.left ?? 0, width: bounds?.width ?? "100%", display: "flex", justifyContent: "center", alignItems: "flex-start", padding: "15vh 16px 16px", overflowY: "auto", boxSizing: "border-box" }} onPointerDown={close}>
-    <section role="dialog" aria-label={kind === "handoff" ? "Project Picker handoff" : "Project Picker quick compose"} style={{ width: "100%", maxWidth: 720, padding: 16, borderRadius: 12, background: "var(--background)", color: "var(--foreground)" }} ref={sectionRef}>
+    <section role="dialog" aria-label={kind === "handoff" ? "Project Picker handoff" : "Project Picker quick compose"} style={{ width: "100%", maxWidth: 960, padding: 16, borderRadius: 12, background: "var(--background)", color: "var(--foreground)" }} ref={sectionRef}>
       {source && <NewThreadComposer
         defaultProjectId={projectId ?? undefined}
         defaultEnvironment={namedWorktree ? { type: "provider", environmentProviderId: PROVIDER_ID, inputs: null }

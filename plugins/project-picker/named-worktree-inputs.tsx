@@ -49,6 +49,16 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
     }, () => {});
     return () => { cancelled = true; };
   }, [sdk]);
+  // Preselect the project's default base branch until the user picks one.
+  useEffect(() => {
+    if (hostId === null || projectId === null) return;
+    const controller = new AbortController();
+    sdk.projects.branches({ projectId, hostId, limit: "1", signal: controller.signal }).then((result) => {
+      const preferred = result.defaultWorktreeBaseBranch ?? result.defaultBranch;
+      if (preferred) setBaseBranch((current) => current ?? preferred);
+    }, () => {});
+    return () => controller.abort();
+  }, [sdk, projectId, hostId]);
   useEffect(() => {
     const el = field.current;
     if (!el) return;
