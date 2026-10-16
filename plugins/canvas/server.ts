@@ -126,6 +126,12 @@ export default async function plugin(bb: BbPluginApi) {
       default: 4,
       experimental_schema: z.number().int().min(1).max(12),
     },
+    collapseSidebar: {
+      type: "boolean",
+      label: "Collapse the thread sidebar on the canvas",
+      description: "Collapse bb's thread sidebar while the canvas is open, and expand it again when you leave.",
+      default: true,
+    },
   });
 
   async function read(): Promise<Layout> {

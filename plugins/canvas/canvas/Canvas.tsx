@@ -43,6 +43,7 @@ import { CARD_H, CARD_W, autoLayout, frameBounds, placeNew, type Point, type Rec
 import { DIRECTION_KEYS, nearestInDirection, nearestTo, type Direction, type NavItem } from "./nav.ts";
 import { nodeTypes, type CanvasNode, type FrameNodeData } from "./nodes";
 import { useReleaseChatFocus } from "./chatFocus.ts";
+import { useCollapseHostSidebar } from "./hostSidebar.ts";
 import { Picker, type PickerItem } from "./Picker.tsx";
 import { CHAT_H, CHAT_HEADER_H, CHAT_W } from "./ChatNode.tsx";
 import { edgeTypes } from "./TetherEdge.tsx";
@@ -373,6 +374,8 @@ function CanvasInner() {
   const searchRef = useRef<HTMLInputElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const settings = useSettings();
+  // Phones show bb's sidebar as a slide-over, so there is nothing to collapse.
+  useCollapseHostSidebar(!compact && settings.values !== undefined && settings.values.collapseSidebar !== false);
   const maxPinned = Math.min(12, Math.max(1, Math.round(Number(settings.values?.maxPinnedWindows ?? 4)) || 4));
 
   const releaseFocus = useCallback(() => {
