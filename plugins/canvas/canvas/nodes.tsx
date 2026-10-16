@@ -351,7 +351,7 @@ function ChildList({
 }
 
 const FRAME_TINT: Record<FrameColor, string> = {
-  none: "border-border bg-muted/30",
+  none: "border-border bb-canvas-frame-plain",
   blue: "border-sky-500/50 bg-sky-500/5",
   green: "border-emerald-500/50 bg-emerald-500/5",
   amber: "border-amber-500/50 bg-amber-500/5",

@@ -5,8 +5,10 @@
   --status-error: oklch(0.6 0.21 25);
   --status-done: oklch(0.62 0.16 150);
   --status-idle: oklch(0.62 0.01 260);
-  --xy-background-color: transparent;
-  --xy-background-pattern-color: var(--border);
+  /* A lifted surface: one step lighter than bb's chrome, so the work area
+     reads as its own surface, with frames sitting slightly darker on it. */
+  --xy-background-color: color-mix(in oklab, var(--muted) 45%, var(--background));
+  --xy-background-pattern-color: color-mix(in oklab, var(--foreground) 14%, transparent);
   --xy-edge-stroke: var(--muted-foreground);
   --xy-edge-stroke-selected: var(--foreground);
   --xy-edge-label-background-color: var(--background);
@@ -65,3 +67,6 @@
 }
 .bb-canvas .react-flow__minimap .bb-canvas-mini-chat { fill: var(--background); stroke: var(--ring); }
 
+
+/* Frames without a color sit a little darker than the lifted surface. */
+.bb-canvas-frame-plain { background: color-mix(in oklab, var(--background) 55%, transparent); }
