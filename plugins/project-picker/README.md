@@ -16,8 +16,8 @@ bindings. Projects follow bb's order; "No project" is last.
 
 ## Overlay
 
-Open from any page or from the command palette. Use **Switch project…** or the
-project shortcuts inside the overlay. Submit starts the thread in the background;
+Open from any page or from the command palette. Use the project shortcuts
+inside the overlay. Submit starts the thread in the background;
 the success notification has an **Open** action. Failed submissions retain the
 draft. Close with Escape or a click on the backdrop. Escape first closes an open
 @-mention menu or project list; with Composer Vim, the first Escape returns to
