@@ -34,6 +34,27 @@ function Session({ session, kind, visible, focusRequest }: {
   }, [source, kind, sidebar, session]);
 
   const choose = (id: string) => { setProjectId(id); setPopup(false); setFocus(n => n + 1); };
+  const sectionRef = useRef<HTMLElement>(null);
+
+  // bb's editor calls preventDefault on every Escape, so this listens in the
+  // capture phase. It is added after composer-vim's capture listener, so an
+  // Escape that vim consumes (Insert → Normal) is already defaultPrevented;
+  // the next Escape reaches here and closes.
+  useEffect(() => {
+    if (!visible || popup) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) return;
+      const section = sectionRef.current;
+      if (!section || !(event.target instanceof Node) || !section.contains(event.target)) return;
+      // Let bb close its @-mention and command menu first.
+      if (section.querySelector("[data-promptbox-typeahead-menu]")) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      quickCompose.close();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [visible, popup]);
   useEffect(() => {
     if (!visible) { setPopup(false); return; }
     let cancelled = false;
@@ -56,12 +77,9 @@ function Session({ session, kind, visible, focusRequest }: {
   }, [visible, sdk, projectId]);
 
   return <div style={{ display: visible ? "flex" : "none", position: "fixed", inset: 0, zIndex: 50, justifyContent: "center", alignItems: "flex-start", padding: "15vh 16px 16px", background: "rgb(0 0 0 / .3)", overflowY: "auto" }} onPointerDown={e => { if (e.target === e.currentTarget) quickCompose.close(); }}>
-    <section role="dialog" aria-label={kind === "handoff" ? "Project Picker handoff" : "Project Picker quick compose"} style={{ width: "100%", maxWidth: 720, padding: 16, borderRadius: 12, background: "var(--background)", color: "var(--foreground)" }} onKeyDown={e => {
-      if (e.key === "Escape" && !e.defaultPrevented) { e.preventDefault(); if (popup) setPopup(false); else quickCompose.close(); }
-    }}>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+    <section role="dialog" aria-label={kind === "handoff" ? "Project Picker handoff" : "Project Picker quick compose"} style={{ width: "100%", maxWidth: 720, padding: 16, borderRadius: 12, background: "var(--background)", color: "var(--foreground)" }} ref={sectionRef}>
+      <div style={{ display: "flex", marginBottom: 8 }}>
         <button onClick={() => setPopup(value => !value)}>Switch project…</button>
-        <button aria-label="Close quick compose" onClick={() => quickCompose.close()}>Close</button>
       </div>
       <p style={{ fontSize: 12, color: "var(--muted-foreground)" }}>Project shortcuts reset execution and environment choices. Cycling starts from the last project chosen here.</p>
       {popup && <ProjectList selectedLabel="last chosen here" selectedId={projectId} onChoose={option => choose(option.id)} onClose={() => { setPopup(false); setFocus(n => n + 1); }} />}

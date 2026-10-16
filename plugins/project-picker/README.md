@@ -19,8 +19,9 @@ bindings. Projects follow bb's order; "No project" is last.
 Open from any page or from the command palette. Use **Switch project…** or the
 project shortcuts inside the overlay. Submit starts the thread in the background;
 the success notification has an **Open** action. Failed submissions retain the
-draft. Close with the Close button, Escape when not consumed by an editor/menu,
-or a click on the backdrop.
+draft. Close with Escape or a click on the backdrop. Escape first closes an open
+@-mention menu or project list; with Composer Vim, the first Escape returns to
+Normal mode and the next one closes.
 
 Dismissed sessions stay mounted to preserve drafts and selections, even if the
 session was untouched. A new-thread session lasts until submission or reload.
