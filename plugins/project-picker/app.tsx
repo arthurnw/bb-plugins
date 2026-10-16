@@ -1,3 +1,5 @@
+import { NamedWorktreeInputs } from "./named-worktree-inputs";
+import { PROVIDER_ID } from "./named-worktree";
 import { definePluginApp, useComposer, useSdk, type PluginComposerApi } from "@get-bb/plugin-sdk/app";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { cycle, filter, toOptions, type ProjectOption } from "./projects";
@@ -129,6 +131,7 @@ function ProjectPopup() {
 const emptyStyle = { padding: "6px 8px", fontSize: 12, color: "var(--muted-foreground)" };
 
 export default definePluginApp((app) => {
+  app.slots.experimental_environmentProviderInputs({ environmentProviderId: PROVIDER_ID, component: NamedWorktreeInputs });
   // The browser SDK client is only reachable through a hook, so commands that
   // run outside React use the one captured by the popup component tree.
   let sdkRef: Sdk | null = null;

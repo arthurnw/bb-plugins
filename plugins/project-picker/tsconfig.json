@@ -12,5 +12,5 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["server.ts", "app.tsx", "projects.ts", "projects.test.ts"]
+  "include": ["*.ts", "*.tsx"]
 }

@@ -8,17 +8,18 @@
   },
   "bb": {
     "name": "Project Picker",
-    "description": "Keyboard shortcuts to pick or cycle the project in the New thread composer.",
+    "description": "Project switching shortcuts and named Git worktrees in the New thread composer.",
     "branding": {
       "icon": "FolderOpen"
     },
     "server": "./server.ts",
     "app": "./app.tsx",
-    "skills": []
+    "skills": [],
+    "host": "./host.ts"
   },
   "scripts": {
     "build": "bb plugin build",
-    "test": "node --test projects.test.ts",
+    "test": "node --test *.test.ts",
     "typecheck": "tsc"
   },
   "devDependencies": {
@@ -26,5 +27,8 @@
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
   }
 }
