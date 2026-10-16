@@ -15,6 +15,16 @@ import { projectShortcut } from "./overlay-keys";
 import { PROVIDER_ID } from "./named-worktree";
 import { focusBranchName } from "./named-worktree-inputs";
 
+// The SDK exposes no draft state for the embedded composer. Check the editor
+// text, then bb's persisted draft (which also covers attachments). The storage
+// key format is bb-internal (0.46.1); if it changes, attachment-only drafts
+// re-seed their selections, but the draft itself is kept by draftKey.
+function hasDraft(section: HTMLElement | null, draftKey: string): boolean {
+  if (section?.querySelector("[data-promptbox-editor-content]")?.textContent?.trim()) return true;
+  try { return localStorage.getItem(`bb.promptbox.contents-plugin-draft-${encodeURIComponent(draftKey)}-3`) !== null; }
+  catch { return true; }
+}
+
 interface Bounds { left: number; width: number }
 
 // bb's desktop side panel can hold a native browser view, which draws above
@@ -68,6 +78,8 @@ function Session({ session, kind, visible, focusRequest }: {
 
   const choose = (id: string) => { setProjectId(id); setPopup(false); setFocus(n => n + 1); };
   const sectionRef = useRef<HTMLElement>(null);
+  const draftKey = session.sourceThreadId ? `project-picker-handoff:${session.sourceThreadId}` : "project-picker-compose";
+  useEffect(() => quickCompose.registerDraftCheck(kind, () => hasDraft(sectionRef.current, draftKey)), [kind, draftKey]);
 
   // bb's editor calls preventDefault on every Escape, so this listens in the
   // capture phase. It is added after composer-vim's capture listener, so an
@@ -126,7 +138,7 @@ function Session({ session, kind, visible, focusRequest }: {
         defaultEnvironment={namedWorktree ? { type: "provider", environmentProviderId: PROVIDER_ID, inputs: null }
           : projectId === source.projectId && source.environmentId ? { type: "reuse", environmentId: source.environmentId } : undefined}
         initialPrompt={session.sourceThreadId ? `@thread:${session.sourceThreadId} ` : undefined}
-        draftKey={session.sourceThreadId ? `project-picker-handoff:${session.sourceThreadId}` : "project-picker-compose"}
+        draftKey={draftKey}
         layout="document" focusRequest={visible ? focusRequest + focus : undefined}
         placeholder={kind === "handoff" ? "Hand off this thread" : "Start a new thread"}
         onSubmit={async request => {

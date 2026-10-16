@@ -24,8 +24,16 @@ draft. Close with Escape or a click on the backdrop. Escape first closes an open
 @-mention menu or project list; with Composer Vim, the first Escape returns to
 Normal mode and the next one closes.
 
-Dismissed sessions stay mounted to preserve drafts and selections, even if the
-session was untouched. A new-thread session lasts until submission or reload.
+Dismissed sessions stay mounted to preserve drafts and selections. On reopen, a
+new-thread session with a draft (text, mentions, or attachments) is resumed;
+one without a draft is replaced, so it re-seeds from the project in view and
+that project's remembered defaults, like `Mod+N`. A new-thread session with a
+draft lasts until submission or reload. The SDK exposes no draft state, so the
+overlay checks its editor text and bb's persisted draft entry.
+
+bb remembers a project's provider, model, and other execution defaults only for
+threads started from the app itself. Threads started from this overlay are
+plugin-created, so their choices do not become the project's defaults.
 Handoffs have per-source draft keys; opening a handoff on a different thread
 replaces the mounted handoff session. Text drafts persist across reloads, but
 execution/environment selections do not. Handoff mention pills use the SDK's
@@ -64,7 +72,8 @@ one resets **all** execution/environment selections. Consequently:
 
 Preserving every selection while changing projects, synchronizing the native
 project menu, and sharing rebindings require additional SDK support. This plugin
-uses no selectors or event simulation against bb's internal DOM.
+uses no event simulation against bb's internal DOM; it reads a few `data-promptbox-*`
+attributes for Escape handling, branch-name focus, and draft detection.
 
 ## Develop
 

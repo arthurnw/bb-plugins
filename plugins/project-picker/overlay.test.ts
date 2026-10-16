@@ -4,7 +4,8 @@ import { quickCompose } from "./overlay-store.ts";
 import { projectShortcut } from "./overlay-keys.ts";
 
 beforeEach(() => { quickCompose.finish("new-thread"); quickCompose.finish("handoff"); });
-test("dismissal and reopening preserve the session even after navigating", () => {
+test("a session with a draft survives reopening elsewhere", () => {
+  const unregister = quickCompose.registerDraftCheck("new-thread", () => true);
   quickCompose.open("new-thread", { projectId: "a", threadId: null });
   const session = quickCompose.getState().sessions["new-thread"];
   const focus = quickCompose.getState().focusRequest;
@@ -15,6 +16,20 @@ test("dismissal and reopening preserve the session even after navigating", () =>
   quickCompose.finish("new-thread");
   quickCompose.open("new-thread", { projectId: "b", threadId: null });
   assert.equal(quickCompose.getState().sessions["new-thread"]?.projectId, "b");
+  unregister();
+});
+test("a session without a draft re-seeds from the current project on open", () => {
+  const unregister = quickCompose.registerDraftCheck("new-thread", () => false);
+  quickCompose.open("new-thread", { projectId: "a", threadId: null });
+  const first = quickCompose.getState().sessions["new-thread"];
+  quickCompose.close();
+  quickCompose.open("new-thread", { projectId: "b", threadId: null });
+  const second = quickCompose.getState().sessions["new-thread"];
+  assert.notEqual(second, first);
+  assert.equal(second?.projectId, "b");
+  quickCompose.toggle("new-thread", { projectId: "c", threadId: null });
+  assert.equal(quickCompose.getState().active, null);
+  unregister();
 });
 test("handoff is scoped to its source and does not clear the new-thread session", () => {
   quickCompose.open("new-thread", { projectId: "a", threadId: null });
