@@ -39,3 +39,12 @@ test("overlay shortcuts respect platform, option-produced characters, and IME", 
   assert.equal(projectShortcut({ ...base, altKey: true, isComposing: true }, false), null);
   assert.equal(projectShortcut(base, false), null);
 });
+
+test("branch name shortcut matches Mod+Shift+B only", () => {
+  const b = { key: "b", code: "KeyB", ctrlKey: false, metaKey: false, altKey: false, shiftKey: true, isComposing: false };
+  assert.equal(projectShortcut({ ...b, metaKey: true }, true), "branch-name");
+  assert.equal(projectShortcut({ ...b, ctrlKey: true }, false), "branch-name");
+  assert.equal(projectShortcut({ ...b, ctrlKey: true }, true), null);
+  assert.equal(projectShortcut({ ...b, metaKey: true, altKey: true }, true), null);
+  assert.equal(projectShortcut({ ...b, metaKey: true, shiftKey: false }, true), null);
+});

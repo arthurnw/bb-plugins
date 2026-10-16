@@ -8,6 +8,7 @@ floating composer and thread handoff adapted from Sawyer Hood's Quick Compose.
 | Project Picker: switch project | `Mod+Shift+J` | Search projects; arrows or Ctrl+N/P (Ctrl+J/K) to move, Enter to pick, Esc to close. |
 | Project Picker: next project | `Alt+J` | Select the next project. |
 | Project Picker: previous project | `Alt+Shift+J` | Select the previous project. |
+| Project Picker: named worktree branch name | `Mod+Shift+B` | Switch the environment to Named worktree and focus its branch name field. In the overlay this re-seeds selections (like the project shortcuts) unless the field is already shown. |
 | Project Picker: quick compose | `Mod+Shift+L` | Toggle a floating New thread composer without navigating. |
 | Project Picker: hand off this thread | `Mod+Shift+H` | Open a composer mentioning the current thread and initially reusing its environment. |
 
@@ -35,7 +36,7 @@ or rebind its two commands to avoid collisions. This plugin does not disable or
 uninstall anything. Quick Chat is separate and need not be disabled.
 
 Rebind commands in Settings → Keyboard. Existing New thread commands retain IDs
-`plugin:project-picker/open`, `/next`, and `/previous`; overlay commands use
+`plugin:project-picker/open`, `/next`, `/previous`, and `/branch-name`; overlay commands use
 `plugin:project-picker/new-thread` and `/handoff`.
 
 ## SDK limits (bb 0.46.1 / SDK 0.6.49)

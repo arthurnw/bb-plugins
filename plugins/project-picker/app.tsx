@@ -1,6 +1,6 @@
 import { definePluginApp, useComposer, useSdk, type PluginComposerApi } from "@get-bb/plugin-sdk/app";
 import { PROVIDER_ID } from "./named-worktree";
-import { NamedWorktreeInputs } from "./named-worktree-inputs";
+import { focusBranchName, NamedWorktreeInputs } from "./named-worktree-inputs";
 import { registerOverlay } from "./overlay";
 import { ProjectList } from "./project-list";
 import { cycle, toOptions, type ProjectOption } from "./projects";
@@ -58,6 +58,25 @@ export default definePluginApp((app) => {
     const next = cycle(await loadOptions(sdkRef), currentProjectId(composer), step);
     if (next !== null) await composer.setSelection({ projectId: next.id });
   };
+
+  app.composer.experimental_registerCommand({
+    id: "branch-name",
+    title: "Project Picker: named worktree branch name",
+    defaultShortcut: { key: "b", mod: true, shift: true },
+    run: async ({ composer }) => {
+      if (composer.scope.kind !== "new-thread") return;
+      const within = (el: HTMLElement) => !el.closest("section[role=dialog]");
+      if (focusBranchName(within)) return;
+      const current = composer.selection?.environment;
+      const hostId = current?.type === "host" ? current.hostId
+        : current?.type === "provider" && current.machine?.type === "existing" ? current.machine.hostId : undefined;
+      await composer.setSelection({
+        environment: { type: "provider", environmentProviderId: PROVIDER_ID, inputs: null,
+          ...(hostId ? { machine: { type: "existing", hostId } } : {}) },
+      });
+      focusBranchName(within, 2000);
+    },
+  });
 
   app.composer.experimental_registerCommand({
     id: "next",

@@ -12,6 +12,8 @@ import { quickCompose, subscribe, type QuickComposeKind, type QuickComposeSessio
 import { cycle, toOptions } from "./projects";
 import { ProjectList } from "./project-list";
 import { projectShortcut } from "./overlay-keys";
+import { PROVIDER_ID } from "./named-worktree";
+import { focusBranchName } from "./named-worktree-inputs";
 
 function Session({ session, kind, visible, focusRequest }: {
   session: QuickComposeSession; kind: QuickComposeKind; visible: boolean; focusRequest: number;
@@ -24,6 +26,7 @@ function Session({ session, kind, visible, focusRequest }: {
   const [projectId, setProjectId] = useState(session.projectId);
   const [popup, setPopup] = useState(false);
   const [focus, setFocus] = useState(0);
+  const [namedWorktree, setNamedWorktree] = useState(false);
   const changing = useRef(false);
   useEffect(() => {
     if (source || (kind === "handoff" && sidebar.status === "loading")) return;
@@ -64,6 +67,14 @@ function Session({ session, kind, visible, focusRequest }: {
       event.preventDefault();
       event.stopImmediatePropagation();
       if (action === "open") { setPopup(value => !value); return; }
+      if (action === "branch-name") {
+        const section = sectionRef.current;
+        if (!section) return;
+        const within = (el: HTMLElement) => section.contains(el);
+        // Re-seeding the environment resets the other selections, so only do it when the field is not already shown.
+        if (!focusBranchName(within)) { setNamedWorktree(true); focusBranchName(within, 2000); }
+        return;
+      }
       if (changing.current) return;
       changing.current = true;
       void sdk.projects.list({ includePersonal: true }).then(projects => {
@@ -81,7 +92,8 @@ function Session({ session, kind, visible, focusRequest }: {
       {popup && <ProjectList selectedLabel="last chosen here" selectedId={projectId} onChoose={option => choose(option.id)} onClose={() => { setPopup(false); setFocus(n => n + 1); }} />}
       {source && <NewThreadComposer
         defaultProjectId={projectId ?? undefined}
-        defaultEnvironment={projectId === source.projectId && source.environmentId ? { type: "reuse", environmentId: source.environmentId } : undefined}
+        defaultEnvironment={namedWorktree ? { type: "provider", environmentProviderId: PROVIDER_ID, inputs: null }
+          : projectId === source.projectId && source.environmentId ? { type: "reuse", environmentId: source.environmentId } : undefined}
         initialPrompt={session.sourceThreadId ? `@thread:${session.sourceThreadId} ` : undefined}
         draftKey={session.sourceThreadId ? `project-picker-handoff:${session.sourceThreadId}` : "project-picker-compose"}
         layout="document" focusRequest={visible ? focusRequest + focus : undefined}
