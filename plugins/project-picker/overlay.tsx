@@ -89,7 +89,6 @@ function Session({ session, kind, visible, focusRequest }: {
 
   return <div style={{ display: visible ? "flex" : "none", position: "fixed", inset: 0, zIndex: 50, justifyContent: "center", alignItems: "flex-start", padding: "15vh 16px 16px", background: "rgb(0 0 0 / .3)", overflowY: "auto" }} onPointerDown={e => { if (e.target === e.currentTarget) quickCompose.close(); }}>
     <section role="dialog" aria-label={kind === "handoff" ? "Project Picker handoff" : "Project Picker quick compose"} style={{ width: "100%", maxWidth: 720, padding: 16, borderRadius: 12, background: "var(--background)", color: "var(--foreground)" }} ref={sectionRef}>
-      {popup && <ProjectList selectedLabel="last chosen here" selectedId={projectId} onChoose={option => choose(option.id)} onClose={() => { setPopup(false); setFocus(n => n + 1); }} />}
       {source && <NewThreadComposer
         defaultProjectId={projectId ?? undefined}
         defaultEnvironment={namedWorktree ? { type: "provider", environmentProviderId: PROVIDER_ID, inputs: null }
@@ -106,6 +105,9 @@ function Session({ session, kind, visible, focusRequest }: {
           } catch (error) { toast.error(`Could not start thread: ${String(error)}`); throw error; }
         }}
       />}
+      {popup && <div style={{ marginTop: 8, border: "1px solid var(--border)", borderRadius: 8, background: "var(--popover, var(--background))", overflow: "hidden" }}>
+        <ProjectList selectedLabel="last chosen here" selectedId={projectId} onChoose={option => choose(option.id)} onClose={() => { setPopup(false); setFocus(n => n + 1); }} />
+      </div>}
     </section>
   </div>;
 }
