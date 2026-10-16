@@ -24,6 +24,8 @@ export type ChatNodeData = {
   focusRequest: number;
   /** The canvas zoom when it last came to rest. */
   zoom: number;
+  /** For a child thread: its parent's title. */
+  parentTitle: string | null;
 };
 export type ChatFlowNode = Node<ChatNodeData, "chat">;
 
@@ -121,6 +123,11 @@ export const ChatNode = memo(function ChatNode({ data }: NodeProps<ChatFlowNode>
           ))
         )}
       </div>
+      {data.parentTitle !== null && !collapsed ? (
+        <div className="shrink-0 truncate border-b border-border px-3 py-1 text-[11px] text-muted-foreground">
+          ↳ child of <span className="text-foreground">{data.parentTitle}</span>
+        </div>
+      ) : null}
       {focused && !collapsed ? (
         <svg
           aria-hidden

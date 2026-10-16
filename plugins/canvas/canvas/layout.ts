@@ -1,5 +1,6 @@
 // Pure placement logic for the canvas: automatic arrangement, placing new
 // threads next to their relatives, and group frame bounds.
+import type { ArrangeStyle } from "./shared.ts";
 
 export interface Point {
   x: number;
@@ -19,6 +20,8 @@ export interface LayoutThread {
   sourceThreadId: string | null;
   createdAt: number;
   latestAttentionAt: number;
+  /** Card height when not CARD_H: a parent card listing its child threads. */
+  height?: number;
 }
 
 export const CARD_W = 300;
@@ -37,8 +40,6 @@ function relativeOf(thread: LayoutThread, ids: ReadonlySet<string>): string | nu
   return null;
 }
 
-import type { ArrangeStyle } from "./shared.ts";
-
 export interface ArrangeOptions {
   style: ArrangeStyle;
   /** Max columns for gridColumns, max rows for gridRows. */
@@ -50,10 +51,40 @@ export const DEFAULT_ARRANGE: ArrangeOptions = { style: "tree", gridSize: 3 };
 /** Gap between cards in the flat styles, which draw no tree edges between neighbors. */
 const FLAT_GAP_X = 24;
 
+/** Cards are a fixed width; a parent card grows taller to list its children. */
+const heightOf = (thread: LayoutThread | undefined) => thread?.height ?? CARD_H;
+
 interface Block {
   positions: Map<string, Point>;
   width: number;
   height: number;
+}
+
+/** Turns grid cells into positions, sizing each row to its tallest card. */
+function placeCells(
+  cells: ReadonlyMap<string, { col: number; row: number }>,
+  heights: ReadonlyMap<string, number>,
+  columnWidth: number,
+): Block {
+  const rowHeights: number[] = [];
+  let cols = 1;
+  for (const [id, { col, row }] of cells) {
+    cols = Math.max(cols, col + 1);
+    rowHeights[row] = Math.max(rowHeights[row] ?? 0, heights.get(id) ?? CARD_H);
+  }
+  const rowTops: number[] = [];
+  let y = 0;
+  for (let row = 0; row < rowHeights.length; row += 1) {
+    rowTops[row] = y;
+    y += (rowHeights[row] ?? 0) + GAP_Y;
+  }
+  const positions = new Map<string, Point>();
+  for (const [id, { col, row }] of cells) positions.set(id, { x: col * columnWidth, y: rowTops[row] ?? 0 });
+  return {
+    positions,
+    width: cols * columnWidth - (columnWidth - CARD_W),
+    height: Math.max(CARD_H, y - GAP_Y),
+  };
 }
 
 /**
@@ -63,14 +94,13 @@ interface Block {
  * children still follow their parents.
  */
 function layoutGroup(threads: readonly LayoutThread[], options: ArrangeOptions = DEFAULT_ARRANGE): Block {
-  const tree = layoutTree(threads);
-  if (options.style === "tree") return tree;
-  const order = [...tree.positions.keys()];
+  const heights = new Map(threads.map((thread) => [thread.id, heightOf(thread)]));
+  const tree = treeCells(threads);
+  if (options.style === "tree") return placeCells(tree, heights, CARD_W + GAP_X);
+  const order = [...tree.keys()];
   const size = Math.max(1, Math.round(options.gridSize));
   const cell = (index: number): { col: number; row: number } => {
     switch (options.style) {
-      case "column":
-        return { col: 0, row: index };
       case "row":
         return { col: index, row: 0 };
       case "gridColumns":
@@ -81,23 +111,11 @@ function layoutGroup(threads: readonly LayoutThread[], options: ArrangeOptions =
         return { col: 0, row: index };
     }
   };
-  const positions = new Map<string, Point>();
-  let cols = 1;
-  let rows = 1;
-  order.forEach((id, index) => {
-    const { col, row } = cell(index);
-    cols = Math.max(cols, col + 1);
-    rows = Math.max(rows, row + 1);
-    positions.set(id, { x: col * (CARD_W + FLAT_GAP_X), y: row * (CARD_H + GAP_Y) });
-  });
-  return {
-    positions,
-    width: cols * (CARD_W + FLAT_GAP_X) - FLAT_GAP_X,
-    height: rows * (CARD_H + GAP_Y) - GAP_Y,
-  };
+  return placeCells(new Map(order.map((id, index) => [id, cell(index)])), heights, CARD_W + FLAT_GAP_X);
 }
 
-function layoutTree(threads: readonly LayoutThread[]): Block {
+/** Tree cells in reading order: depth is the column; each leaf ends a row. */
+function treeCells(threads: readonly LayoutThread[]): Map<string, { col: number; row: number }> {
   const ids = new Set(threads.map((thread) => thread.id));
   const children = new Map<string, LayoutThread[]>();
   const roots: LayoutThread[] = [];
@@ -109,13 +127,11 @@ function layoutTree(threads: readonly LayoutThread[]): Block {
   roots.sort((a, b) => b.latestAttentionAt - a.latestAttentionAt);
   for (const list of children.values()) list.sort((a, b) => a.createdAt - b.createdAt);
 
-  const positions = new Map<string, Point>();
+  const cells = new Map<string, { col: number; row: number }>();
   let row = 0;
-  let maxDepth = 0;
   const visit = (thread: LayoutThread, depth: number) => {
-    if (positions.has(thread.id)) return; // cycles in bad data
-    maxDepth = Math.max(maxDepth, depth);
-    positions.set(thread.id, { x: depth * (CARD_W + GAP_X), y: row * (CARD_H + GAP_Y) });
+    if (cells.has(thread.id)) return; // cycles in bad data
+    cells.set(thread.id, { col: depth, row });
     const kids = children.get(thread.id) ?? [];
     if (kids.length === 0) {
       row += 1;
@@ -125,13 +141,8 @@ function layoutTree(threads: readonly LayoutThread[]): Block {
   };
   for (const root of roots) visit(root, 0);
   // Threads only reachable through a cycle.
-  for (const thread of threads) if (!positions.has(thread.id)) visit(thread, 0);
-
-  return {
-    positions,
-    width: (maxDepth + 1) * (CARD_W + GAP_X) - GAP_X,
-    height: Math.max(row, 1) * (CARD_H + GAP_Y) - GAP_Y,
-  };
+  for (const thread of threads) if (!cells.has(thread.id)) visit(thread, 0);
+  return cells;
 }
 
 /**
@@ -197,15 +208,11 @@ function overlaps(a: Rect, b: Rect): boolean {
   return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 }
 
-function cardRect(point: Point): Rect {
-  return { ...point, width: CARD_W, height: CARD_H };
-}
-
-/** Moves `start` down in card steps until it no longer overlaps `taken`. */
-function firstFree(start: Point, taken: readonly Rect[]): Point {
+/** Moves `start` down until a card of `height` there no longer overlaps `taken`. */
+function firstFree(start: Point, height: number, taken: readonly Rect[]): Point {
   const point = { ...start };
   for (let step = 0; step < 500; step += 1) {
-    const rect = { ...cardRect(point), height: CARD_H + GAP_Y };
+    const rect = { ...point, width: CARD_W, height: height + GAP_Y };
     const hit = taken.find((other) => overlaps(rect, other));
     if (hit === undefined) return point;
     point.y = hit.y + hit.height + GAP_Y;
@@ -223,8 +230,10 @@ export function placeNew(
   placed: ReadonlyMap<string, Point>,
   obstacles: readonly Rect[] = [],
 ): Map<string, Point> {
+  const byId = new Map(threads.map((thread) => [thread.id, thread]));
+  const rectOf = (id: string, point: Point): Rect => ({ ...point, width: CARD_W, height: heightOf(byId.get(id)) });
   const positions = new Map(placed);
-  const taken: Rect[] = [...obstacles, ...[...positions.values()].map(cardRect)];
+  const taken: Rect[] = [...obstacles, ...[...positions].map(([id, point]) => rectOf(id, point))];
   const ids = new Set(threads.map((thread) => thread.id));
   // Parents before children so a new child can sit beside a new parent.
   const pending = threads
@@ -241,13 +250,11 @@ export function placeNew(
     if (anchor !== undefined) {
       start = { x: anchor.x + CARD_W + GAP_X, y: anchor.y };
     } else {
-      const siblings = [...positions]
-        .filter(([id]) => groupOf.get(id) === thread.group)
-        .map(([, point]) => point);
+      const siblings = [...positions].filter(([id]) => groupOf.get(id) === thread.group);
       if (siblings.length > 0) {
-        const left = Math.min(...siblings.map((point) => point.x));
-        const bottom = Math.max(...siblings.map((point) => point.y));
-        start = { x: left, y: bottom + CARD_H + GAP_Y };
+        const left = Math.min(...siblings.map(([, point]) => point.x));
+        const bottom = Math.max(...siblings.map(([id, point]) => point.y + heightOf(byId.get(id))));
+        start = { x: left, y: bottom + GAP_Y };
       } else {
         const right = taken.length === 0 ? 0 : Math.max(...taken.map((rect) => rect.x + rect.width));
         const top = taken.length === 0 ? 0 : Math.min(...taken.map((rect) => rect.y));
@@ -257,20 +264,20 @@ export function placeNew(
         };
       }
     }
-    const point = firstFree(start, taken);
+    const point = firstFree(start, heightOf(thread), taken);
     positions.set(thread.id, point);
-    taken.push(cardRect(point));
+    taken.push(rectOf(thread.id, point));
   }
   return positions;
 }
 
-/** The frame drawn around a group's cards. */
-export function frameBounds(points: readonly Point[]): Rect | null {
-  if (points.length === 0) return null;
-  const left = Math.min(...points.map((point) => point.x));
-  const top = Math.min(...points.map((point) => point.y));
-  const right = Math.max(...points.map((point) => point.x + CARD_W));
-  const bottom = Math.max(...points.map((point) => point.y + CARD_H));
+/** The frame drawn around a group's cards; a card's height defaults to CARD_H. */
+export function frameBounds(cards: readonly (Point & { height?: number })[]): Rect | null {
+  if (cards.length === 0) return null;
+  const left = Math.min(...cards.map((card) => card.x));
+  const top = Math.min(...cards.map((card) => card.y));
+  const right = Math.max(...cards.map((card) => card.x + CARD_W));
+  const bottom = Math.max(...cards.map((card) => card.y + (card.height ?? CARD_H)));
   return {
     x: left - FRAME_PAD,
     y: top - FRAME_PAD - FRAME_HEADER,

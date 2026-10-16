@@ -16,6 +16,7 @@ import { FRAME_COLORS, NOTE_COLORS, type FrameColor, type Grouping } from "./sha
 import { ChatNode, type ChatFlowNode } from "./ChatNode.tsx";
 import { threadTarget, useArchive } from "./archive.ts";
 import { useCanvasActions } from "./context";
+import { CHILD_ROW_H } from "./children.ts";
 import { CARD_H, CARD_W, FRAME_HEADER } from "./layout.ts";
 import { BUCKET_LABEL, type Bucket } from "./status.ts";
 
@@ -36,7 +37,20 @@ export type ThreadNodeData = {
   compact: boolean;
   /** "now", "4m", …; a string so the card re-renders only when it changes. */
   ageLabel: string;
-  childCount: number;
+  /** Child threads folded into this card, in tree order. */
+  children: ChildRowData[];
+  /** Children collapsed to a summary chip. */
+  folded: boolean;
+  /** Card height: CARD_H, plus the child list when unfolded. */
+  height: number;
+};
+export type ChildRowData = {
+  id: string;
+  depth: number;
+  title: string;
+  bucket: Bucket;
+  ageLabel: string;
+  pinned: boolean;
 };
 export type FrameNodeData = {
   grouping: Grouping;
@@ -109,7 +123,7 @@ function activityParts(thread: PluginSidebarThread): string[] {
 }
 
 export const ThreadNode = memo(function ThreadNode({ data }: NodeProps<ThreadFlowNode>) {
-  const { thread, bucket, dimmed, ageLabel, childCount } = data;
+  const { thread, bucket, dimmed, ageLabel, children, folded } = data;
   const actions = useCanvasActions();
   const far = useIsFar();
   const environment = thread.environment;
@@ -126,7 +140,7 @@ export const ThreadNode = memo(function ThreadNode({ data }: NodeProps<ThreadFlo
   return (
     <ThreadActionsContextMenu thread={target}>
       <div
-        style={{ width: CARD_W, height: CARD_H }}
+        style={{ width: CARD_W, height: data.height }}
         onDoubleClick={(event) => {
           event.stopPropagation();
           actions.open(thread.id, event.metaKey || event.ctrlKey);
@@ -146,10 +160,14 @@ export const ThreadNode = memo(function ThreadNode({ data }: NodeProps<ThreadFlo
           <div className="flex h-full items-center gap-3 px-4">
             <div className="line-clamp-3 min-w-0 flex-1 text-2xl font-semibold leading-tight">
               {thread.displayTitle}
+              {children.length > 0 ? (
+                <span className="font-normal text-muted-foreground"> · {children.length} children</span>
+              ) : null}
             </div>
           </div>
         ) : (
-          <div className="flex h-full flex-col gap-1.5 px-3 py-2.5">
+          <>
+          <div style={{ height: CARD_H }} className="flex shrink-0 flex-col gap-1.5 px-3 py-2.5">
             <div className="flex min-w-0 items-start gap-2">
               <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
                 <ThreadStatusGlyph indicator={thread.indicator} archived={thread.isArchived} size="compact" />
@@ -192,12 +210,7 @@ export const ThreadNode = memo(function ThreadNode({ data }: NodeProps<ThreadFlo
                 <span className="truncate text-muted-foreground">· {activity.join(" · ")}</span>
               ) : null}
               <span className="ml-auto flex shrink-0 items-center gap-1.5">
-                {childCount > 0 ? (
-                  <span className="flex items-center gap-0.5 text-muted-foreground" title={`${childCount} child threads`}>
-                    <Icon name="GitFork" className="size-3" />
-                    {childCount}
-                  </span>
-                ) : null}
+                {children.length > 0 && folded ? <ChildChip children={children} onClick={() => actions.toggleFold(thread.id)} /> : null}
                 {archive === null ? null : (
                   <button
                     type="button"
@@ -236,11 +249,106 @@ export const ThreadNode = memo(function ThreadNode({ data }: NodeProps<ThreadFlo
               </span>
             </div>
           </div>
+          {children.length > 0 && !folded ? (
+            <ChildList children={children} onFold={() => actions.toggleFold(thread.id)} onOpen={actions.openChild} />
+          ) : null}
+          </>
         )}
       </div>
     </ThreadActionsContextMenu>
   );
 });
+
+function childSummary(children: readonly ChildRowData[]): string {
+  const working = children.filter((child) => child.bucket === "working").length;
+  const needs = children.filter((child) => child.bucket === "needs-you").length;
+  return [
+    `${children.length} ${children.length === 1 ? "child" : "children"}`,
+    working > 0 ? `${working} working` : null,
+    needs > 0 ? `${needs} need${needs === 1 ? "s" : ""} you` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+const MAX_CHIP_DOTS = 8;
+
+/** Folded children: a dot per child and a summary, amber when one needs you. */
+function ChildChip({ children, onClick }: { children: readonly ChildRowData[]; onClick(): void }) {
+  const needsYou = children.some((child) => child.bucket === "needs-you");
+  return (
+    <button
+      type="button"
+      title="Show child threads (z)"
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+      onDoubleClick={(event) => event.stopPropagation()}
+      className={cn(
+        "nodrag -my-1 flex max-w-44 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] hover:bg-state-hover",
+        needsYou ? "border-[color:var(--status-needs-you)]" : "border-border",
+      )}
+    >
+      <span className="flex shrink-0 gap-0.5">
+        {children.slice(0, MAX_CHIP_DOTS).map((child) => (
+          <span key={child.id} className="size-1.5 rounded-full" style={{ background: `var(--status-${child.bucket})` }} />
+        ))}
+      </span>
+      <span className="truncate">{childSummary(children)}</span>
+    </button>
+  );
+}
+
+/** Unfolded children: one row each, grandchildren indented under their parent. */
+function ChildList({
+  children,
+  onFold,
+  onOpen,
+}: {
+  children: readonly ChildRowData[];
+  onFold(): void;
+  onOpen(threadId: string): void;
+}) {
+  return (
+    <div className="nodrag flex min-h-0 flex-1 flex-col border-t border-dashed border-[color:color-mix(in_oklab,var(--c)_40%,var(--border))] px-1.5 pb-1 pt-1">
+      {children.map((child) => (
+        <button
+          key={child.id}
+          type="button"
+          title={`${child.title} (${BUCKET_LABEL[child.bucket].toLowerCase()}): open its chat`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpen(child.id);
+          }}
+          onDoubleClick={(event) => event.stopPropagation()}
+          style={{ height: CHILD_ROW_H, paddingLeft: 6 + (child.depth - 1) * 14 }}
+          className="group/row flex w-full shrink-0 items-center gap-2 rounded-md pr-1.5 text-left text-xs hover:bg-state-hover"
+        >
+          {child.depth > 1 ? <span className="-ml-1 text-muted-foreground">↳</span> : null}
+          <span className="size-2 shrink-0 rounded-full" style={{ background: `var(--status-${child.bucket})` }} />
+          <span className="min-w-0 flex-1 truncate">{child.title}</span>
+          {child.pinned ? <Icon name="Pin" className="size-3 shrink-0 fill-current text-foreground/70" /> : null}
+          <span className="shrink-0 tabular-nums text-muted-foreground">{child.ageLabel}</span>
+          <Icon name="ArrowUpRight" className="size-3 shrink-0 text-muted-foreground opacity-0 group-hover/row:opacity-100" />
+        </button>
+      ))}
+      <button
+        type="button"
+        title="Fold child threads (z)"
+        onClick={(event) => {
+          event.stopPropagation();
+          onFold();
+        }}
+        onDoubleClick={(event) => event.stopPropagation()}
+        className="mt-auto flex h-[22px] shrink-0 items-center justify-between rounded-md px-1.5 text-[11px] text-muted-foreground hover:bg-state-hover"
+      >
+        <span>▾ fold</span>
+        <span>{childSummary(children)}</span>
+      </button>
+    </div>
+  );
+}
 
 const FRAME_TINT: Record<FrameColor, string> = {
   none: "border-border bg-muted/30",

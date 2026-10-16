@@ -143,3 +143,24 @@ test("arrangeGroup closes gaps but keeps the frame's top-left in place", () => {
   assert.deepEqual(arranged.get("kid"), { x: 500, y: 300 + CARD_H + 20 });
   assert.deepEqual(arranged.get("b"), { x: 500, y: 300 + 2 * (CARD_H + 20) });
 });
+
+test("a tall parent card pushes the next row down by its height", () => {
+  const tall = [thread("a", "p", { latestAttentionAt: 2, height: 300 }), thread("b", "p", { latestAttentionAt: 1 })];
+  const positions = autoLayout(tall, { style: "column", gridSize: 3 });
+  assert.equal(positions.get("b")!.y - positions.get("a")!.y, 300 + 20);
+  // In a grid row, the tallest card sets the row's height.
+  const grid = [...tall, thread("c", "p")];
+  const gridPositions = autoLayout(grid, { style: "gridColumns", gridSize: 2 });
+  assert.equal(gridPositions.get("c")!.y - gridPositions.get("a")!.y, 300 + 20);
+});
+
+test("placeNew puts a new card below a tall sibling, not over it", () => {
+  const threads = [thread("tall", "p", { height: 400 }), thread("new", "p", { createdAt: 5 })];
+  const positions = placeNew(threads, new Map([["tall", { x: 0, y: 0 }]]));
+  assert.ok(positions.get("new")!.y >= 400);
+});
+
+test("frameBounds uses each card's height", () => {
+  const bounds = frameBounds([{ x: 0, y: 0, height: 500 }])!;
+  assert.ok(bounds.y + bounds.height > 500);
+});

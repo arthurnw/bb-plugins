@@ -5,7 +5,6 @@ import {
   Background,
   BackgroundVariant,
   Controls,
-  MarkerType,
   MiniMap,
   Panel,
   ReactFlow,
@@ -43,6 +42,7 @@ import { CARD_H, CARD_W, DEFAULT_ARRANGE, arrangeGroup, autoLayout, frameBounds,
 import { DIRECTION_KEYS, nearestInDirection, nearestTo, type Direction, type NavItem } from "./nav.ts";
 import { nodeTypes, type CanvasNode, type FrameNodeData } from "./nodes";
 import { matchesShortcut, shortcutLabel, useArchive, useArchiveShortcut } from "./archive.ts";
+import { childForest, childListHeight } from "./children.ts";
 import { useReleaseChatFocus } from "./chatFocus.ts";
 import { useCollapseHostSidebar } from "./hostSidebar.ts";
 import { useOpenUrlRequests } from "./openUrl.ts";
@@ -270,6 +270,7 @@ const SHORTCUTS: [string, string][] = [
   ["n / ⇧N", "Next / previous thread that needs you"],
   ["m", "Move the thread to a section"],
   ["a", "Rearrange the selected thread's frame"],
+  ["z", "Fold or unfold a card's child threads"],
   ["1 2 3", "Group by project, section, machine"],
   ["c / f", "Center the selection / fit everything"],
   ["/", "Filter"],
@@ -463,6 +464,43 @@ function CanvasInner() {
   const groups = useMemo(() => new Map(threads.map((thread) => [thread.id, groupOf(thread)])), [threads, groupOf]);
   const buckets = useMemo(() => new Map(threads.map((thread) => [thread.id, bucketOf(thread)])), [threads]);
 
+  // Child threads fold into their top-level ancestor's card instead of
+  // getting cards of their own.
+  const forest = useMemo(() => childForest(threads), [threads]);
+  const topLevel = useMemo(() => threads.filter((thread) => !forest.rootOf.has(thread.id)), [threads, forest]);
+  const rootOf = useCallback((id: string) => forest.rootOf.get(id) ?? id, [forest]);
+  const foldedKey = `${pluginId}:folded`;
+  const [folded, setFolded] = useState<ReadonlySet<string>>(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem(foldedKey) ?? "[]") as string[]);
+    } catch {
+      return new Set();
+    }
+  });
+  const toggleFold = useCallback(
+    (id: string) =>
+      setFolded((current) => {
+        const next = new Set(current);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        try {
+          localStorage.setItem(foldedKey, JSON.stringify([...next]));
+        } catch {
+          // Blocked storage only loses the fold state on reload.
+        }
+        return next;
+      }),
+    [foldedKey],
+  );
+  /** A card's height: taller when it lists its children. */
+  const cardHeight = useCallback(
+    (id: string) => {
+      const rows = forest.rowsOf.get(id);
+      return rows !== undefined && !folded.has(id) ? CARD_H + childListHeight(rows.length) : CARD_H;
+    },
+    [forest, folded],
+  );
+
   const arrangement = layout?.arrangements[grouping] ?? EMPTY_ARRANGEMENT;
   // Live positions: stored ones, plus computed spots for threads never placed.
   const [positions, setPositions] = useState<Record<string, Point>>({});
@@ -560,13 +598,14 @@ function CanvasInner() {
   );
 
   const layoutThreads = useMemo(
-    () => threads.map((thread) => ({ ...thread, group: groups.get(thread.id)?.key ?? NO_GROUP })),
-    [threads, groups],
+    () =>
+      topLevel.map((thread) => ({ ...thread, group: groups.get(thread.id)?.key ?? NO_GROUP, height: cardHeight(thread.id) })),
+    [topLevel, groups, cardHeight],
   );
 
   useEffect(() => {
     if (layout === null || dragging.current) return;
-    const ids = new Set(threads.map((thread) => thread.id));
+    const ids = new Set(layoutThreads.map((thread) => thread.id));
     const stored = new Map(Object.entries(arrangement.positions).filter(([id]) => ids.has(id)));
     const noteRects = arrangement.notes.map((note) => ({ x: note.x, y: note.y, width: note.width, height: note.height }));
     const placed =
@@ -576,22 +615,27 @@ function CanvasInner() {
     setPositions(Object.fromEntries(placed));
     const fresh = [...placed].filter(([id]) => !stored.has(id));
     if (fresh.length > 0 && sidebar.status === "ready") save(Object.fromEntries(fresh));
-  }, [layout, arrangement, threads, layoutThreads, sidebar.status, save]);
+  }, [layout, arrangement, layoutThreads, sidebar.status, save]);
 
   // Frames with their members and bounds; also what Shift+HJKL moves between.
   const frames = useMemo(() => {
     const byGroup = new Map<string, { group: Group; members: PluginSidebarThread[] }>();
-    for (const thread of threads) {
+    for (const thread of topLevel) {
       const group = groups.get(thread.id)!;
       const entry = byGroup.get(group.key) ?? { group, members: [] };
       entry.members.push(thread);
       byGroup.set(group.key, entry);
     }
     return [...byGroup.values()].flatMap(({ group, members }) => {
-      const bounds = frameBounds(members.flatMap((thread) => positions[thread.id] ?? []));
+      const bounds = frameBounds(
+        members.flatMap((thread) => {
+          const point = positions[thread.id];
+          return point === undefined ? [] : [{ ...point, height: cardHeight(thread.id) }];
+        }),
+      );
       return bounds === null ? [] : [{ group, members, bounds }];
     });
-  }, [threads, groups, positions]);
+  }, [topLevel, groups, positions, cardHeight]);
 
   const newThreadIn = useCallback(
     (frame: { grouping: Grouping; projectId: string | null; sectionId: string | null; groupKey: string }) => {
@@ -624,6 +668,7 @@ function CanvasInner() {
   // togglePin and arrangeFrame are defined further down, after the helpers they need.
   const togglePinRef = useRef<(threadId: string) => void>(() => undefined);
   const arrangeFrameRef = useRef<(groupKey: string) => void>(() => undefined);
+  const openChildRef = useRef<(threadId: string) => void>(() => undefined);
   const actions = useMemo<CanvasActions>(
     () => ({
       select: (id) => setSelectedId(id),
@@ -671,6 +716,8 @@ function CanvasInner() {
       },
       releaseFocus,
       togglePin: (threadId) => togglePinRef.current(threadId),
+      toggleFold,
+      openChild: (threadId) => openChildRef.current(threadId),
       arrangeFrame: (groupKey) => arrangeFrameRef.current(groupKey),
       deleteNote: (id) => {
         record();
@@ -678,19 +725,15 @@ function CanvasInner() {
         rpc.call("note_delete", { origin: CLIENT_ID, grouping, id }).catch(() => undefined);
       },
     }),
-    [navigate, rpc, sdk, setLayout, setNotes, setChats, record, grouping, newThreadIn, releaseFocus],
+    [navigate, rpc, sdk, setLayout, setNotes, setChats, record, grouping, newThreadIn, releaseFocus, toggleFold],
   );
 
   // Nodes derived from threads, positions, and notes.
   const derived = useMemo<CanvasNode[]>(() => {
     const lowered = query.trim();
-    const childCounts = new Map<string, number>();
-    for (const thread of threads) {
-      if (thread.parentThreadId !== null) {
-        childCounts.set(thread.parentThreadId, (childCounts.get(thread.parentThreadId) ?? 0) + 1);
-      }
-    }
     const result: CanvasNode[] = [];
+    const threadById = new Map(threads.map((thread) => [thread.id, thread]));
+    const rowsOf = (id: string) => forest.rowsOf.get(id) ?? [];
     const pinnedIds = new Set(chats.map((chat) => chat.threadId));
     for (const { group, members, bounds } of frames) {
       const frameKey = `${grouping}:${group.key}`;
@@ -710,33 +753,57 @@ function CanvasInner() {
           sectionId: group.sectionId,
           name: group.name,
           count: members.length,
-          attention: members.filter((thread) => buckets.get(thread.id) === "needs-you").length,
+          attention: members
+            .flatMap((thread) => [thread.id, ...rowsOf(thread.id).map((row) => row.id)])
+            .filter((id) => buckets.get(id) === "needs-you").length,
           color: layout?.frameColors[frameKey] ?? "none",
           width: bounds.width,
           height: bounds.height,
         },
       });
     }
-    for (const thread of threads) {
+    for (const thread of topLevel) {
       const position = positions[thread.id];
       if (position === undefined) continue;
       const bucket = buckets.get(thread.id) ?? "idle";
+      const height = cardHeight(thread.id);
+      const children = rowsOf(thread.id).flatMap((row) => {
+        const child = threadById.get(row.id);
+        return child === undefined
+          ? []
+          : [
+              {
+                id: child.id,
+                depth: row.depth,
+                title: child.displayTitle,
+                bucket: buckets.get(child.id) ?? "idle",
+                ageLabel: age(child.updatedAt, now),
+                pinned: pinnedIds.has(child.id),
+              },
+            ];
+      });
+      const groupName = groups.get(thread.id)?.name ?? "";
+      const anyMatch =
+        matches(thread, groupName, lowered) ||
+        children.some((child) => matches(threadById.get(child.id)!, groupName, lowered));
       result.push({
         id: thread.id,
         type: "thread",
         position,
         width: CARD_W,
-        height: CARD_H,
+        height,
         selectable: false,
         data: {
           thread,
           bucket,
-          highlighted: thread.id === selectedId,
+          highlighted: selectedId !== null && rootOf(selectedId) === thread.id,
           pinned: pinnedIds.has(thread.id),
           compact,
           ageLabel: age(thread.updatedAt, now),
-          childCount: childCounts.get(thread.id) ?? 0,
-          dimmed: hidden.has(bucket) || !matches(thread, groups.get(thread.id)?.name ?? "", lowered),
+          children,
+          folded: folded.has(thread.id),
+          height,
+          dimmed: hidden.has(bucket) || !anyMatch,
         },
       });
     }
@@ -773,11 +840,13 @@ function CanvasInner() {
           focused: chat.threadId === focusedChat,
           focusRequest: chatFocusRequests[chat.threadId] ?? 0,
           zoom: settledZoom,
+          parentTitle:
+            thread.parentThreadId === null ? null : (threadById.get(thread.parentThreadId)?.displayTitle ?? null),
         },
       });
     }
     return result;
-  }, [compact, threads, frames, positions, notes, chats, focusedChat, chatFocusRequests, settledZoom, selectedId, groups, buckets, hidden, query, now, grouping, layout?.frameColors]);
+  }, [compact, threads, topLevel, forest, folded, cardHeight, rootOf, frames, positions, notes, chats, focusedChat, chatFocusRequests, settledZoom, selectedId, groups, buckets, hidden, query, now, grouping, layout?.frameColors]);
 
   // React Flow owns transient state (measured size, selection, drag); merge
   // it into each rebuild.
@@ -814,8 +883,8 @@ function CanvasInner() {
   }, [derived]);
 
   const membersOf = useCallback(
-    (groupKey: string) => threads.filter((thread) => groups.get(thread.id)?.key === groupKey).map((thread) => thread.id),
-    [threads, groups],
+    (groupKey: string) => topLevel.filter((thread) => groups.get(thread.id)?.key === groupKey).map((thread) => thread.id),
+    [topLevel, groups],
   );
 
   const chatsRef = useRef(chats);
@@ -930,24 +999,17 @@ function CanvasInner() {
   const edges = useMemo<Edge[]>(() => {
     const visible = new Set(threads.map((thread) => thread.id));
     const result: Edge[] = [];
+    // A child with its parent on the canvas is a row in the parent's card, so
+    // there's no parent edge to draw. Forks join the cards that hold them.
     for (const thread of threads) {
-      const working = buckets.get(thread.id) === "working";
-      if (thread.parentThreadId !== null && visible.has(thread.parentThreadId)) {
-        result.push({
-          id: `parent:${thread.id}`,
-          source: thread.parentThreadId,
-          target: thread.id,
-          type: "smoothstep",
-          animated: working,
-          markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 },
-          style: { strokeWidth: 1.5 },
-        });
-      }
       if (thread.sourceThreadId !== null && visible.has(thread.sourceThreadId) && thread.sourceThreadId !== thread.parentThreadId) {
+        const source = rootOf(thread.sourceThreadId);
+        const target = rootOf(thread.id);
+        if (source === target) continue;
         result.push({
           id: `fork:${thread.id}`,
-          source: thread.sourceThreadId,
-          target: thread.id,
+          source,
+          target,
           type: "smoothstep",
           label: thread.originKind === "fork" ? "fork" : "handoff",
           labelStyle: { fontSize: 11 },
@@ -960,7 +1022,7 @@ function CanvasInner() {
       result.push({
         id: `pin:${chat.threadId}`,
         type: "tether",
-        source: chat.threadId,
+        source: rootOf(chat.threadId),
         target: `chat:${chat.threadId}`,
         style: {
           stroke: `var(--status-${buckets.get(chat.threadId) ?? "idle"})`,
@@ -971,7 +1033,7 @@ function CanvasInner() {
       });
     }
     return result;
-  }, [threads, buckets, chats, focusedChat, compact]);
+  }, [threads, buckets, chats, focusedChat, compact, rootOf]);
 
   const counts = useMemo(() => {
     const result = new Map<Bucket, number>(BUCKETS.map((bucket) => [bucket, 0]));
@@ -1014,10 +1076,15 @@ function CanvasInner() {
 
   const fitAll = useCallback(() => flow.fitView({ padding: 0.15, maxZoom: 1, duration: 300 }), [flow]);
 
-  const cardRect = useCallback((id: string): Rect | null => {
-    const point = positionsRef.current[id];
-    return point === undefined ? null : { ...point, width: CARD_W, height: CARD_H };
-  }, []);
+  /** The card a thread is drawn in: its own, or its top-level ancestor's for a child. */
+  const cardRect = useCallback(
+    (id: string): Rect | null => {
+      const root = rootOf(id);
+      const point = positionsRef.current[root];
+      return point === undefined ? null : { ...point, width: CARD_W, height: cardHeight(root) };
+    },
+    [rootOf, cardHeight],
+  );
 
   /** Pans just enough to show the card, keeping the zoom unless it's too far out to read. */
   const reveal = useCallback(
@@ -1096,6 +1163,31 @@ function CanvasInner() {
   );
   togglePinRef.current = togglePin;
 
+  /**
+   * A child row in a parent's card opens the child's chat: as a floating
+   * window beside the parent (a pinned chat), or the drawer on a phone.
+   */
+  const openChild = useCallback(
+    (id: string) => {
+      setSelectedId(id);
+      if (compact) {
+        setInspectorOpen(true);
+        return;
+      }
+      const chat = chats.find((candidate) => candidate.threadId === id);
+      if (chat === undefined) {
+        togglePin(id);
+        return;
+      }
+      const shown = chat.minimized ? { ...chat, minimized: false } : chat;
+      if (chat.minimized) actions.updateChat(shown);
+      setFocusedChat(id);
+      revealChat(shown);
+    },
+    [compact, chats, togglePin, actions, revealChat],
+  );
+  openChildRef.current = openChild;
+
   // One-time move of chats pinned by the earlier per-browser version, whose
   // windows were placed in screen space: re-pin them beside their cards.
   const legacyPinsKey = `${pluginId}:pinned-windows`;
@@ -1149,11 +1241,11 @@ function CanvasInner() {
           : flow.screenToFlowPosition({ x: wrapper.left + wrapper.width / 2, y: wrapper.top + wrapper.height / 2 });
       const current = selectedId === null ? null : cardRect(selectedId);
       if (current === null || selectedId === null) {
-        const first = nearestTo(viewCenter, navItems(threads.map((thread) => thread.id)));
+        const first = nearestTo(viewCenter, navItems(topLevel.map((thread) => thread.id)));
         if (first !== null) focusThread(first);
         return;
       }
-      const ownKey = groups.get(selectedId)?.key;
+      const ownKey = groups.get(rootOf(selectedId))?.key;
       if (!acrossFrames) {
         const next = nearestInDirection(current, navItems(membersOf(ownKey ?? NO_GROUP)), direction);
         if (next !== null) {
@@ -1177,7 +1269,7 @@ function CanvasInner() {
         reveal(next);
       }
     },
-    [flow, selectedId, cardRect, navItems, threads, focusThread, groups, membersOf, frames, reveal],
+    [flow, selectedId, cardRect, navItems, topLevel, rootOf, focusThread, groups, membersOf, frames, reveal],
   );
 
   const addNote = useCallback(
@@ -1443,7 +1535,9 @@ function CanvasInner() {
         revealChat(next);
       } else if (key === "t") startTriage(); else if (event.key === "Enter" && selectedId !== null) navigate.toThread(selectedId, { split: event.shiftKey });
       else if (key === "m" && selectedId !== null) setOverlay({ kind: "move", threadId: selectedId });
-      else if (key === "a" && selectedId !== null) {
+      else if (key === "z" && selectedId !== null) {
+        if (forest.rowsOf.has(rootOf(selectedId))) toggleFold(rootOf(selectedId));
+      } else if (key === "a" && selectedId !== null) {
         const groupKey = groups.get(selectedId)?.key;
         if (groupKey !== undefined) arrangeFrame(groupKey);
       }
@@ -1476,6 +1570,9 @@ function CanvasInner() {
     archiveShortcut,
     groups,
     arrangeFrame,
+    forest,
+    rootOf,
+    toggleFold,
     triage,
     stepTriage,
     startTriage,

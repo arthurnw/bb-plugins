@@ -15,6 +15,10 @@ export interface CanvasActions {
   deleteSection(sectionId: string): void;
   updateNote(note: Note): void;
   updateChat(chat: PinnedChat): void;
+  /** Folds or unfolds the child-thread rows in a parent's card. */
+  toggleFold(threadId: string): void;
+  /** Opens a child thread's chat from its row in the parent's card. */
+  openChild(threadId: string): void;
   /** Pins a thread's chat beside its card, or unpins it. */
   togglePin(threadId: string): void;
   unpinChat(threadId: string): void;
