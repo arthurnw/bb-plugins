@@ -410,7 +410,20 @@ function CanvasInner() {
   }, [settings.values?.arrangeStyle, settings.values?.arrangeGridSize]);
   const archiveSelected = useRef<(() => void) | null>(null);
   // Phones show bb's sidebar as a slide-over, so there is nothing to collapse.
-  useCollapseHostSidebar(!compact && settings.values !== undefined && settings.values.collapseSidebar !== false);
+  // Settings load after the first render; use the last value this browser saw
+  // so the sidebar collapses before the canvas first paints.
+  const collapseKey = `${pluginId}:collapse-sidebar`;
+  const loadedCollapse = settings.values === undefined ? undefined : settings.values.collapseSidebar !== false;
+  const collapseSidebar = loadedCollapse ?? localStorage.getItem(collapseKey) !== "false";
+  useEffect(() => {
+    if (loadedCollapse === undefined) return;
+    try {
+      localStorage.setItem(collapseKey, String(loadedCollapse));
+    } catch {
+      // Blocked storage only means waiting for settings next time.
+    }
+  }, [collapseKey, loadedCollapse]);
+  useCollapseHostSidebar(!compact && collapseSidebar);
   const maxPinned = Math.min(12, Math.max(1, Math.round(Number(settings.values?.maxPinnedWindows ?? 4)) || 4));
 
   const releaseFocus = useCallback(() => {
