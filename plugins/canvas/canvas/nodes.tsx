@@ -351,6 +351,15 @@ export const FrameNode = memo(function FrameNode({ data, selected }: NodeProps<F
                   </button>
                 </>
               ) : null}
+              <button
+                type="button"
+                aria-label="Rearrange this frame"
+                title="Rearrange this frame (a)"
+                className={headerButton}
+                onClick={() => actions.arrangeFrame(data.groupKey)}
+              >
+                <Icon name="LayoutGrid" className="size-3.5" />
+              </button>
               <span className="relative">
                 <button type="button" aria-label="Frame color" title="Frame color" className={headerButton} onClick={() => setPicking((open) => !open)}>
                   <Icon name="Palette" className="size-3.5" />

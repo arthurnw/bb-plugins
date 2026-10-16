@@ -37,16 +37,67 @@ function relativeOf(thread: LayoutThread, ids: ReadonlySet<string>): string | nu
   return null;
 }
 
-/**
- * Lays one group's threads out as a tree that grows right and down: a
- * thread's first child sits beside it, later children stack below. Returns
- * positions relative to the block's top-left and the block size.
- */
-function layoutGroup(threads: readonly LayoutThread[]): {
+import type { ArrangeStyle } from "./shared.ts";
+
+export interface ArrangeOptions {
+  style: ArrangeStyle;
+  /** Max columns for gridColumns, max rows for gridRows. */
+  gridSize: number;
+}
+
+export const DEFAULT_ARRANGE: ArrangeOptions = { style: "tree", gridSize: 3 };
+
+/** Gap between cards in the flat styles, which draw no tree edges between neighbors. */
+const FLAT_GAP_X = 24;
+
+interface Block {
   positions: Map<string, Point>;
   width: number;
   height: number;
-} {
+}
+
+/**
+ * Lays one group's threads out, relative to the block's top-left. The tree
+ * grows right and down: a thread's first child sits beside it, later
+ * children stack below. The flat styles keep the tree's reading order, so
+ * children still follow their parents.
+ */
+function layoutGroup(threads: readonly LayoutThread[], options: ArrangeOptions = DEFAULT_ARRANGE): Block {
+  const tree = layoutTree(threads);
+  if (options.style === "tree") return tree;
+  const order = [...tree.positions.keys()];
+  const size = Math.max(1, Math.round(options.gridSize));
+  const cell = (index: number): { col: number; row: number } => {
+    switch (options.style) {
+      case "column":
+        return { col: 0, row: index };
+      case "row":
+        return { col: index, row: 0 };
+      case "gridColumns":
+        return { col: index % size, row: Math.floor(index / size) };
+      case "gridRows":
+        return { col: Math.floor(index / size), row: index % size };
+      default:
+        return { col: 0, row: index };
+    }
+  };
+  const positions = new Map<string, Point>();
+  let cols = 1;
+  let rows = 1;
+  order.forEach((id, index) => {
+    const { col, row } = cell(index);
+    cols = Math.max(cols, col + 1);
+    rows = Math.max(rows, row + 1);
+    positions.set(id, { x: col * (CARD_W + FLAT_GAP_X), y: row * (CARD_H + GAP_Y) });
+  });
+  return {
+    positions,
+    width: cols * (CARD_W + FLAT_GAP_X) - FLAT_GAP_X,
+    height: rows * (CARD_H + GAP_Y) - GAP_Y,
+  };
+}
+
+function layoutTree(threads: readonly LayoutThread[]): Block {
   const ids = new Set(threads.map((thread) => thread.id));
   const children = new Map<string, LayoutThread[]>();
   const roots: LayoutThread[] = [];
@@ -87,7 +138,10 @@ function layoutGroup(threads: readonly LayoutThread[]): {
  * Arranges every thread from scratch: one block per group, most recently
  * active group first, wrapped into rows.
  */
-export function autoLayout(threads: readonly LayoutThread[]): Map<string, Point> {
+export function autoLayout(
+  threads: readonly LayoutThread[],
+  options: ArrangeOptions = DEFAULT_ARRANGE,
+): Map<string, Point> {
   const byGroup = new Map<string, LayoutThread[]>();
   for (const thread of threads) {
     byGroup.set(thread.group, [...(byGroup.get(thread.group) ?? []), thread]);
@@ -101,7 +155,7 @@ export function autoLayout(threads: readonly LayoutThread[]): Map<string, Point>
   let y = 0;
   let rowHeight = 0;
   for (const list of groups) {
-    const block = layoutGroup(list);
+    const block = layoutGroup(list, options);
     const frameWidth = block.width + FRAME_PAD * 2;
     const frameHeight = block.height + FRAME_PAD * 2 + FRAME_HEADER;
     if (x > 0 && x + frameWidth > ROW_MAX_WIDTH) {
@@ -119,6 +173,24 @@ export function autoLayout(threads: readonly LayoutThread[]): Map<string, Point>
     rowHeight = Math.max(rowHeight, frameHeight);
   }
   return result;
+}
+
+/**
+ * Rearranges one group's threads in place: the block starts where the
+ * group's top-left card is now, so the frame stays put while its gaps close.
+ */
+export function arrangeGroup(
+  threads: readonly LayoutThread[],
+  current: ReadonlyMap<string, Point>,
+  options: ArrangeOptions = DEFAULT_ARRANGE,
+): Map<string, Point> {
+  const placed = threads.flatMap((thread) => current.get(thread.id) ?? []);
+  const origin = {
+    x: placed.length === 0 ? 0 : Math.min(...placed.map((point) => point.x)),
+    y: placed.length === 0 ? 0 : Math.min(...placed.map((point) => point.y)),
+  };
+  const block = layoutGroup(threads, options);
+  return new Map([...block.positions].map(([id, point]) => [id, { x: origin.x + point.x, y: origin.y + point.y }]));
 }
 
 function overlaps(a: Rect, b: Rect): boolean {

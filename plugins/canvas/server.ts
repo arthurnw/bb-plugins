@@ -3,7 +3,7 @@
 // open window. Thread data itself comes from bb's live thread list in the app.
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
-import { FRAME_COLORS, GROUPINGS, NOTE_COLORS } from "./canvas/shared.ts";
+import { ARRANGE_STYLES, FRAME_COLORS, GROUPINGS, NOTE_COLORS } from "./canvas/shared.ts";
 
 const pointSchema = z.object({ x: z.number().finite(), y: z.number().finite() });
 
@@ -125,6 +125,27 @@ export default async function plugin(bb: BbPluginApi) {
       description: "How many chats can be pinned to the canvas at once, per grouping (1–12).",
       default: 4,
       experimental_schema: z.number().int().min(1).max(12),
+    },
+    arrangeStyle: {
+      type: "select",
+      label: "Rearrange layout",
+      description: "How Rearrange places a frame's cards. The flat layouts keep the tree's order, so child threads follow their parents.",
+      options: [...ARRANGE_STYLES],
+      experimental_optionLabels: {
+        tree: "Tree (children to the right of their parent)",
+        column: "Single column",
+        row: "Single row",
+        gridColumns: "Grid, wrapping at a number of columns",
+        gridRows: "Grid, wrapping at a number of rows",
+      },
+      default: "tree",
+    },
+    arrangeGridSize: {
+      type: "number",
+      label: "Grid size",
+      description: "For the grid layouts: the most columns (or rows) before wrapping (1–20).",
+      default: 3,
+      experimental_schema: z.number().int().min(1).max(20),
     },
     collapseSidebar: {
       type: "boolean",

@@ -9,6 +9,8 @@ export interface CanvasActions {
   open(threadId: string, split: boolean): void;
   newThreadIn(frame: FrameNodeData): void;
   setFrameColor(frameKey: string, color: FrameColor): void;
+  /** Rearranges one frame's cards in place, closing gaps. */
+  arrangeFrame(groupKey: string): void;
   renameSection(sectionId: string, name: string): void;
   deleteSection(sectionId: string): void;
   updateNote(note: Note): void;

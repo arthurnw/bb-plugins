@@ -7,6 +7,10 @@ export type NoteColor = (typeof NOTE_COLORS)[number];
 export const FRAME_COLORS = ["none", "blue", "green", "amber", "rose", "violet", "cyan", "slate"] as const;
 export type FrameColor = (typeof FRAME_COLORS)[number];
 
+/** How "rearrange" places a frame's cards. */
+export const ARRANGE_STYLES = ["tree", "column", "row", "gridColumns", "gridRows"] as const;
+export type ArrangeStyle = (typeof ARRANGE_STYLES)[number];
+
 /** What the canvas draws frames around. */
 export const GROUPINGS = ["project", "section", "machine"] as const;
 export type Grouping = (typeof GROUPINGS)[number];

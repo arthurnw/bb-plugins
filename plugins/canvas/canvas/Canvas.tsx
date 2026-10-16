@@ -39,7 +39,7 @@ import { cn } from "@/lib/utils";
 import type { Arrangement, Layout, Note, PinnedChat, rpcContract } from "../server";
 import { CanvasActionsContext, type CanvasActions } from "./context";
 import { Icon } from "./icons.tsx";
-import { CARD_H, CARD_W, autoLayout, frameBounds, placeNew, type Point, type Rect } from "./layout.ts";
+import { CARD_H, CARD_W, DEFAULT_ARRANGE, arrangeGroup, autoLayout, frameBounds, placeNew, type ArrangeOptions, type Point, type Rect } from "./layout.ts";
 import { DIRECTION_KEYS, nearestInDirection, nearestTo, type Direction, type NavItem } from "./nav.ts";
 import { nodeTypes, type CanvasNode, type FrameNodeData } from "./nodes";
 import { matchesShortcut, shortcutLabel, useArchive, useArchiveShortcut } from "./archive.ts";
@@ -49,7 +49,7 @@ import { Picker, type PickerItem } from "./Picker.tsx";
 import { CHAT_H, CHAT_HEADER_H, CHAT_W } from "./ChatNode.tsx";
 import { edgeTypes } from "./TetherEdge.tsx";
 import { Triage, needsAttention } from "./Triage.tsx";
-import { GROUPINGS, type FrameColor, type Grouping } from "./shared.ts";
+import { ARRANGE_STYLES, GROUPINGS, type ArrangeStyle, type FrameColor, type Grouping } from "./shared.ts";
 import { BUCKETS, BUCKET_LABEL, age, bucketOf, type Bucket } from "./status.ts";
 
 const CLIENT_ID = Math.random().toString(36).slice(2, 10);
@@ -268,6 +268,7 @@ const SHORTCUTS: [string, string][] = [
   ["↵ / ⇧↵", "Open the thread / in a split"],
   ["n / ⇧N", "Next / previous thread that needs you"],
   ["m", "Move the thread to a section"],
+  ["a", "Rearrange the selected thread's frame"],
   ["1 2 3", "Group by project, section, machine"],
   ["c / f", "Center the selection / fit everything"],
   ["/", "Filter"],
@@ -397,6 +398,14 @@ function CanvasInner() {
   // bb's "Archive thread" shortcut does nothing on a plugin page (there's no
   // thread in view), so the canvas handles the user's binding itself.
   const archiveShortcut = useArchiveShortcut();
+  const arrangeOptions = useMemo<ArrangeOptions>(() => {
+    const style = settings.values?.arrangeStyle;
+    const gridSize = Number(settings.values?.arrangeGridSize);
+    return {
+      style: ARRANGE_STYLES.includes(style as ArrangeStyle) ? (style as ArrangeStyle) : DEFAULT_ARRANGE.style,
+      gridSize: Number.isFinite(gridSize) && gridSize >= 1 ? gridSize : DEFAULT_ARRANGE.gridSize,
+    };
+  }, [settings.values?.arrangeStyle, settings.values?.arrangeGridSize]);
   const archiveSelected = useRef<(() => void) | null>(null);
   // Phones show bb's sidebar as a slide-over, so there is nothing to collapse.
   useCollapseHostSidebar(!compact && settings.values !== undefined && settings.values.collapseSidebar !== false);
@@ -611,8 +620,9 @@ function CanvasInner() {
     [sdk, grouping, save, sectionNames],
   );
 
-  // togglePin is defined further down, after the helpers it needs.
+  // togglePin and arrangeFrame are defined further down, after the helpers they need.
   const togglePinRef = useRef<(threadId: string) => void>(() => undefined);
+  const arrangeFrameRef = useRef<(groupKey: string) => void>(() => undefined);
   const actions = useMemo<CanvasActions>(
     () => ({
       select: (id) => setSelectedId(id),
@@ -660,6 +670,7 @@ function CanvasInner() {
       },
       releaseFocus,
       togglePin: (threadId) => togglePinRef.current(threadId),
+      arrangeFrame: (groupKey) => arrangeFrameRef.current(groupKey),
       deleteNote: (id) => {
         record();
         setNotes((current) => current.filter((note) => note.id !== id));
@@ -1191,11 +1202,27 @@ function CanvasInner() {
 
   const autoArrange = useCallback(() => {
     record();
-    const next = Object.fromEntries(autoLayout(layoutThreads));
+    const next = Object.fromEntries(autoLayout(layoutThreads, arrangeOptions));
     setPositions(next);
     save(next, true);
     requestAnimationFrame(fitAll);
-  }, [layoutThreads, save, fitAll, record]);
+  }, [layoutThreads, save, fitAll, record, arrangeOptions]);
+
+  /** Rearranges one frame's cards in place with the configured layout. */
+  const arrangeFrame = useCallback(
+    (groupKey: string) => {
+      const members = layoutThreads.filter((thread) => thread.group === groupKey);
+      if (members.length === 0) return;
+      record();
+      const next = Object.fromEntries(
+        arrangeGroup(members, new Map(Object.entries(positionsRef.current)), arrangeOptions),
+      );
+      setPositions((previous) => ({ ...previous, ...next }));
+      save(next);
+    },
+    [layoutThreads, arrangeOptions, record, save],
+  );
+  arrangeFrameRef.current = arrangeFrame;
 
   const changeGrouping = useCallback(
     (next: Grouping) => {
@@ -1415,6 +1442,10 @@ function CanvasInner() {
         revealChat(next);
       } else if (key === "t") startTriage(); else if (event.key === "Enter" && selectedId !== null) navigate.toThread(selectedId, { split: event.shiftKey });
       else if (key === "m" && selectedId !== null) setOverlay({ kind: "move", threadId: selectedId });
+      else if (key === "a" && selectedId !== null) {
+        const groupKey = groups.get(selectedId)?.key;
+        if (groupKey !== undefined) arrangeFrame(groupKey);
+      }
       else if (key === "n" && attentionQueue.length > 0) {
         const index = attentionQueue.findIndex((thread) => thread.id === selectedId);
         const step = event.shiftKey ? -1 : 1;
@@ -1442,6 +1473,8 @@ function CanvasInner() {
     changeGrouping,
     releaseFocus,
     archiveShortcut,
+    groups,
+    arrangeFrame,
     triage,
     stepTriage,
     startTriage,
@@ -1682,7 +1715,7 @@ function CanvasInner() {
                   >
                     <Icon name="Redo2" className="size-3.5" />
                   </ToolButton>
-                  <ToolButton variant="ghost" size="sm" className="h-7 px-2" onClick={autoArrange} title="Rearrange automatically">
+                  <ToolButton variant="ghost" size="sm" className="h-7 px-2" onClick={autoArrange} title="Rearrange everything (layout set in the plugin's settings)">
                     <Icon name="LayoutGrid" className="size-3.5" />
                   </ToolButton>
                   <ToolButton variant="ghost" size="sm" className="h-7 px-2" onClick={fitAll} title="Fit everything (f)">

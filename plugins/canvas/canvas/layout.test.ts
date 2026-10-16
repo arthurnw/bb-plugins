@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CARD_H, CARD_W, autoLayout, facingSides, frameBounds, placeNew, type LayoutThread } from "./layout.ts";
+import { CARD_H, CARD_W, arrangeGroup, autoLayout, facingSides, frameBounds, placeNew, type LayoutThread } from "./layout.ts";
 
 const thread = (id: string, group: string, extra: Partial<LayoutThread> = {}): LayoutThread => ({
   id,
@@ -98,4 +98,48 @@ test("facingSides joins the middles of the sides that face each other", () => {
   assert.deepEqual({ x: right.to.x, y: right.to.y }, { x: 800, y: 100 });
   // To the left.
   assert.equal(facingSides(card, { x: -500, y: 0, width: 400, height: 400 }).from.side, "left");
+});
+
+const five = [
+  thread("root", "p", { latestAttentionAt: 9 }),
+  thread("kid", "p", { parentThreadId: "root", createdAt: 1 }),
+  thread("b", "p", { latestAttentionAt: 5 }),
+  thread("c", "p", { latestAttentionAt: 3 }),
+  thread("d", "p", { latestAttentionAt: 1 }),
+];
+const cells = (positions: Map<string, { x: number; y: number }>) => {
+  const xs = [...new Set([...positions.values()].map((point) => point.x))].sort((a, b) => a - b);
+  const ys = [...new Set([...positions.values()].map((point) => point.y))].sort((a, b) => a - b);
+  return Object.fromEntries([...positions].map(([id, point]) => [id, [xs.indexOf(point.x), ys.indexOf(point.y)]]));
+};
+
+test("flat styles keep tree order: a child follows its parent", () => {
+  assert.deepEqual(cells(autoLayout(five, { style: "column", gridSize: 3 })), {
+    root: [0, 0], kid: [0, 1], b: [0, 2], c: [0, 3], d: [0, 4],
+  });
+  assert.deepEqual(cells(autoLayout(five, { style: "row", gridSize: 3 })), {
+    root: [0, 0], kid: [1, 0], b: [2, 0], c: [3, 0], d: [4, 0],
+  });
+});
+
+test("grid styles wrap at the given number of columns or rows", () => {
+  assert.deepEqual(cells(autoLayout(five, { style: "gridColumns", gridSize: 2 })), {
+    root: [0, 0], kid: [1, 0], b: [0, 1], c: [1, 1], d: [0, 2],
+  });
+  assert.deepEqual(cells(autoLayout(five, { style: "gridRows", gridSize: 2 })), {
+    root: [0, 0], kid: [0, 1], b: [1, 0], c: [1, 1], d: [2, 0],
+  });
+});
+
+test("arrangeGroup closes gaps but keeps the frame's top-left in place", () => {
+  const current = new Map([
+    ["root", { x: 500, y: 300 }],
+    ["kid", { x: 900, y: 900 }],
+    ["b", { x: 500, y: 1400 }],
+  ]);
+  const threads = five.slice(0, 3);
+  const arranged = arrangeGroup(threads, current, { style: "column", gridSize: 3 });
+  assert.deepEqual(arranged.get("root"), { x: 500, y: 300 });
+  assert.deepEqual(arranged.get("kid"), { x: 500, y: 300 + CARD_H + 20 });
+  assert.deepEqual(arranged.get("b"), { x: 500, y: 300 + 2 * (CARD_H + 20) });
 });
