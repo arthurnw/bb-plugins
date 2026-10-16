@@ -22,6 +22,7 @@ Then open **Inbox** in bb's navigation rail. Its entry shows how many threads ne
 | Key | Action |
 | --- | --- |
 | `j` / `k` | Move the selection |
+| `h` / `l` | Move to the previous or next column (section in List), keeping the position |
 | `Enter` | Unfold or fold the selected card |
 | `o` | Open the thread (`⇧O` in a split) |
 | `a` / `x` | Approve / reject |

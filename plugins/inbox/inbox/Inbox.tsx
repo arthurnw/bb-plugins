@@ -38,6 +38,7 @@ interface Item {
 
 const KEYS: [string, string][] = [
   ["j / k", "move"],
+  ["h / l", "previous / next column"],
   ["Enter", "unfold"],
   ["o", "open (⇧ split)"],
   ["a / x", "approve / reject"],
@@ -199,7 +200,22 @@ export function InboxPage() {
       const next = index === -1 ? (delta > 0 ? 0 : order.length - 1) : Math.min(order.length - 1, Math.max(0, index + delta));
       setSelectedId(order[next]!.thread.id);
     };
+    // h and l jump to the neighboring column (or list section) that has cards,
+    // keeping the selection's position in it where they can.
+    const moveGroup = (delta: number) => {
+      const groupIds = GROUPS.map((group) => group.id);
+      const from = selected === null ? -1 : groupIds.indexOf(groupOf(selected.status));
+      const row = selected === null ? 0 : Math.max(0, shown[groupOf(selected.status)].indexOf(selected));
+      for (let index = from + delta; index >= 0 && index < groupIds.length; index += delta) {
+        const items = shown[groupIds[index]!];
+        if (items.length === 0) continue;
+        setSelectedId(items[Math.min(row, items.length - 1)]!.thread.id);
+        return;
+      }
+    };
     if (key === "j" || key === "ArrowDown") move(1);
+    else if (key === "h" || key === "ArrowLeft") moveGroup(-1);
+    else if (key === "l" || key === "ArrowRight") moveGroup(1);
     else if (key === "k" || key === "ArrowUp") move(-1);
     else if (key === "?") setShowKeys((value) => !value);
     else if (key === "v") changeView(view === "board" ? "list" : "board");
