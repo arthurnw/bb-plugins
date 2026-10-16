@@ -14,3 +14,6 @@ export type ArrangeStyle = (typeof ARRANGE_STYLES)[number];
 /** What the canvas draws frames around. */
 export const GROUPINGS = ["project", "section", "machine"] as const;
 export type Grouping = (typeof GROUPINGS)[number];
+
+/** Realtime channel for `bb canvas open-url`; the Canvas page opens each URL in its browser panel. */
+export const OPEN_URL_CHANNEL = "open-url";

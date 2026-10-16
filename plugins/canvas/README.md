@@ -75,6 +75,12 @@ Each grouping keeps its own arrangement of cards and notes, so switching groupin
 
 Undo covers moves of cards, frames, notes, and pinned chats; pinning and unpinning; rearranging; adding, editing, recoloring, and deleting notes; and frame colors. Section changes (create, rename, delete, filing a thread) go to bb and aren't undone by it. The last 50 steps are kept for each open window until it reloads.
 
+## Opening URLs
+
+The Canvas page has bb's App panel with a Browser tab, like a thread page. Links clicked in a chat on the canvas open there (or in your OS browser, per bb's browser preference).
+
+`bb preview` sends its URL to a thread's browser, which isn't on screen while the canvas is. To open a URL next to the canvas, run `bb canvas open-url <url>`. It opens in every bb window showing the Canvas page and fails with `canvas_not_open` when none is.
+
 ## Development
 
 ```sh

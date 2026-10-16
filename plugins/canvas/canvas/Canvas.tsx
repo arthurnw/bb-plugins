@@ -45,6 +45,7 @@ import { nodeTypes, type CanvasNode, type FrameNodeData } from "./nodes";
 import { matchesShortcut, shortcutLabel, useArchive, useArchiveShortcut } from "./archive.ts";
 import { useReleaseChatFocus } from "./chatFocus.ts";
 import { useCollapseHostSidebar } from "./hostSidebar.ts";
+import { useOpenUrlRequests } from "./openUrl.ts";
 import { Picker, type PickerItem } from "./Picker.tsx";
 import { CHAT_H, CHAT_HEADER_H, CHAT_W } from "./ChatNode.tsx";
 import { edgeTypes } from "./TetherEdge.tsx";
@@ -1855,6 +1856,7 @@ function CanvasInner() {
 }
 
 export function CanvasPage() {
+  useOpenUrlRequests();
   return (
     <ReactFlowProvider>
       <CanvasInner />

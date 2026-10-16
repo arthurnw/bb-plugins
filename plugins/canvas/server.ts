@@ -1,9 +1,10 @@
 // bb-plugin-canvas backend: stores the canvas arrangement (card positions,
 // sticky notes, frame colors) so it survives reloads and is shared by every
 // open window. Thread data itself comes from bb's live thread list in the app.
-import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
+import { randomUUID } from "node:crypto";
+import { PluginCliError, cliCommand, defineCli, defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
-import { ARRANGE_STYLES, FRAME_COLORS, GROUPINGS, NOTE_COLORS } from "./canvas/shared.ts";
+import { ARRANGE_STYLES, FRAME_COLORS, GROUPINGS, NOTE_COLORS, OPEN_URL_CHANNEL } from "./canvas/shared.ts";
 
 const pointSchema = z.object({ x: z.number().finite(), y: z.number().finite() });
 
@@ -107,6 +108,8 @@ export const rpcContract = defineRpcContract({
     input: z.object({ origin, frameKey: z.string().max(200), color: z.enum(FRAME_COLORS) }),
     output: ok,
   },
+  /** A Canvas page reports that it opened a `bb canvas open-url` request. */
+  open_url_ack: { input: z.object({ id: z.string().max(64) }), output: ok },
 });
 
 export const LAYOUT_CHANGED = "layout-changed";
@@ -114,6 +117,8 @@ const KEY = "layout";
 const MAX_NOTES = 500;
 /** Upper bound on the maxPinnedWindows setting; the app enforces the setting itself. */
 const MAX_CHATS = 12;
+/** How long `bb canvas open-url` waits for a Canvas page to report the URL opened. */
+const OPEN_URL_ACK_MS = 3000;
 
 export default async function plugin(bb: BbPluginApi) {
   // Read by the app through useSettings(); edit in bb's plugin settings or
@@ -173,7 +178,56 @@ export default async function plugin(bb: BbPluginApi) {
     return next.then(() => ({ ok: true as const }));
   }
 
+  // Each open-url request waits here until a Canvas page acknowledges it.
+  const pendingOpens = new Map<string, () => void>();
+
+  bb.cli.register(
+    defineCli({
+      name: "canvas",
+      summary: "Work with the Canvas page",
+      commands: {
+        "open-url": cliCommand({
+          summary: "Open a URL in the Canvas page's browser panel",
+          description:
+            "Opens an http(s) URL in the in-app browser of the Canvas page in each bb window that is showing it. " +
+            "Fails when no window is showing the Canvas page; use `bb preview url` to open it in a thread instead.",
+          positionals: [{ name: "url", description: "http(s) URL to open", required: true }],
+          async run(input) {
+            const url = input.positionals.url;
+            if (!/^https?:\/\//i.test(url) || !URL.canParse(url)) {
+              throw new PluginCliError(`not an http(s) URL: ${url}`, { code: "invalid_url" });
+            }
+            const id = randomUUID();
+            const opened = new Promise<boolean>((resolve) => {
+              const timer = setTimeout(() => {
+                pendingOpens.delete(id);
+                resolve(false);
+              }, OPEN_URL_ACK_MS);
+              pendingOpens.set(id, () => {
+                clearTimeout(timer);
+                pendingOpens.delete(id);
+                resolve(true);
+              });
+            });
+            bb.realtime.publish(OPEN_URL_CHANNEL, { id, url });
+            if (!(await opened)) {
+              throw new PluginCliError("no bb window is showing the Canvas page", {
+                code: "canvas_not_open",
+                hint: "Open the Canvas page in bb, or run `bb preview url <url>` to open it in a thread.",
+              });
+            }
+            return { exitCode: 0, stdout: `Opened ${url} on the Canvas page.\n` };
+          },
+        }),
+      },
+    }),
+  );
+
   bb.rpc.register(rpcContract, {
+    open_url_ack: ({ id }) => {
+      pendingOpens.get(id)?.();
+      return { ok: true as const };
+    },
     layout_get: () => read(),
     layout_set: ({ origin, layout }) =>
       update(origin, (current) => {
