@@ -15,6 +15,35 @@ import { projectShortcut } from "./overlay-keys";
 import { PROVIDER_ID } from "./named-worktree";
 import { focusBranchName } from "./named-worktree-inputs";
 
+interface Bounds { left: number; width: number }
+
+// bb's desktop side panel can hold a native browser view, which draws above
+// any page content. Center the overlay in the conversation area left of the
+// panel instead of the whole window. Falls back to the window when bb's
+// layout attributes are missing.
+function contentBounds(): Bounds {
+  const shell = document.querySelector("[data-app-content-shell]")?.getBoundingClientRect();
+  const left = shell && shell.width > 0 ? shell.left : 0;
+  let right = shell && shell.width > 0 ? shell.right : window.innerWidth;
+  const panel = document.querySelector("[data-panel-id$='secondary-panel']")?.getBoundingClientRect();
+  if (panel && panel.width > 0 && panel.left > left) right = Math.min(right, panel.left);
+  return { left, width: right - left };
+}
+
+function useContentBounds(active: boolean): Bounds | null {
+  const [bounds, setBounds] = useState<Bounds | null>(null);
+  useEffect(() => {
+    if (!active) return;
+    const update = () => setBounds(contentBounds());
+    update();
+    const observer = new ResizeObserver(update);
+    for (const el of document.querySelectorAll("[data-app-content-shell], [data-panel-id$='secondary-panel']")) observer.observe(el);
+    window.addEventListener("resize", update);
+    return () => { observer.disconnect(); window.removeEventListener("resize", update); };
+  }, [active]);
+  return bounds;
+}
+
 function Session({ session, kind, visible, focusRequest }: {
   session: QuickComposeSession; kind: QuickComposeKind; visible: boolean; focusRequest: number;
 }) {
@@ -27,6 +56,7 @@ function Session({ session, kind, visible, focusRequest }: {
   const [popup, setPopup] = useState(false);
   const [focus, setFocus] = useState(0);
   const [namedWorktree, setNamedWorktree] = useState(false);
+  const bounds = useContentBounds(visible);
   const changing = useRef(false);
   useEffect(() => {
     if (source || (kind === "handoff" && sidebar.status === "loading")) return;
@@ -87,7 +117,9 @@ function Session({ session, kind, visible, focusRequest }: {
     return () => { cancelled = true; window.removeEventListener("keydown", onKey, true); };
   }, [visible, sdk, projectId]);
 
-  return <div style={{ display: visible ? "flex" : "none", position: "fixed", inset: 0, zIndex: 50, justifyContent: "center", alignItems: "flex-start", padding: "15vh 16px 16px", background: "rgb(0 0 0 / .3)", overflowY: "auto" }} onPointerDown={e => { if (e.target === e.currentTarget) quickCompose.close(); }}>
+  const close = (e: { target: EventTarget; currentTarget: EventTarget }) => { if (e.target === e.currentTarget) quickCompose.close(); };
+  return <div style={{ display: visible ? "block" : "none", position: "fixed", inset: 0, zIndex: 50, background: "rgb(0 0 0 / .3)" }} onPointerDown={close}>
+    <div style={{ position: "absolute", top: 0, bottom: 0, left: bounds?.left ?? 0, width: bounds?.width ?? "100%", display: "flex", justifyContent: "center", alignItems: "flex-start", padding: "15vh 16px 16px", overflowY: "auto", boxSizing: "border-box" }} onPointerDown={close}>
     <section role="dialog" aria-label={kind === "handoff" ? "Project Picker handoff" : "Project Picker quick compose"} style={{ width: "100%", maxWidth: 720, padding: 16, borderRadius: 12, background: "var(--background)", color: "var(--foreground)" }} ref={sectionRef}>
       {source && <NewThreadComposer
         defaultProjectId={projectId ?? undefined}
@@ -109,6 +141,7 @@ function Session({ session, kind, visible, focusRequest }: {
         <ProjectList selectedLabel="last chosen here" selectedId={projectId} onChoose={option => choose(option.id)} onClose={() => { setPopup(false); setFocus(n => n + 1); }} />
       </div>}
     </section>
+    </div>
   </div>;
 }
 

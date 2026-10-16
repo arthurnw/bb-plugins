@@ -22,7 +22,7 @@ test("inputs require an explicit name and base without imposing a prefix", () =>
   }
   assert.deepEqual(inputsSchema.parse({ name: "feature/foo", baseBranch: "origin/main" }), { name: "feature/foo", baseBranch: "origin/main" });
   for (const name of ["", " foo", "foo ", "-foo", "@{-1}", "foo\0bar"]) assert.ok(branchNameError(name));
-  assert.equal(branchNameError("arthur/foo"), null);
+  assert.equal(branchNameError("feature/foo"), null);
 });
 
 test("Git validates literal branch names and rejects existing branches", async (t) => {
@@ -47,7 +47,7 @@ test("create, replay, preserve commits, remove and restore", async (t) => {
   await fs.writeFile(path.join(source, ".worktreeinclude"), "local.txt\nlink.txt\n");
   await fs.writeFile(path.join(source, "local.txt"), "local-only");
   await fs.symlink("local.txt", path.join(source, "link.txt"));
-  const inputs = { name: "arthur/test", baseBranch: "base" };
+  const inputs = { name: "feature/test", baseBranch: "base" };
   const target = await createWorktree(data, "first", source, inputs, false);
   assert.equal(await git(target, ["branch", "--show-current"]), inputs.name);
   assert.equal(await git(target, ["rev-parse", "HEAD"]), await git(source, ["rev-parse", "base"]));

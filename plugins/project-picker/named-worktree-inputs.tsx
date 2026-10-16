@@ -1,4 +1,4 @@
-import { experimental_BranchPicker as BranchPicker, type PluginEnvironmentProviderInputsProps } from "@get-bb/plugin-sdk/app";
+import { experimental_BranchPicker as BranchPicker, useSdk, type PluginEnvironmentProviderInputsProps } from "@get-bb/plugin-sdk/app";
 import { useEffect, useRef, useState } from "react";
 import { branchNameError, inputsSchema } from "./named-worktree";
 
@@ -18,7 +18,7 @@ export function focusBranchName(within: (el: HTMLElement) => boolean, waitMs = 0
   if (field) {
     pending = null;
     field.focus();
-    field.select();
+    field.setSelectionRange(field.value.length, field.value.length);
     return true;
   }
   pending = waitMs > 0 ? { within, until: Date.now() + waitMs } : null;
@@ -36,6 +36,19 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
   const [baseBranch, setBaseBranch] = useState<string | null>(parsed.success ? parsed.data.baseBranch : null);
   const hostId = target.kind === "existing-host" ? target.hostId : null;
   const field = useRef<HTMLInputElement>(null);
+  const sdk = useSdk();
+  const [prefix, setPrefix] = useState("");
+  // Start with bb's own branch prefix (Settings → General, `managedBranchPrefix`).
+  useEffect(() => {
+    let cancelled = false;
+    sdk.system.config().then((config) => {
+      if (cancelled) return;
+      const configured = config.generalSettings.managedBranchPrefix;
+      setPrefix(configured);
+      setName((current) => (current === "" ? configured : current));
+    }, () => {});
+    return () => { cancelled = true; };
+  }, [sdk]);
   useEffect(() => {
     const el = field.current;
     if (!el) return;
@@ -47,23 +60,26 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
     return () => { cancelAnimationFrame(frame); fields.delete(el); };
   }, []);
   useEffect(() => {
-    const reason = branchNameError(name) ?? (baseBranch === null ? "Choose a base branch." : null);
+    const reason = (name === prefix ? branchNameError("") : branchNameError(name))
+      ?? (baseBranch === null ? "Choose a base branch." : null);
     if (reason) onChange({ status: "blocked", reason });
     else onChange({ status: "ready", value: { name, baseBranch } });
-  }, [name, baseBranch, onChange]);
+  }, [name, prefix, baseBranch, onChange]);
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-      <input ref={field} aria-label="New branch name" placeholder="arthur/" value={name}
+    <div style={{ display: "flex", flexWrap: "nowrap", alignItems: "center", gap: 8, whiteSpace: "nowrap", minWidth: 0, flexShrink: 1 }}>
+      <input ref={field} aria-label="New branch name" placeholder="branch-name" value={name}
         onChange={(event) => setName(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === "Enter") event.preventDefault();
           // Keep typing out of the composer, but let app shortcuts through.
           if (!event.metaKey && !event.ctrlKey && !event.altKey) event.stopPropagation();
         }}
-        style={{ width: 180, padding: "4px 8px", border: "1px solid var(--border)", borderRadius: 4,
+        style={{ flex: "0 10 140px", width: 140, minWidth: 80, padding: "4px 8px", border: "1px solid var(--border)", borderRadius: 4,
           background: "transparent", color: "var(--foreground)", fontSize: 13 }} />
-      <BranchPicker hostId={hostId} projectId={projectId} value={baseBranch} onChange={setBaseBranch}
-        label="Branch from:" placeholder="Choose base branch" />
+      <div style={{ minWidth: 0, flexShrink: 1, overflow: "hidden" }}>
+        <BranchPicker hostId={hostId} projectId={projectId} value={baseBranch} onChange={setBaseBranch}
+          label="Branch from:" placeholder="Base branch" />
+      </div>
     </div>
   );
 }

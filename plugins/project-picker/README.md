@@ -87,8 +87,9 @@ Quick Compose's MIT copyright and permission notice are retained in
 
 In the New thread composer, select a project and machine, choose **Named
 worktree** in the environment picker, enter a new branch name, and select its
-base with **Branch from**. The name starts empty; `arthur/` is only a placeholder,
-not a required or automatically inserted prefix. Local and remote-tracking
+base with **Branch from**. The name starts with bb's branch prefix
+(`managedBranchPrefix` in Settings → General, `bb/` by default; empty when the
+setting is empty), which you can edit or delete. Local and remote-tracking
 branches are available through bb's branch picker.
 
 Git validates names with `git check-ref-format --branch`. Existing branches are
@@ -101,7 +102,7 @@ CLI equivalent (substitute your project ID):
 ```sh
 bb thread spawn --project <project-id> \
   --environment-provider named-worktree \
-  --environment-inputs '{"name":"arthur/foo","baseBranch":"main"}' \
+  --environment-inputs '{"name":"feature/foo","baseBranch":"main"}' \
   --prompt 'Work on foo'
 ```
 
