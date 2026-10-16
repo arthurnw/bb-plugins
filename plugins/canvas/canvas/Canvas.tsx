@@ -266,7 +266,7 @@ const SHORTCUTS: [string, string][] = [
   ["/", "Filter"],
   ["⌘Z / ⇧⌘Z", "Undo / redo a layout change"],
   ["Esc", "Close, then clear the selection"],
-  ["?", "Show these shortcuts"],
+  ["?", "Show or hide these shortcuts"],
 ];
 
 function ShortcutHelp({ onClose }: { onClose(): void }) {
@@ -1314,6 +1314,12 @@ function CanvasInner() {
         event.preventDefault();
         event.stopImmediatePropagation();
         setOverlay((current) => (current?.kind === "goto" ? null : { kind: "goto" }));
+        return;
+      }
+      // The shortcut list has no input of its own to catch keys; Esc or ? closes it.
+      if (overlay?.kind === "help" && (event.key === "Escape" || event.key === "?")) {
+        event.preventDefault();
+        setOverlay(null);
         return;
       }
       if (overlay !== null || typing || inInspector) {

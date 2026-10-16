@@ -49,7 +49,7 @@ On screens narrower than 768px the toolbar and the Needs you list give way to a 
 | `/` | Filter (dims threads that don't match) |
 | `⌘Z` / `⇧⌘Z` | Undo / redo a layout change (`Ctrl+Z` / `Ctrl+Y` elsewhere) |
 | Esc | Close the chat panel, then clear the selection |
-| `?` | Show the shortcuts |
+| `?` | Show or hide the shortcuts (Esc also closes them) |
 
 `⌘K` opens the canvas picker instead of bb's while you're on the canvas, except inside the chat panel. With the mouse: double-click a card to open the thread (Cmd/Ctrl for a split), right-click for bb's thread menu, and Option-click a status chip to show only that status.
 
