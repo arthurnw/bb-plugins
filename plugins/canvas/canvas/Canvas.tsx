@@ -11,7 +11,9 @@ import {
   ReactFlowProvider,
   applyNodeChanges,
   useReactFlow,
+  SelectionMode,
   useStore,
+  useStoreApi,
   type Edge,
   type NodeChange,
   type Viewport,
@@ -381,6 +383,7 @@ function CanvasInner() {
   const navigate = useBbNavigate();
   const sdk = useSdk();
   const flow = useReactFlow<CanvasNode, Edge>();
+  const flowStore = useStoreApi<CanvasNode, Edge>();
   const [showArchived, setShowArchived] = useState(false);
   const sidebar = useSidebarThreads(
     showArchived ? { experimental_lifecycles: ["active", "archived"] } : undefined,
@@ -757,7 +760,6 @@ function CanvasInner() {
         width: bounds.width,
         height: bounds.height,
         zIndex: -1,
-        selectable: false,
         data: {
           grouping,
           groupKey: group.key,
@@ -805,7 +807,6 @@ function CanvasInner() {
         position,
         width: CARD_W,
         height,
-        selectable: false,
         data: {
           thread,
           bucket,
@@ -886,7 +887,7 @@ function CanvasInner() {
         return {
           ...node,
           measured: old.measured,
-          selected: node.type === "note" ? old.selected : false,
+          selected: old.selected,
           dragging: old.dragging,
           position: old.dragging ? old.position : node.position,
         } as CanvasNode;
@@ -908,12 +909,24 @@ function CanvasInner() {
   );
 
   const onNodesChange = useCallback(
-    (changes: NodeChange<CanvasNode>[]) => {
+    (incoming: NodeChange<CanvasNode>[]) => {
       const current = new Map(nodesRef.current.map((node) => [node.id, node]));
+      // The selection box picks cards it touches but only frames it encloses;
+      // otherwise boxing a few cards would also grab their frame and all its
+      // members. Enclosed frames are selected in onSelectionEnd. React Flow has
+      // already marked its internal copy selected, so a refused frame gets a
+      // fresh object below to make it rebuild that copy.
+      const boxing = flowStore.getState().userSelectionRect !== null;
+      const refused = new Set<string>();
+      const changes = incoming.filter((change) => {
+        if (!boxing || change.type !== "select" || !change.selected || current.get(change.id)?.type !== "frame") return true;
+        refused.add(change.id);
+        return false;
+      });
       const moved: Record<string, Point> = {};
       const extra: NodeChange<CanvasNode>[] = [];
       // A linked chat follows its card by the same amount, and the reverse.
-      const followCard = (threadId: string, dx: number, dy: number) => {
+      const followCardOnce = (threadId: string, dx: number, dy: number) => {
         if (linkedChat(threadId) === undefined) return;
         const chatNode = current.get(`chat:${threadId}`);
         if (chatNode === undefined) return;
@@ -923,12 +936,26 @@ function CanvasInner() {
           position: { x: chatNode.position.x + dx, y: chatNode.position.y + dy },
         });
       };
+      // A Shift+drag selection can move a frame with its own cards, or a card
+      // with its linked chat; each must move once.
+      const changing = new Set(changes.flatMap((change) => (change.type === "position" ? [change.id] : [])));
+      const movingFrames = new Set(
+        [...changing].flatMap((id) => {
+          const node = current.get(id);
+          return node?.type === "frame" ? [node.data.groupKey] : [];
+        }),
+      );
+      const followCard = (threadId: string, dx: number, dy: number) => {
+        if (changing.has(`chat:${threadId}`)) return;
+        followCardOnce(threadId, dx, dy);
+      };
       for (const change of changes) {
         if (change.type !== "position" || change.position === undefined) continue;
         const node = current.get(change.id);
         if (node === undefined) continue;
         const dx = change.position.x - node.position.x;
         const dy = change.position.y - node.position.y;
+        if (node.type === "thread" && movingFrames.has(groups.get(node.id)?.key ?? "")) continue;
         if (node.type === "thread") {
           moved[change.id] = change.position;
           followCard(change.id, dx, dy);
@@ -941,15 +968,55 @@ function CanvasInner() {
           }
         }
         if (node.type === "chat" && node.data.chat.linked) {
-          const point = positionsRef.current[node.data.chat.threadId];
-          if (point !== undefined) moved[node.data.chat.threadId] = { x: point.x + dx, y: point.y + dy };
+          const threadId = node.data.chat.threadId;
+          if (changing.has(threadId) || movingFrames.has(groups.get(threadId)?.key ?? "")) continue;
+          const point = positionsRef.current[threadId];
+          if (point !== undefined) moved[threadId] = { x: point.x + dx, y: point.y + dy };
         }
       }
       if (Object.keys(moved).length > 0) setPositions((previous) => ({ ...previous, ...moved }));
-      setNodes((previous) => applyNodeChanges([...changes, ...extra], previous));
+      setNodes((previous) => {
+        const next = applyNodeChanges([...changes, ...extra], previous);
+        return refused.size === 0 ? next : next.map((node) => (refused.has(node.id) ? ({ ...node, selected: false } as CanvasNode) : node));
+      });
     },
-    [membersOf, linkedChat],
+    [membersOf, linkedChat, groups, flowStore],
   );
+
+  // The last selection box in flow coordinates; React Flow clears its own
+  // before onSelectionEnd runs.
+  const lastBox = useRef<Rect | null>(null);
+  useEffect(
+    () =>
+      flowStore.subscribe(({ userSelectionRect: rect, transform: [tx, ty, scale] }) => {
+        if (rect === null) return;
+        lastBox.current = { x: (rect.x - tx) / scale, y: (rect.y - ty) / scale, width: rect.width / scale, height: rect.height / scale };
+      }),
+    [flowStore],
+  );
+  // A box that starts on a card or frame ends with a click on it. React Flow
+  // swallows that click only while Shift is still held; otherwise it would
+  // select the frame (dropping the box's picks) or open the card.
+  const boxJustEnded = useRef(false);
+  const onSelectionEnd = useCallback(() => {
+    boxJustEnded.current = true;
+    setTimeout(() => {
+      boxJustEnded.current = false;
+    });
+    const box = lastBox.current;
+    lastBox.current = null;
+    if (box === null) return;
+    const inside = (node: CanvasNode) =>
+      node.position.x >= box.x &&
+      node.position.y >= box.y &&
+      node.position.x + (node.width ?? 0) <= box.x + box.width &&
+      node.position.y + (node.height ?? 0) <= box.y + box.height;
+    setNodes((previous) =>
+      previous.some((node) => node.type === "frame" && !node.selected && inside(node))
+        ? previous.map((node) => (node.type === "frame" && !node.selected && inside(node) ? { ...node, selected: true } : node))
+        : previous,
+    );
+  }, []);
 
   // Frame bounds as they were when a drag began, for drop-to-file.
   const framesAtDragStart = useRef(frames);
@@ -975,8 +1042,10 @@ function CanvasInner() {
           const point = positionsRef.current[node.id] ?? node.position;
           changes[node.id] = point;
           saveLinkedChat(node.id);
-          // In the section grouping, dropping a card on another section files it there.
-          if (grouping === "section") {
+          // In the section grouping, dropping a card on another section files it
+          // there, unless its own frame moved with it.
+          const frameDragged = dragged.some((other) => other.type === "frame" && other.data.groupKey === groups.get(node.id)?.key);
+          if (grouping === "section" && !frameDragged) {
             const center = { x: point.x + CARD_W / 2, y: point.y + CARD_H / 2 };
             const own = groups.get(node.id)?.key;
             const target = framesAtDragStart.current.find(
@@ -1512,7 +1581,10 @@ function CanvasInner() {
       if (direction !== undefined) navigate2d(direction, event.shiftKey || /^[HJKL]$/.test(event.key));
       else if (event.key === "Escape") {
         if (inspectorOpen) setInspectorOpen(false);
-        else setSelectedId(null);
+        else {
+          setSelectedId(null);
+          setNodes((previous) => (previous.some((node) => node.selected) ? previous.map((node) => (node.selected ? { ...node, selected: false } : node)) : previous));
+        }
       } else if (event.key === "/") searchRef.current?.focus();
       else if (event.key === "?") setOverlay({ kind: "help" });
       else if (key === "g") setOverlay({ kind: "goto" });
@@ -1611,6 +1683,11 @@ function CanvasInner() {
           ref={wrapperRef}
           tabIndex={-1}
           className="relative min-w-0 flex-1 outline-none"
+          onClickCapture={(event) => {
+            if (!boxJustEnded.current) return;
+            boxJustEnded.current = false;
+            event.stopPropagation();
+          }}
           onDoubleClick={(event) => {
             // React Flow has no pane double-click callback.
             if (!(event.target as HTMLElement).classList.contains("react-flow__pane")) return;
@@ -1625,6 +1702,7 @@ function CanvasInner() {
             onNodesChange={onNodesChange}
             onNodeDragStart={onNodeDragStart}
             onNodeDragStop={onNodeDragStop}
+            onSelectionEnd={onSelectionEnd}
             onNodeClick={(event, node) => {
               if (node.type !== "thread") return;
               setSelectedId(node.id);
@@ -1643,7 +1721,12 @@ function CanvasInner() {
             defaultViewport={initialViewport}
             zoomOnDoubleClick={false}
             nodesConnectable={false}
+            // Shift+drag on the pane draws a selection box; a plain drag pans.
             selectionOnDrag={false}
+            selectionKeyCode="Shift"
+            selectionMode={SelectionMode.Partial}
+            // Elevating would lift a selected frame above its cards.
+            elevateNodesOnSelect={false}
             disableKeyboardA11y
             // Not onlyRenderVisibleElements: it unmounts pinned chats that leave
             // the screen, and bb's chat reloads and re-lays out when it comes
