@@ -32,7 +32,7 @@ let state: QuickComposeState = {
 };
 let nextSessionId = 1;
 const listeners = new Set<() => void>();
-const draftChecks = new Map<QuickComposeKind, () => boolean>();
+let newThreadHasDraft: (() => boolean) | null = null;
 
 function update(next: Partial<QuickComposeState>): void {
   state = { ...state, ...next };
@@ -61,7 +61,7 @@ export const quickCompose = {
     // An untouched new-thread session is replaced so it re-seeds from the
     // project in view; with no registered check, assume a draft and keep it.
     const resume = current !== null && matchesContext(kind, current, context)
-      && (kind !== "new-thread" || (draftChecks.get(kind)?.() ?? true));
+      && (kind !== "new-thread" || (newThreadHasDraft?.() ?? true));
     const session = resume
       ? current
       : {
@@ -75,10 +75,10 @@ export const quickCompose = {
       focusRequest: state.focusRequest + 1,
     });
   },
-  /** Reports whether the mounted session holds a draft; returns an unregister function. */
-  registerDraftCheck(kind: QuickComposeKind, check: () => boolean): () => void {
-    draftChecks.set(kind, check);
-    return () => { if (draftChecks.get(kind) === check) draftChecks.delete(kind); };
+  /** Reports whether the mounted new-thread session holds a draft; returns an unregister function. */
+  registerDraftCheck(check: () => boolean): () => void {
+    newThreadHasDraft = check;
+    return () => { if (newThreadHasDraft === check) newThreadHasDraft = null; };
   },
   /** Preserve mounted selections without inspecting host picker DOM. */
   close(): void {

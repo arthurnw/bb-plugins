@@ -5,7 +5,7 @@ import { projectShortcut } from "./overlay-keys.ts";
 
 beforeEach(() => { quickCompose.finish("new-thread"); quickCompose.finish("handoff"); });
 test("a session with a draft survives reopening elsewhere", () => {
-  const unregister = quickCompose.registerDraftCheck("new-thread", () => true);
+  const unregister = quickCompose.registerDraftCheck(() => true);
   quickCompose.open("new-thread", { projectId: "a", threadId: null });
   const session = quickCompose.getState().sessions["new-thread"];
   const focus = quickCompose.getState().focusRequest;
@@ -19,7 +19,7 @@ test("a session with a draft survives reopening elsewhere", () => {
   unregister();
 });
 test("a session without a draft re-seeds from the current project on open", () => {
-  const unregister = quickCompose.registerDraftCheck("new-thread", () => false);
+  const unregister = quickCompose.registerDraftCheck(() => false);
   quickCompose.open("new-thread", { projectId: "a", threadId: null });
   const first = quickCompose.getState().sessions["new-thread"];
   quickCompose.close();

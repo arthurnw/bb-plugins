@@ -4,13 +4,13 @@ import { toast } from "sonner";
 import {
   experimental_NewThreadComposer as NewThreadComposer,
   experimental_useSidebarThreads as useSidebarThreads,
-  useBbNavigate, useRpc, useSdk,
+  useBbNavigate, useRpc,
   type PluginAppBuilder,
 } from "@get-bb/plugin-sdk/app";
 import type { quickComposeRpcContract } from "./server";
 import { quickCompose, subscribe, type QuickComposeKind, type QuickComposeSession } from "./overlay-store";
-import { cycle, toOptions } from "./projects";
-import { ProjectList } from "./project-list";
+import { cycle } from "./projects";
+import { ProjectList, useProjectOptions } from "./project-list";
 import { projectShortcut } from "./overlay-keys";
 import { PROVIDER_ID } from "./named-worktree";
 import { focusBranchName } from "./named-worktree-inputs";
@@ -20,9 +20,8 @@ import { focusBranchName } from "./named-worktree-inputs";
 // key format is bb-internal (0.46.1); if it changes, attachment-only drafts
 // re-seed their selections, but the draft itself is kept by draftKey.
 function hasDraft(section: HTMLElement | null, draftKey: string): boolean {
-  if (section?.querySelector("[data-promptbox-editor-content]")?.textContent?.trim()) return true;
-  try { return localStorage.getItem(`bb.promptbox.contents-plugin-draft-${encodeURIComponent(draftKey)}-3`) !== null; }
-  catch { return true; }
+  return !!section?.querySelector("[data-promptbox-editor-content]")?.textContent?.trim()
+    || localStorage.getItem(`bb.promptbox.contents-plugin-draft-${encodeURIComponent(draftKey)}-3`) !== null;
 }
 
 interface Bounds { left: number; width: number }
@@ -57,7 +56,6 @@ function useContentBounds(active: boolean): Bounds | null {
 function Session({ session, kind, visible, focusRequest }: {
   session: QuickComposeSession; kind: QuickComposeKind; visible: boolean; focusRequest: number;
 }) {
-  const sdk = useSdk();
   const rpc = useRpc<typeof quickComposeRpcContract>();
   const navigate = useBbNavigate();
   const sidebar = useSidebarThreads();
@@ -67,7 +65,7 @@ function Session({ session, kind, visible, focusRequest }: {
   const [focus, setFocus] = useState(0);
   const [namedWorktree, setNamedWorktree] = useState(false);
   const bounds = useContentBounds(visible);
-  const changing = useRef(false);
+  const projects = useProjectOptions();
   useEffect(() => {
     if (source || (kind === "handoff" && sidebar.status === "loading")) return;
     const thread = sidebar.threads.find(t => t.id === session.sourceThreadId);
@@ -79,7 +77,9 @@ function Session({ session, kind, visible, focusRequest }: {
   const choose = (id: string) => { setProjectId(id); setPopup(false); setFocus(n => n + 1); };
   const sectionRef = useRef<HTMLElement>(null);
   const draftKey = session.sourceThreadId ? `project-picker-handoff:${session.sourceThreadId}` : "project-picker-compose";
-  useEffect(() => quickCompose.registerDraftCheck(kind, () => hasDraft(sectionRef.current, draftKey)), [kind, draftKey]);
+  useEffect(() => {
+    if (kind === "new-thread") return quickCompose.registerDraftCheck(() => hasDraft(sectionRef.current, draftKey));
+  }, [kind, draftKey]);
 
   // bb's editor calls preventDefault on every Escape, so this listens in the
   // capture phase. It is added after composer-vim's capture listener, so an
@@ -102,7 +102,6 @@ function Session({ session, kind, visible, focusRequest }: {
   }, [visible, popup]);
   useEffect(() => {
     if (!visible) { setPopup(false); return; }
-    let cancelled = false;
     const onKey = (event: KeyboardEvent) => {
       const action = projectShortcut(event, /Mac|iPhone|iPad/.test(navigator.platform));
       if (!action) return;
@@ -117,17 +116,12 @@ function Session({ session, kind, visible, focusRequest }: {
         if (!focusBranchName(within)) { setNamedWorktree(true); focusBranchName(within, 2000); }
         return;
       }
-      if (changing.current) return;
-      changing.current = true;
-      void sdk.projects.list({ includePersonal: true }).then(projects => {
-        if (cancelled) return;
-        const next = cycle(toOptions(projects), projectId, action === "next" ? 1 : -1);
-        if (next) choose(next.id);
-      }).catch(error => toast.error(String(error))).finally(() => { changing.current = false; });
+      const next = projects && cycle(projects, projectId, action === "next" ? 1 : -1);
+      if (next) choose(next.id);
     };
     window.addEventListener("keydown", onKey, true);
-    return () => { cancelled = true; window.removeEventListener("keydown", onKey, true); };
-  }, [visible, sdk, projectId]);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [visible, projects, projectId]);
 
   const close = (e: { target: EventTarget; currentTarget: EventTarget }) => { if (e.target === e.currentTarget) quickCompose.close(); };
   return <div style={{ display: visible ? "block" : "none", position: "fixed", inset: 0, zIndex: 50, background: "rgb(0 0 0 / .3)" }} onPointerDown={close}>

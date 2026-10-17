@@ -2,16 +2,12 @@ import { definePluginApp, useComposer, useSdk, type PluginComposerApi } from "@g
 import { PROVIDER_ID } from "./named-worktree";
 import { focusBranchName, NamedWorktreeInputs } from "./named-worktree-inputs";
 import { registerOverlay } from "./overlay";
-import { ProjectList } from "./project-list";
-import { cycle, toOptions, type ProjectOption } from "./projects";
+import { loadProjectOptions, ProjectList } from "./project-list";
+import { cycle } from "./projects";
 
 const POPUP_ID = "project-picker";
 
 type Sdk = ReturnType<typeof useSdk>;
-
-async function loadOptions(sdk: Sdk): Promise<ProjectOption[]> {
-  return toOptions(await sdk.projects.list({ includePersonal: true }));
-}
 
 function currentProjectId(composer: PluginComposerApi) {
   return composer.selection?.projectId ?? (composer.scope.kind === "new-thread" ? composer.scope.projectId : null);
@@ -55,7 +51,7 @@ export default definePluginApp((app) => {
 
   const cycleBy = (step: 1 | -1) => async ({ composer }: { composer: PluginComposerApi }) => {
     if (composer.scope.kind !== "new-thread" || sdkRef === null) return;
-    const next = cycle(await loadOptions(sdkRef), currentProjectId(composer), step);
+    const next = cycle(await loadProjectOptions(sdkRef), currentProjectId(composer), step);
     if (next !== null) await composer.setSelection({ projectId: next.id });
   };
 

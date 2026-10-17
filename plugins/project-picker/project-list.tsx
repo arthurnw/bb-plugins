@@ -1,25 +1,31 @@
 import { useSdk } from "@get-bb/plugin-sdk/app";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { filter, toOptions, type ProjectOption } from "./projects";
-async function loadOptions(sdk: ReturnType<typeof useSdk>) { return toOptions(await sdk.projects.list({ includePersonal: true })); }
 
-export function ProjectList({ selectedId, onChoose, onClose, selectedLabel = "current" }: { selectedLabel?: string; selectedId: string | null; onChoose: (option: ProjectOption) => void; onClose: () => void }) {
+export async function loadProjectOptions(sdk: ReturnType<typeof useSdk>) {
+  return toOptions(await sdk.projects.list({ includePersonal: true }));
+}
+
+/** Project options loaded on mount; null while loading. */
+export function useProjectOptions() {
   const sdk = useSdk();
   const [options, setOptions] = useState<ProjectOption[] | null>(null);
-  const [query, setQuery] = useState("");
-  const [active, setActive] = useState(0);
-  const listRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
     let cancelled = false;
-    loadOptions(sdk).then(
+    loadProjectOptions(sdk).then(
       (loaded) => !cancelled && setOptions(loaded),
       () => !cancelled && setOptions([]),
     );
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [sdk]);
+  return options;
+}
+
+export function ProjectList({ selectedId, onChoose, onClose, selectedLabel = "current" }: { selectedLabel?: string; selectedId: string | null; onChoose: (option: ProjectOption) => void; onClose: () => void }) {
+  const options = useProjectOptions();
+  const [query, setQuery] = useState("");
+  const [active, setActive] = useState(0);
+  const listRef = useRef<HTMLDivElement>(null);
 
   const matches = useMemo(() => filter(options ?? [], query), [options, query]);
 
@@ -33,11 +39,6 @@ export function ProjectList({ selectedId, onChoose, onClose, selectedLabel = "cu
     listRef.current?.querySelector(`[data-index="${active}"]`)?.scrollIntoView({ block: "nearest" });
   }, [active]);
 
-  const choose = (option: ProjectOption | undefined) => {
-    if (option === undefined) return;
-    onChoose(option);
-  };
-
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     const down = event.key === "ArrowDown" || (event.ctrlKey && (event.key === "n" || event.key === "j"));
     const up = event.key === "ArrowUp" || (event.ctrlKey && (event.key === "p" || event.key === "k"));
@@ -46,7 +47,8 @@ export function ProjectList({ selectedId, onChoose, onClose, selectedLabel = "cu
       if (matches.length > 0) setActive((i) => (i + (down ? 1 : -1) + matches.length) % matches.length);
     } else if (event.key === "Enter") {
       event.preventDefault();
-      choose(matches[active]);
+      const option = matches[active];
+      if (option) onChoose(option);
     } else if (event.key === "Escape") {
       event.preventDefault();
       onClose();
@@ -89,7 +91,7 @@ export function ProjectList({ selectedId, onChoose, onClose, selectedLabel = "cu
               aria-selected={index === active}
               onMouseEnter={() => setActive(index)}
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => choose(option)}
+              onClick={() => onChoose(option)}
               style={{
                 display: "flex",
                 justifyContent: "space-between",
