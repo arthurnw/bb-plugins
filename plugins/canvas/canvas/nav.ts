@@ -3,7 +3,17 @@ import type { Point, Rect } from "./layout.ts";
 
 export type Direction = "left" | "down" | "up" | "right";
 
-export const DIRECTION_KEYS: Record<string, Direction> = { h: "left", j: "down", k: "up", l: "right" };
+/** Keyed by the lowercased `KeyboardEvent.key`. */
+export const DIRECTION_KEYS: Record<string, Direction> = {
+  h: "left",
+  j: "down",
+  k: "up",
+  l: "right",
+  arrowleft: "left",
+  arrowdown: "down",
+  arrowup: "up",
+  arrowright: "right",
+};
 
 export interface NavItem {
   id: string;

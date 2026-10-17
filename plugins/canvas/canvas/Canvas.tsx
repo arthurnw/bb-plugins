@@ -39,10 +39,10 @@ import { usePortalScopeProps } from "@/lib/portal-scope";
 import { cn } from "@/lib/utils";
 import type { Arrangement, Layout, Note, PinnedChat, rpcContract } from "../server";
 import { CanvasActionsContext, type CanvasActions } from "./context";
-import { Icon } from "./icons.tsx";
+import { Icon, type IconName } from "./icons.tsx";
 import { CARD_H, CARD_W, DEFAULT_ARRANGE, arrangeGroup, autoLayout, frameBounds, placeNew, type ArrangeOptions, type Point, type Rect } from "./layout.ts";
 import { DIRECTION_KEYS, nearestInDirection, nearestTo, type Direction, type NavItem } from "./nav.ts";
-import { nodeTypes, type CanvasNode, type FrameNodeData } from "./nodes";
+import { nodeTypes, type CanvasNode } from "./nodes";
 import { matchesShortcut, shortcutLabel, useArchive, useArchiveShortcut } from "./archive.ts";
 import { childForest, childListHeight } from "./children.ts";
 import { useReleaseChatFocus } from "./chatFocus.ts";
@@ -52,23 +52,19 @@ import { Picker, type PickerItem } from "./Picker.tsx";
 import { CHAT_H, CHAT_HEADER_H, CHAT_W } from "./ChatNode.tsx";
 import { edgeTypes } from "./TetherEdge.tsx";
 import { Triage, needsAttention } from "./Triage.tsx";
-import { ARRANGE_STYLES, GROUPINGS, type ArrangeStyle, type FrameColor, type Grouping } from "./shared.ts";
+import { GROUPINGS, LAYOUT_CHANGED, emptyLayout, type ArrangeStyle, type Grouping } from "./shared.ts";
 import { BUCKETS, BUCKET_LABEL, age, bucketOf, type Bucket } from "./status.ts";
 
 const CLIENT_ID = Math.random().toString(36).slice(2, 10);
 const UNDO_LIMIT = 50;
 const NO_GROUP = "none";
-const EMPTY_ARRANGEMENT: Arrangement = { positions: {}, notes: [], chats: [] };
-const EMPTY_LAYOUT: Layout = {
-  version: 2,
-  arrangements: { project: EMPTY_ARRANGEMENT, section: EMPTY_ARRANGEMENT, machine: EMPTY_ARRANGEMENT },
-  frameColors: {},
-};
+const EMPTY_ARRANGEMENT: Arrangement = emptyLayout().arrangements.project;
 const GROUPING_LABEL: Record<Grouping, string> = { project: "Project", section: "Section", machine: "Machine" };
 
-const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
+/** A promise rejection handler that reports "Could not <what>: <error>". */
+const failed = (what: string) => (error: unknown) =>
+  void toast.error(`Could not ${what}: ${error instanceof Error ? error.message : String(error)}`);
 
-/** The stored arrangement, refetched when another window changes it. */
 /**
  * The last layout this app session saw. Leaving the canvas unmounts it, and
  * coming back would otherwise wait on a round trip to the server (slow when
@@ -89,14 +85,13 @@ function useStoredLayout() {
   }, []);
   const refetch = useCallback(() => {
     rpc.call("layout_get").then(setLayout, (error: unknown) => {
-      toast.error(`Canvas layout failed to load: ${errorText(error)}`);
-      setLayout((current) => current ?? EMPTY_LAYOUT);
+      failed("load the canvas layout")(error);
+      setLayout((current) => current ?? emptyLayout());
     });
   }, [rpc, setLayout]);
   useEffect(refetch, [refetch]);
-  useRealtime("layout-changed", (payload) => {
-    const origin = (payload as { origin?: string } | null)?.origin;
-    if (origin !== CLIENT_ID) refetch();
+  useRealtime(LAYOUT_CHANGED, (payload) => {
+    if ((payload as { origin: string }).origin !== CLIENT_ID) refetch();
   });
   // Realtime signals are not replayed; catch up after a reconnect.
   const connection = useRealtimeConnectionState();
@@ -118,24 +113,13 @@ function useNow(intervalMs: number): number {
   return now;
 }
 
-/** A value kept in localStorage under this plugin's id. */
-function useStoredPreference<T extends string>(key: string, allowed: readonly T[], fallback: T) {
-  const [value, setValue] = useState<T>(() => {
-    try {
-      const stored = localStorage.getItem(key);
-      return allowed.includes(stored as T) ? (stored as T) : fallback;
-    } catch {
-      return fallback;
-    }
-  });
+/** A string kept in localStorage. */
+function useStoredPreference<T extends string>(key: string, fallback: T) {
+  const [value, setValue] = useState(() => (localStorage.getItem(key) as T | null) ?? fallback);
   const update = useCallback(
     (next: T) => {
       setValue(next);
-      try {
-        localStorage.setItem(key, next);
-      } catch {
-        // Blocked storage only loses the preference.
-      }
+      localStorage.setItem(key, next);
     },
     [key],
   );
@@ -196,33 +180,28 @@ function Inspector({
   // plugin's styles applying to it.
   const portalScope = usePortalScopeProps();
   const archive = useArchive(thread);
+  const buttons: { icon: IconName; label: string; title: string; run(): void }[] = [
+    ...(compact
+      ? []
+      : [
+          { icon: "Pin" as const, label: "Pin to the canvas", title: "Pin to the canvas (p)", run: onPin },
+          { icon: "Columns2" as const, label: "Open in a split", title: "Open in a split (⇧↵)", run: () => navigate.toThread(thread.id, { split: true }) },
+        ]),
+    { icon: "ArrowUpRight", label: "Open thread", title: "Open thread (↵)", run: () => navigate.toThread(thread.id) },
+    ...(archive === null ? [] : [{ icon: "Archive" as const, label: "Archive thread", title: "Archive thread", run: archive }]),
+    { icon: "X", label: "Close", title: "Close (Space or Esc)", run: onClose },
+  ];
   const header = (
-      <div className="flex h-11 shrink-0 items-center gap-1 border-b border-border px-3">
-        <span className="min-w-0 flex-1 truncate text-sm font-medium" title={thread.displayTitle}>
-          {thread.displayTitle}
-        </span>
-        {compact ? null : (
-          <ToolButton variant="ghost" size="icon" className="size-7" title="Pin to the canvas (p)" aria-label="Pin to the canvas" onClick={onPin}>
-            <Icon name="Pin" className="size-4" />
-          </ToolButton>
-        )}
-        {compact ? null : (
-          <ToolButton variant="ghost" size="icon" className="size-7" title="Open in a split (⇧↵)" aria-label="Open in a split" onClick={() => navigate.toThread(thread.id, { split: true })}>
-            <Icon name="Columns2" className="size-4" />
-          </ToolButton>
-        )}
-        <ToolButton variant="ghost" size="icon" className="size-7" title="Open thread (↵)" aria-label="Open thread" onClick={() => navigate.toThread(thread.id)}>
-          <Icon name="ArrowUpRight" className="size-4" />
+    <div className="flex h-11 shrink-0 items-center gap-1 border-b border-border px-3">
+      <span className="min-w-0 flex-1 truncate text-sm font-medium" title={thread.displayTitle}>
+        {thread.displayTitle}
+      </span>
+      {buttons.map((button) => (
+        <ToolButton key={button.label} variant="ghost" size="icon" className="size-7" title={button.title} aria-label={button.label} onClick={button.run}>
+          <Icon name={button.icon} className="size-4" />
         </ToolButton>
-        {archive === null ? null : (
-          <ToolButton variant="ghost" size="icon" className="size-7" title="Archive thread" aria-label="Archive thread" onClick={archive}>
-            <Icon name="Archive" className="size-4" />
-          </ToolButton>
-        )}
-        <ToolButton variant="ghost" size="icon" className="size-7" title="Close (Space or Esc)" aria-label="Close" onClick={onClose}>
-          <Icon name="X" className="size-4" />
-        </ToolButton>
-      </div>
+      ))}
+    </div>
   );
   const chat = (
     <div className="min-h-0 flex-1">
@@ -390,7 +369,7 @@ function CanvasInner() {
   );
   const { rpc, layout, setLayout } = useStoredLayout();
   const now = useNow(30_000);
-  const [grouping, setGrouping] = useStoredPreference<Grouping>(`${pluginId}:grouping`, GROUPINGS, "project");
+  const [grouping, setGrouping] = useStoredPreference<Grouping>(`${pluginId}:grouping`, "project");
   const [query, setQuery] = useState("");
   const [hidden, setHidden] = useState<ReadonlySet<Bucket>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -403,14 +382,13 @@ function CanvasInner() {
   // bb's "Archive thread" shortcut does nothing on a plugin page (there's no
   // thread in view), so the canvas handles the user's binding itself.
   const archiveShortcut = useArchiveShortcut();
-  const arrangeOptions = useMemo<ArrangeOptions>(() => {
-    const style = settings.values?.arrangeStyle;
-    const gridSize = Number(settings.values?.arrangeGridSize);
-    return {
-      style: ARRANGE_STYLES.includes(style as ArrangeStyle) ? (style as ArrangeStyle) : DEFAULT_ARRANGE.style,
-      gridSize: Number.isFinite(gridSize) && gridSize >= 1 ? gridSize : DEFAULT_ARRANGE.gridSize,
-    };
-  }, [settings.values?.arrangeStyle, settings.values?.arrangeGridSize]);
+  const arrangeOptions = useMemo<ArrangeOptions>(
+    () => ({
+      style: (settings.values?.arrangeStyle as ArrangeStyle | undefined) ?? DEFAULT_ARRANGE.style,
+      gridSize: (settings.values?.arrangeGridSize as number | undefined) ?? DEFAULT_ARRANGE.gridSize,
+    }),
+    [settings.values?.arrangeStyle, settings.values?.arrangeGridSize],
+  );
   const archiveSelected = useRef<(() => void) | null>(null);
   // Phones show bb's sidebar as a slide-over, so there is nothing to collapse.
   // Settings load after the first render; use the last value this browser saw
@@ -419,15 +397,10 @@ function CanvasInner() {
   const loadedCollapse = settings.values === undefined ? undefined : settings.values.collapseSidebar !== false;
   const collapseSidebar = loadedCollapse ?? localStorage.getItem(collapseKey) !== "false";
   useEffect(() => {
-    if (loadedCollapse === undefined) return;
-    try {
-      localStorage.setItem(collapseKey, String(loadedCollapse));
-    } catch {
-      // Blocked storage only means waiting for settings next time.
-    }
+    if (loadedCollapse !== undefined) localStorage.setItem(collapseKey, String(loadedCollapse));
   }, [collapseKey, loadedCollapse]);
   useCollapseHostSidebar(!compact && collapseSidebar);
-  const maxPinned = Math.min(12, Math.max(1, Math.round(Number(settings.values?.maxPinnedWindows ?? 4)) || 4));
+  const maxPinned = (settings.values?.maxPinnedWindows as number | undefined) ?? 4;
 
   const releaseFocus = useCallback(() => {
     (document.activeElement as HTMLElement | null)?.blur();
@@ -438,6 +411,7 @@ function CanvasInner() {
     () => sidebar.threads.filter((thread) => !thread.isHidden && (showArchived || !thread.isArchived)),
     [sidebar.threads, showArchived],
   );
+  const threadsById = useMemo(() => new Map(threads.map((thread) => [thread.id, thread])), [threads]);
   const projectNames = useMemo(
     () => new Map(sidebar.projects.map((project) => [project.id, project.isPersonal ? "Personal" : project.name])),
     [sidebar.projects],
@@ -486,24 +460,16 @@ function CanvasInner() {
   const topLevel = useMemo(() => threads.filter((thread) => !forest.rootOf.has(thread.id)), [threads, forest]);
   const rootOf = useCallback((id: string) => forest.rootOf.get(id) ?? id, [forest]);
   const foldedKey = `${pluginId}:folded`;
-  const [folded, setFolded] = useState<ReadonlySet<string>>(() => {
-    try {
-      return new Set(JSON.parse(localStorage.getItem(foldedKey) ?? "[]") as string[]);
-    } catch {
-      return new Set();
-    }
-  });
+  const [folded, setFolded] = useState<ReadonlySet<string>>(
+    () => new Set(JSON.parse(localStorage.getItem(foldedKey) ?? "[]") as string[]),
+  );
   const toggleFold = useCallback(
     (id: string) =>
       setFolded((current) => {
         const next = new Set(current);
         if (next.has(id)) next.delete(id);
         else next.add(id);
-        try {
-          localStorage.setItem(foldedKey, JSON.stringify([...next]));
-        } catch {
-          // Blocked storage only loses the fold state on reload.
-        }
+        localStorage.setItem(foldedKey, JSON.stringify([...next]));
         return next;
       }),
     [foldedKey],
@@ -563,9 +529,7 @@ function CanvasInner() {
       setHistory({ [direction]: stack.slice(0, -1), [other]: [...history[other], current] } as typeof history);
       layoutRef.current = target;
       setLayout(target);
-      rpc.call("layout_set", { origin: CLIENT_ID, layout: target }).catch((error: unknown) => {
-        toast.error(`Could not save the layout: ${errorText(error)}`);
-      });
+      rpc.call("layout_set", { origin: CLIENT_ID, layout: target }).catch(failed("save the layout"));
     },
     [history, rpc, setLayout],
   );
@@ -606,9 +570,7 @@ function CanvasInner() {
         }
         return { ...current, positions: next };
       });
-      rpc.call("positions_set", { origin: CLIENT_ID, grouping, positions: changes, replace }).catch((error: unknown) => {
-        toast.error(`Could not save the layout: ${errorText(error)}`);
-      });
+      rpc.call("positions_set", { origin: CLIENT_ID, grouping, positions: changes, replace }).catch(failed("save the layout"));
     },
     [rpc, grouping, updateArrangement],
   );
@@ -653,19 +615,6 @@ function CanvasInner() {
     });
   }, [topLevel, groups, positions, cardHeight]);
 
-  const newThreadIn = useCallback(
-    (frame: { grouping: Grouping; projectId: string | null; sectionId: string | null; groupKey: string }) => {
-      if (frame.grouping === "project" && frame.projectId !== null) {
-        navigate.toCompose({ projectId: frame.projectId, focusPrompt: true });
-      } else if (frame.grouping === "section") {
-        navigate.toCompose({ placement: { sectionId: frame.sectionId, pinned: false }, focusPrompt: true });
-      } else if (frame.grouping === "machine" && frame.groupKey !== NO_GROUP) {
-        navigate.toCompose({ hostId: frame.groupKey, focusPrompt: true });
-      } else navigate.toCompose({ focusPrompt: true });
-    },
-    [navigate],
-  );
-
   /** Files a thread under a section and lets the canvas re-place it there. */
   const moveToSection = useCallback(
     async (threadId: string, sectionId: string | null, keepPosition: boolean) => {
@@ -675,80 +624,41 @@ function CanvasInner() {
         const name = sectionId === null ? "No section" : (sectionNames.get(sectionId) ?? "the section");
         toast.success(`Moved to ${name}`);
       } catch (error) {
-        toast.error(`Could not move the thread: ${errorText(error)}`);
+        failed("move the thread")(error);
       }
     },
     [sdk, grouping, save, sectionNames],
   );
 
-  // togglePin and arrangeFrame are defined further down, after the helpers they need.
-  const togglePinRef = useRef<(threadId: string) => void>(() => undefined);
-  const arrangeFrameRef = useRef<(groupKey: string) => void>(() => undefined);
-  const openChildRef = useRef<(threadId: string) => void>(() => undefined);
-  const actions = useMemo<CanvasActions>(
-    () => ({
-      select: (id) => setSelectedId(id),
-      open: (id, split) => navigate.toThread(id, { split }),
-      newThreadIn: (frame: FrameNodeData) => newThreadIn(frame),
-      setFrameColor: (frameKey: string, color: FrameColor) => {
-        record();
-        setLayout((current) =>
-          current === null ? current : { ...current, frameColors: { ...current.frameColors, [frameKey]: color } },
-        );
-        rpc.call("frame_color_set", { origin: CLIENT_ID, frameKey, color }).catch(() => undefined);
-      },
-      renameSection: (id, name) => {
-        sdk.threadSections.update({ id, name }).catch((error: unknown) => {
-          toast.error(`Could not rename the section: ${errorText(error)}`);
-        });
-      },
-      deleteSection: (id) => {
-        sdk.threadSections.delete({ id }).catch((error: unknown) => {
-          toast.error(`Could not delete the section: ${errorText(error)}`);
-        });
-      },
-      updateNote: (note) => {
-        record();
-        setNotes((current) => current.map((existing) => (existing.id === note.id ? note : existing)));
-        rpc.call("note_upsert", { origin: CLIENT_ID, grouping, note }).catch((error: unknown) => {
-          toast.error(`Could not save the note: ${errorText(error)}`);
-        });
-      },
-      updateChat: (chat) => {
-        record();
-        setChats((current) => current.map((existing) => (existing.threadId === chat.threadId ? chat : existing)));
-        rpc.call("chat_upsert", { origin: CLIENT_ID, grouping, chat }).catch((error: unknown) => {
-          toast.error(`Could not save the pinned chat: ${errorText(error)}`);
-        });
-      },
-      unpinChat: (threadId) => {
-        record();
-        setChats((current) => current.filter((chat) => chat.threadId !== threadId));
-        rpc.call("chat_delete", { origin: CLIENT_ID, grouping, threadId }).catch(() => undefined);
-      },
-      focusChat: (threadId) => {
-        setFocusedChat(threadId);
-        setSelectedId(threadId);
-      },
-      releaseFocus,
-      togglePin: (threadId) => togglePinRef.current(threadId),
-      toggleFold,
-      openChild: (threadId) => openChildRef.current(threadId),
-      arrangeFrame: (groupKey) => arrangeFrameRef.current(groupKey),
-      deleteNote: (id) => {
-        record();
-        setNotes((current) => current.filter((note) => note.id !== id));
-        rpc.call("note_delete", { origin: CLIENT_ID, grouping, id }).catch(() => undefined);
-      },
-    }),
-    [navigate, rpc, sdk, setLayout, setNotes, setChats, record, grouping, newThreadIn, releaseFocus, toggleFold],
+  const updateNote = useCallback(
+    (note: Note) => {
+      record();
+      setNotes((current) => current.map((existing) => (existing.id === note.id ? note : existing)));
+      rpc.call("note_upsert", { origin: CLIENT_ID, grouping, note }).catch(failed("save the note"));
+    },
+    [record, setNotes, rpc, grouping],
+  );
+  const updateChat = useCallback(
+    (chat: PinnedChat) => {
+      record();
+      setChats((current) => current.map((existing) => (existing.threadId === chat.threadId ? chat : existing)));
+      rpc.call("chat_upsert", { origin: CLIENT_ID, grouping, chat }).catch(failed("save the pinned chat"));
+    },
+    [record, setChats, rpc, grouping],
+  );
+  const unpinChat = useCallback(
+    (threadId: string) => {
+      record();
+      setChats((current) => current.filter((chat) => chat.threadId !== threadId));
+      rpc.call("chat_delete", { origin: CLIENT_ID, grouping, threadId }).catch(failed("unpin the chat"));
+    },
+    [record, setChats, rpc, grouping],
   );
 
   // Nodes derived from threads, positions, and notes.
   const derived = useMemo<CanvasNode[]>(() => {
     const lowered = query.trim();
     const result: CanvasNode[] = [];
-    const threadById = new Map(threads.map((thread) => [thread.id, thread]));
     const rowsOf = (id: string) => forest.rowsOf.get(id) ?? [];
     const pinnedIds = new Set(chats.map((chat) => chat.threadId));
     for (const { group, members, bounds } of frames) {
@@ -783,7 +693,7 @@ function CanvasInner() {
       const bucket = buckets.get(thread.id) ?? "idle";
       const height = cardHeight(thread.id);
       const children = rowsOf(thread.id).flatMap((row) => {
-        const child = threadById.get(row.id);
+        const child = threadsById.get(row.id);
         return child === undefined
           ? []
           : [
@@ -800,7 +710,7 @@ function CanvasInner() {
       const groupName = groups.get(thread.id)?.name ?? "";
       const anyMatch =
         matches(thread, groupName, lowered) ||
-        children.some((child) => matches(threadById.get(child.id)!, groupName, lowered));
+        children.some((child) => matches(threadsById.get(child.id)!, groupName, lowered));
       result.push({
         id: thread.id,
         type: "thread",
@@ -832,10 +742,9 @@ function CanvasInner() {
         data: { note },
       });
     }
-    const byId = new Map(threads.map((thread) => [thread.id, thread]));
     // Pinned chats stay saved but aren't drawn on phone-sized screens.
     for (const chat of compact ? [] : chats) {
-      const thread = byId.get(chat.threadId);
+      const thread = threadsById.get(chat.threadId);
       if (thread === undefined) continue;
       result.push({
         id: `chat:${chat.threadId}`,
@@ -855,12 +764,12 @@ function CanvasInner() {
           focusRequest: chatFocusRequests[chat.threadId] ?? 0,
           zoom: settledZoom,
           parentTitle:
-            thread.parentThreadId === null ? null : (threadById.get(thread.parentThreadId)?.displayTitle ?? null),
+            thread.parentThreadId === null ? null : (threadsById.get(thread.parentThreadId)?.displayTitle ?? null),
         },
       });
     }
     return result;
-  }, [compact, threads, topLevel, forest, folded, cardHeight, rootOf, frames, positions, notes, chats, focusedChat, chatFocusRequests, settledZoom, selectedId, groups, buckets, hidden, query, now, grouping, layout?.frameColors]);
+  }, [compact, threadsById, topLevel, forest, folded, cardHeight, rootOf, frames, positions, notes, chats, focusedChat, chatFocusRequests, settledZoom, selectedId, groups, buckets, hidden, query, now, grouping, layout?.frameColors]);
 
   // React Flow owns transient state (measured size, selection, drag); merge
   // it into each rebuild.
@@ -1034,7 +943,7 @@ function CanvasInner() {
         const chat = linkedChat(threadId);
         const chatNode = nodesRef.current.find((candidate) => candidate.id === `chat:${threadId}`);
         if (chat !== undefined && chatNode !== undefined) {
-          actions.updateChat({ ...chat, x: chatNode.position.x, y: chatNode.position.y });
+          updateChat({ ...chat, x: chatNode.position.x, y: chatNode.position.y });
         }
       };
       for (const node of dragged) {
@@ -1070,12 +979,12 @@ function CanvasInner() {
           const point = positionsRef.current[node.data.chat.threadId];
           if (point !== undefined) changes[node.data.chat.threadId] = point;
         }
-        if (node.type === "note") actions.updateNote({ ...node.data.note, x: node.position.x, y: node.position.y });
-        if (node.type === "chat") actions.updateChat({ ...node.data.chat, x: node.position.x, y: node.position.y });
+        if (node.type === "note") updateNote({ ...node.data.note, x: node.position.x, y: node.position.y });
+        if (node.type === "chat") updateChat({ ...node.data.chat, x: node.position.x, y: node.position.y });
       }
       if (Object.keys(changes).length > 0) save(changes);
     },
-    [membersOf, save, actions, record, grouping, groups, moveToSection, linkedChat],
+    [membersOf, save, updateNote, updateChat, record, grouping, groups, moveToSection, linkedChat],
   );
 
   const edges = useMemo<Edge[]>(() => {
@@ -1125,15 +1034,10 @@ function CanvasInner() {
 
   const selected = threads.find((thread) => thread.id === selectedId) ?? null;
 
-  const threadsById = useMemo(() => new Map(threads.map((thread) => [thread.id, thread])), [threads]);
   // Pins of archived or deleted threads stay saved but aren't drawn, so they
   // don't count toward the limit.
   const shownPinCount = useMemo(() => chats.filter((chat) => threadsById.has(chat.threadId)).length, [chats, threadsById]);
 
-  const pinnedOpen = useCallback(
-    (id: string) => chats.some((chat) => chat.threadId === id && !chat.minimized),
-    [chats],
-  );
   useEffect(() => {
     if (selectedId !== null && chats.some((chat) => chat.threadId === selectedId)) setFocusedChat(selectedId);
   }, [selectedId, chats]);
@@ -1145,12 +1049,8 @@ function CanvasInner() {
   // Viewport is per browser: restore it, or fit everything on first visit.
   const viewportKey = `${pluginId}:viewport`;
   const initialViewport = useMemo<Viewport | undefined>(() => {
-    try {
-      const raw = localStorage.getItem(viewportKey);
-      return raw === null ? undefined : (JSON.parse(raw) as Viewport);
-    } catch {
-      return undefined;
-    }
+    const raw = localStorage.getItem(viewportKey);
+    return raw === null ? undefined : (JSON.parse(raw) as Viewport);
   }, [viewportKey]);
   const fitted = useRef(initialViewport !== undefined);
   useEffect(() => {
@@ -1215,11 +1115,22 @@ function CanvasInner() {
     [flow],
   );
 
+  /** Restores a pinned chat if minimized, focuses it, and pans to it. */
+  const showChat = useCallback(
+    (chat: PinnedChat) => {
+      const shown = chat.minimized ? { ...chat, minimized: false } : chat;
+      if (chat.minimized) updateChat(shown);
+      setFocusedChat(chat.threadId);
+      revealChat(shown);
+    },
+    [updateChat, revealChat],
+  );
+
   /** Pins a thread's chat beside its card, or unpins it. */
   const togglePin = useCallback(
     (id: string) => {
       if (chats.some((chat) => chat.threadId === id)) {
-        actions.unpinChat(id);
+        unpinChat(id);
         return;
       }
       if (shownPinCount >= maxPinned) {
@@ -1239,14 +1150,11 @@ function CanvasInner() {
       record();
       setChats((current) => [...current, chat]);
       setFocusedChat(id);
-      rpc.call("chat_upsert", { origin: CLIENT_ID, grouping, chat }).catch((error: unknown) => {
-        toast.error(`Could not pin the chat: ${errorText(error)}`);
-      });
+      rpc.call("chat_upsert", { origin: CLIENT_ID, grouping, chat }).catch(failed("pin the chat"));
       revealChat(chat);
     },
-    [chats, shownPinCount, maxPinned, cardRect, record, setChats, rpc, grouping, actions, revealChat],
+    [chats, shownPinCount, maxPinned, cardRect, record, setChats, rpc, grouping, unpinChat, revealChat],
   );
-  togglePinRef.current = togglePin;
 
   /**
    * A child row in a parent's card opens the child's chat: as a floating
@@ -1260,49 +1168,13 @@ function CanvasInner() {
         return;
       }
       const chat = chats.find((candidate) => candidate.threadId === id);
-      if (chat === undefined) {
-        togglePin(id);
-        return;
-      }
-      const shown = chat.minimized ? { ...chat, minimized: false } : chat;
-      if (chat.minimized) actions.updateChat(shown);
-      setFocusedChat(id);
-      revealChat(shown);
+      if (chat === undefined) togglePin(id);
+      else showChat(chat);
     },
-    [compact, chats, togglePin, actions, revealChat],
+    [compact, chats, togglePin, showChat],
   );
-  openChildRef.current = openChild;
 
-  // One-time move of chats pinned by the earlier per-browser version, whose
-  // windows were placed in screen space: re-pin them beside their cards.
-  const legacyPinsKey = `${pluginId}:pinned-windows`;
-  useEffect(() => {
-    if (layout === null || sidebar.status !== "ready" || Object.keys(positions).length === 0) return;
-    let legacy: { threadId: string }[];
-    try {
-      const raw = localStorage.getItem(legacyPinsKey);
-      if (raw === null) return;
-      localStorage.removeItem(legacyPinsKey);
-      legacy = JSON.parse(raw) as { threadId: string }[];
-    } catch {
-      return;
-    }
-    const room = Math.max(0, maxPinned - shownPinCount);
-    const toPin = legacy
-      .map((entry) => entry.threadId)
-      .filter((id) => positions[id] !== undefined && !chats.some((chat) => chat.threadId === id))
-      .slice(0, room);
-    let offset = 0;
-    for (const id of toPin) {
-      const card = positions[id]!;
-      const chat: PinnedChat = { threadId: id, x: card.x + CARD_W + 56 + offset, y: card.y + offset, width: CHAT_W, height: CHAT_H, minimized: false, linked: false };
-      offset += 24;
-      setChats((current) => [...current, chat]);
-      rpc.call("chat_upsert", { origin: CLIENT_ID, grouping, chat }).catch(() => undefined);
-    }
-  }, [layout, sidebar.status, positions, legacyPinsKey, maxPinned, chats, shownPinCount, setChats, rpc, grouping]);
-
-  /** Card rects for navigation;  /** Card rects for navigation; dimmed (filtered-out) cards are skipped unless asked for. */
+  /** Card rects for navigation; dimmed (filtered-out) cards are skipped unless asked for. */
   const navItems = useCallback(
     (ids: readonly string[], includeDimmed = false): NavItem[] => {
       const byId = new Map(nodesRef.current.map((node) => [node.id, node]));
@@ -1371,9 +1243,7 @@ function CanvasInner() {
       };
       record();
       setNotes((current) => [...current, note]);
-      rpc.call("note_upsert", { origin: CLIENT_ID, grouping, note }).catch((error: unknown) => {
-        toast.error(`Could not save the note: ${errorText(error)}`);
-      });
+      rpc.call("note_upsert", { origin: CLIENT_ID, grouping, note }).catch(failed("save the note"));
     },
     [flow, rpc, setNotes, record, grouping],
   );
@@ -1400,7 +1270,57 @@ function CanvasInner() {
     },
     [layoutThreads, arrangeOptions, record, save],
   );
-  arrangeFrameRef.current = arrangeFrame;
+
+  // These three change with most thread updates; reading them through a ref
+  // keeps `actions` stable so the memoized nodes don't all re-render.
+  const latest = useRef({ togglePin, openChild, arrangeFrame });
+  latest.current = { togglePin, openChild, arrangeFrame };
+  const actions = useMemo<CanvasActions>(
+    () => ({
+      select: setSelectedId,
+      open: (id, split) => navigate.toThread(id, { split }),
+      newThreadIn: (frame) => {
+        if (frame.grouping === "project" && frame.projectId !== null) {
+          navigate.toCompose({ projectId: frame.projectId, focusPrompt: true });
+        } else if (frame.grouping === "section") {
+          navigate.toCompose({ placement: { sectionId: frame.sectionId, pinned: false }, focusPrompt: true });
+        } else if (frame.grouping === "machine" && frame.groupKey !== NO_GROUP) {
+          navigate.toCompose({ hostId: frame.groupKey, focusPrompt: true });
+        } else navigate.toCompose({ focusPrompt: true });
+      },
+      setFrameColor: (frameKey, color) => {
+        record();
+        setLayout((current) =>
+          current === null ? current : { ...current, frameColors: { ...current.frameColors, [frameKey]: color } },
+        );
+        rpc.call("frame_color_set", { origin: CLIENT_ID, frameKey, color }).catch(failed("save the frame color"));
+      },
+      renameSection: (id, name) => {
+        sdk.threadSections.update({ id, name }).catch(failed("rename the section"));
+      },
+      deleteSection: (id) => {
+        sdk.threadSections.delete({ id }).catch(failed("delete the section"));
+      },
+      updateNote,
+      updateChat,
+      unpinChat,
+      focusChat: (threadId) => {
+        setFocusedChat(threadId);
+        setSelectedId(threadId);
+      },
+      releaseFocus,
+      togglePin: (id) => latest.current.togglePin(id),
+      toggleFold,
+      openChild: (id) => latest.current.openChild(id),
+      arrangeFrame: (groupKey) => latest.current.arrangeFrame(groupKey),
+      deleteNote: (id) => {
+        record();
+        setNotes((current) => current.filter((note) => note.id !== id));
+        rpc.call("note_delete", { origin: CLIENT_ID, grouping, id }).catch(failed("delete the note"));
+      },
+    }),
+    [navigate, rpc, sdk, setLayout, setNotes, record, grouping, releaseFocus, toggleFold, updateNote, updateChat, unpinChat],
+  );
 
   const changeGrouping = useCallback(
     (next: Grouping) => {
@@ -1504,7 +1424,7 @@ function CanvasInner() {
         if (threadId !== undefined) await moveToSection(threadId, section.id, false);
         else toast.success(`Created section ${section.name}`);
       } catch (error) {
-        toast.error(`Could not create the section: ${errorText(error)}`);
+        failed("create the section")(error);
       }
     },
     [sdk, moveToSection],
@@ -1573,11 +1493,7 @@ function CanvasInner() {
       }
       if (mod || event.altKey) return;
 
-      const direction =
-        DIRECTION_KEYS[key] ??
-        ({ ArrowLeft: "left", ArrowDown: "down", ArrowUp: "up", ArrowRight: "right" } as const)[
-          event.key as "ArrowLeft"
-        ];
+      const direction = DIRECTION_KEYS[key];
       if (direction !== undefined) navigate2d(direction, event.shiftKey || /^[HJKL]$/.test(event.key));
       else if (event.key === "Escape") {
         if (inspectorOpen) setInspectorOpen(false);
@@ -1591,19 +1507,11 @@ function CanvasInner() {
       else if (event.key === " " && selectedId !== null) {
         const chat = chats.find((candidate) => candidate.threadId === selectedId);
         if (chat === undefined) setInspectorOpen((open) => !open);
-        else {
-          const shown = chat.minimized ? { ...chat, minimized: false } : chat;
-          if (chat.minimized) actions.updateChat(shown);
-          setFocusedChat(selectedId);
-          revealChat(shown);
-        }
+        else showChat(chat);
       } else if (key === "r" && selectedId !== null) {
         const chat = chats.find((candidate) => candidate.threadId === selectedId);
         if (chat !== undefined) {
-          const shown = chat.minimized ? { ...chat, minimized: false } : chat;
-          if (chat.minimized) actions.updateChat(shown);
-          setFocusedChat(selectedId);
-          revealChat(shown);
+          showChat(chat);
           setChatFocusRequests((current) => ({ ...current, [selectedId]: (current[selectedId] ?? 0) + 1 }));
         } else {
           setInspectorOpen(true);
@@ -1612,7 +1520,7 @@ function CanvasInner() {
       } else if (key === "p" && selectedId !== null) togglePin(selectedId);
       else if (event.key === "-" && selectedId !== null) {
         const chat = chats.find((candidate) => candidate.threadId === selectedId);
-        if (chat !== undefined) actions.updateChat({ ...chat, minimized: !chat.minimized });
+        if (chat !== undefined) updateChat({ ...chat, minimized: !chat.minimized });
       } else if (event.key === "Tab") {
         const pinned = chats.filter((chat) => threadsById.has(chat.threadId));
         if (pinned.length === 0) return;
@@ -1668,7 +1576,8 @@ function CanvasInner() {
     focusedChat,
     threadsById,
     togglePin,
-    actions,
+    updateChat,
+    showChat,
     revealChat,
   ]);
 
@@ -1711,13 +1620,7 @@ function CanvasInner() {
               else setInspectorOpen(true);
             }}
             onPaneClick={() => setSelectedId(null)}
-            onMoveEnd={(_event, viewport) => {
-              try {
-                localStorage.setItem(viewportKey, JSON.stringify(viewport));
-              } catch {
-                // Storage full or blocked; the viewport just won't persist.
-              }
-            }}
+            onMoveEnd={(_event, viewport) => localStorage.setItem(viewportKey, JSON.stringify(viewport))}
             defaultViewport={initialViewport}
             zoomOnDoubleClick={false}
             nodesConnectable={false}
@@ -2036,7 +1939,7 @@ function CanvasInner() {
           ) : null}
           {selected === null ? null : <ArchiveRunner thread={selected} runRef={archiveSelected} />}
         </div>
-        {selected === null || !inspectorOpen || (!compact && pinnedOpen(selected.id)) ? null : (
+        {selected === null || !inspectorOpen || (!compact && chats.some((chat) => chat.threadId === selected.id && !chat.minimized)) ? null : (
           <Inspector
             thread={selected}
             compact={compact}
