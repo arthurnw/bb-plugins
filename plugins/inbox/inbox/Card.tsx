@@ -1,7 +1,6 @@
 import { useEffect, useState, type MouseEvent } from "react";
 import { toast } from "sonner";
 import { useBbNavigate, useSdk, type PluginSidebarThread } from "@get-bb/plugin-sdk/app";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useDetails, type Details } from "./details.ts";
 import { Icon, type IconName } from "./icons.tsx";
@@ -15,7 +14,7 @@ export interface CardAction {
   id: string;
   label: string;
   icon: IconName | null;
-  variant: "default" | "outline" | "ghost";
+  variant: keyof typeof BUTTON_VARIANT;
   /** The key that runs it on the selected card. */
   shortcut: string | null;
   /** Answers what the agent is waiting on. */
@@ -28,6 +27,12 @@ export interface CardMeta {
   project: string | null;
   parentTitle: string | null;
 }
+
+const BUTTON_VARIANT = {
+  default: "bg-foreground text-background hover:bg-foreground/90",
+  outline: "border border-input bg-transparent hover:bg-state-hover hover:text-foreground",
+  ghost: "hover:bg-state-hover hover:text-foreground",
+};
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
@@ -291,18 +296,20 @@ export function Card({
             {error !== null ? <div className="bb-inbox-error text-xs">Couldn't load steps: {error}</div> : null}
             <div className="flex flex-wrap items-center justify-end gap-1.5 pt-0.5">
               {actions.map((action) => (
-                <Button
+                <button
                   key={action.id}
-                  size="sm"
-                  variant={action.variant}
+                  type="button"
                   disabled={busy !== null}
                   onClick={onRun(action)}
                   aria-keyshortcuts={action.shortcut ?? undefined}
-                  className="h-7 px-2.5"
+                  className={cn(
+                    "inline-flex h-7 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-md px-2.5 text-xs font-medium transition-colors duration-150 hover:duration-0 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+                    BUTTON_VARIANT[action.variant],
+                  )}
                 >
                   {action.icon !== null ? <Icon name={action.icon} className="size-3.5" /> : null}
                   {busy === action.id ? `${action.label}…` : action.label}
-                </Button>
+                </button>
               ))}
             </div>
           </div>
