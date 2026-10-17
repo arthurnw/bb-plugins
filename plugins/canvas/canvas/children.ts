@@ -32,46 +32,28 @@ export function childListHeight(rows: number): number {
 }
 
 export function childForest(threads: readonly ForestThread[]): ChildForest {
-  const byId = new Map(threads.map((thread) => [thread.id, thread]));
+  const onCanvas = new Set(threads.map((thread) => thread.id));
   const kids = new Map<string, ForestThread[]>();
   for (const thread of threads) {
-    if (thread.parentThreadId === null || !byId.has(thread.parentThreadId)) continue;
+    if (thread.parentThreadId === null || !onCanvas.has(thread.parentThreadId)) continue;
     kids.set(thread.parentThreadId, [...(kids.get(thread.parentThreadId) ?? []), thread]);
   }
   for (const list of kids.values()) list.sort((a, b) => a.createdAt - b.createdAt);
 
-  // A thread is top-level when its parent isn't on the canvas. A parent cycle
-  // in bad data has no such thread, so its lowest id stands in as the top.
-  const isTopLevel = (thread: ForestThread): boolean => {
-    const chain = [thread.id];
-    let current = thread;
-    while (current.parentThreadId !== null && byId.has(current.parentThreadId)) {
-      const loopStart = chain.indexOf(current.parentThreadId);
-      if (loopStart !== -1) {
-        const loop = chain.slice(loopStart);
-        return loop.includes(thread.id) && thread.id === [...loop].sort()[0];
-      }
-      chain.push(current.parentThreadId);
-      current = byId.get(current.parentThreadId)!;
-    }
-    return current.id === thread.id;
-  };
-
   const rootOf = new Map<string, string>();
   const rowsOf = new Map<string, ChildRow[]>();
-  const visit = (rootId: string, parentId: string, depth: number, rows: ChildRow[], seen: Set<string>) => {
+  const visit = (rootId: string, parentId: string, depth: number, rows: ChildRow[]) => {
     for (const kid of kids.get(parentId) ?? []) {
-      if (seen.has(kid.id)) continue;
-      seen.add(kid.id);
       rootOf.set(kid.id, rootId);
       rows.push({ id: kid.id, depth });
-      visit(rootId, kid.id, depth + 1, rows, seen);
+      visit(rootId, kid.id, depth + 1, rows);
     }
   };
+  // A thread is top-level when its parent isn't on the canvas.
   for (const thread of threads) {
-    if (!isTopLevel(thread)) continue;
+    if (thread.parentThreadId !== null && onCanvas.has(thread.parentThreadId)) continue;
     const rows: ChildRow[] = [];
-    visit(thread.id, thread.id, 1, rows, new Set([thread.id]));
+    visit(thread.id, thread.id, 1, rows);
     if (rows.length > 0) rowsOf.set(thread.id, rows);
   }
   return { rootOf, rowsOf };

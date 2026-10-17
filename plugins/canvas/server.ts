@@ -4,17 +4,17 @@
 import { randomUUID } from "node:crypto";
 import { PluginCliError, cliCommand, defineCli, defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
-import { ARRANGE_STYLES, FRAME_COLORS, GROUPINGS, NOTE_COLORS, OPEN_URL_CHANNEL } from "./canvas/shared.ts";
+import { ARRANGE_STYLES, FRAME_COLORS, GROUPINGS, LAYOUT_CHANGED, NOTE_COLORS, OPEN_URL_CHANNEL, emptyLayout } from "./canvas/shared.ts";
 
-const pointSchema = z.object({ x: z.number().finite(), y: z.number().finite() });
+const pointSchema = z.object({ x: z.number(), y: z.number() });
 
 const noteSchema = z.object({
-  id: z.string().min(1).max(64),
-  x: z.number().finite(),
-  y: z.number().finite(),
-  width: z.number().finite().min(80).max(2000),
-  height: z.number().finite().min(60).max(2000),
-  text: z.string().max(20_000),
+  id: z.string(),
+  x: z.number(),
+  y: z.number(),
+  width: z.number(),
+  height: z.number(),
+  text: z.string(),
   color: z.enum(NOTE_COLORS),
 });
 export type Note = z.infer<typeof noteSchema>;
@@ -22,11 +22,11 @@ const groupingSchema = z.enum(GROUPINGS);
 
 /** A thread's chat pinned to the canvas, in canvas coordinates. */
 const pinnedChatSchema = z.object({
-  threadId: z.string().min(1).max(64),
-  x: z.number().finite(),
-  y: z.number().finite(),
-  width: z.number().finite().min(240).max(2400),
-  height: z.number().finite().min(160).max(2400),
+  threadId: z.string(),
+  x: z.number(),
+  y: z.number(),
+  width: z.number(),
+  height: z.number(),
   minimized: z.boolean(),
   /** Moves with its card, keeping their offset, when either is dragged. */
   linked: z.boolean().default(false),
@@ -53,37 +53,19 @@ const layoutSchema = z.object({
 });
 export type Layout = z.infer<typeof layoutSchema>;
 
-/** The first release stored one project arrangement at the top level. */
-const legacyLayoutSchema = z.object({
-  positions: z.record(z.string(), pointSchema),
-  notes: z.array(noteSchema),
-  frameColors: z.record(z.string(), z.enum(FRAME_COLORS)),
-});
-
-const emptyArrangement = (): Arrangement => ({ positions: {}, notes: [], chats: [] });
-function emptyLayout(): Layout {
-  return {
-    version: 2,
-    arrangements: { project: emptyArrangement(), section: emptyArrangement(), machine: emptyArrangement() },
-    frameColors: {},
-  };
+function parseLayout(raw: unknown): Layout {
+  const parsed = layoutSchema.safeParse(raw);
+  return parsed.success ? parsed.data : emptyLayout();
 }
 
-function parseLayout(raw: unknown): Layout {
-  const current = layoutSchema.safeParse(raw);
-  if (current.success) return current.data;
-  const legacy = legacyLayoutSchema.safeParse(raw);
-  if (!legacy.success) return emptyLayout();
-  const layout = emptyLayout();
-  layout.arrangements.project = { positions: legacy.data.positions, notes: legacy.data.notes, chats: [] };
-  for (const [projectId, color] of Object.entries(legacy.data.frameColors)) {
-    layout.frameColors[`project:${projectId}`] = color;
-  }
-  return layout;
+function upsert<T>(list: T[], item: T, same: (existing: T) => boolean) {
+  const index = list.findIndex(same);
+  if (index >= 0) list[index] = item;
+  else list.push(item);
 }
 
 /** Every write carries the writer's client id so it can skip its own echo. */
-const origin = z.string().max(64);
+const origin = z.string();
 const ok = z.object({ ok: z.literal(true) });
 
 export const rpcContract = defineRpcContract({
@@ -105,18 +87,14 @@ export const rpcContract = defineRpcContract({
   chat_upsert: { input: z.object({ origin, grouping: groupingSchema, chat: pinnedChatSchema }), output: ok },
   chat_delete: { input: z.object({ origin, grouping: groupingSchema, threadId: z.string() }), output: ok },
   frame_color_set: {
-    input: z.object({ origin, frameKey: z.string().max(200), color: z.enum(FRAME_COLORS) }),
+    input: z.object({ origin, frameKey: z.string(), color: z.enum(FRAME_COLORS) }),
     output: ok,
   },
   /** A Canvas page reports that it opened a `bb canvas open-url` request. */
-  open_url_ack: { input: z.object({ id: z.string().max(64) }), output: ok },
+  open_url_ack: { input: z.object({ id: z.string() }), output: ok },
 });
 
-export const LAYOUT_CHANGED = "layout-changed";
 const KEY = "layout";
-const MAX_NOTES = 500;
-/** Upper bound on the maxPinnedWindows setting; the app enforces the setting itself. */
-const MAX_CHATS = 12;
 /** How long `bb canvas open-url` waits for a Canvas page to report the URL opened. */
 const OPEN_URL_ACK_MS = 3000;
 
@@ -231,11 +209,6 @@ export default async function plugin(bb: BbPluginApi) {
     layout_get: () => read(),
     layout_set: ({ origin, layout }) =>
       update(origin, (current) => {
-        for (const grouping of GROUPINGS) {
-          if (layout.arrangements[grouping].notes.length > MAX_NOTES) {
-            throw new Error(`The canvas holds at most ${MAX_NOTES} notes per grouping.`);
-          }
-        }
         Object.assign(current, layout);
       }),
     positions_set: ({ origin, grouping, positions, replace }) =>
@@ -249,11 +222,7 @@ export default async function plugin(bb: BbPluginApi) {
       }),
     note_upsert: ({ origin, grouping, note }) =>
       update(origin, (layout) => {
-        const notes = layout.arrangements[grouping].notes;
-        const index = notes.findIndex((existing) => existing.id === note.id);
-        if (index >= 0) notes[index] = note;
-        else if (notes.length < MAX_NOTES) notes.push(note);
-        else throw new Error(`The canvas holds at most ${MAX_NOTES} notes per grouping.`);
+        upsert(layout.arrangements[grouping].notes, note, (existing) => existing.id === note.id);
       }),
     note_delete: ({ origin, grouping, id }) =>
       update(origin, (layout) => {
@@ -262,11 +231,7 @@ export default async function plugin(bb: BbPluginApi) {
       }),
     chat_upsert: ({ origin, grouping, chat }) =>
       update(origin, (layout) => {
-        const chats = layout.arrangements[grouping].chats;
-        const index = chats.findIndex((existing) => existing.threadId === chat.threadId);
-        if (index >= 0) chats[index] = chat;
-        else if (chats.length < MAX_CHATS) chats.push(chat);
-        else throw new Error(`The canvas holds at most ${MAX_CHATS} pinned chats per grouping.`);
+        upsert(layout.arrangements[grouping].chats, chat, (existing) => existing.threadId === chat.threadId);
       }),
     chat_delete: ({ origin, grouping, threadId }) =>
       update(origin, (layout) => {

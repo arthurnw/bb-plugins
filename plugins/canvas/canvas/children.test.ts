@@ -29,13 +29,6 @@ test("a child whose parent isn't on the canvas stays top-level", () => {
   assert.equal(rowsOf.get("orphan")?.length, 1);
 });
 
-test("a parent cycle in bad data keeps every thread, under its lowest id", () => {
-  const { rootOf, rowsOf } = childForest([t("x", "y"), t("y", "x")]);
-  assert.deepEqual(rowsOf.get("x"), [{ id: "y", depth: 1 }]);
-  assert.equal(rootOf.get("y"), "x");
-  assert.equal(rootOf.has("x"), false);
-});
-
 test("childListHeight grows by a row height per child", () => {
   assert.equal(childListHeight(0), 0);
   assert.equal(childListHeight(3) - childListHeight(2), CHILD_ROW_H);
