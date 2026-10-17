@@ -27,17 +27,8 @@ function firstFocusable(root: HTMLElement): HTMLElement | null {
   return null;
 }
 
-function composerTargets(): HTMLElement[] {
-  const targets: HTMLElement[] = [];
-  for (const shell of document.querySelectorAll<HTMLElement>("[data-app-composer]")) {
-    const role = shell.getAttribute("data-app-composer-role");
-    if (role !== null && role !== "primary") continue;
-    const editor = shell.querySelector<HTMLElement>(
-      "[contenteditable='true'], textarea",
-    );
-    if (editor && isVisible(editor)) targets.push(editor);
-  }
-  return targets;
+function visibleAll(selector: string): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>(selector)].filter(isVisible);
 }
 
 function sidebarTarget(sidebar: HTMLElement): HTMLElement {
@@ -55,37 +46,38 @@ function sidebarTarget(sidebar: HTMLElement): HTMLElement {
 export function collectRegions(): Region[] {
   const found: Omit<Region, "container">[] = [];
 
-  for (const target of composerTargets()) found.push({ kind: "composer", target });
+  for (const shell of document.querySelectorAll<HTMLElement>("[data-app-composer]")) {
+    const role = shell.getAttribute("data-app-composer-role");
+    if (role !== null && role !== "primary") continue;
+    const editor = shell.querySelector<HTMLElement>("[contenteditable='true'], textarea");
+    if (editor && isVisible(editor)) found.push({ kind: "composer", target: editor });
+  }
 
-  for (const el of document.querySelectorAll<HTMLElement>("[data-app-terminal]")) {
-    if (!isVisible(el)) continue;
+  for (const el of visibleAll("[data-app-terminal]")) {
     const textarea = el.querySelector<HTMLElement>(".xterm-helper-textarea");
     found.push({ kind: "terminal", target: textarea ?? el });
   }
 
-  for (const el of document.querySelectorAll<HTMLElement>("[data-app-browser]")) {
-    if (!isVisible(el)) continue;
+  for (const el of visibleAll("[data-app-browser]")) {
     const view = el.querySelector<HTMLElement>("webview, iframe");
     found.push({ kind: "browser", target: view ?? firstFocusable(el) ?? el });
   }
 
-  for (const el of document.querySelectorAll<HTMLElement>("[data-sidebar='sidebar']")) {
-    if (isVisible(el)) found.push({ kind: "sidebar", target: sidebarTarget(el) });
+  for (const el of visibleAll("[data-sidebar='sidebar']")) {
+    found.push({ kind: "sidebar", target: sidebarTarget(el) });
   }
 
-  // Panes that hold none of the above, such as file viewers and plugin pages.
-  const covered = (el: HTMLElement) => found.some((r) => el.contains(r.target));
-  for (const el of document.querySelectorAll<HTMLElement>(
-    "[data-split-pane-id], [data-pane-content]",
-  )) {
-    if (!isVisible(el) || covered(el)) continue;
-    if (el.querySelector("[data-split-pane-id], [data-pane-content]")) continue;
+  // Leaf panes that hold none of the above, such as file viewers and plugin pages.
+  const PANE = "[data-split-pane-id], [data-pane-content]";
+  for (const el of visibleAll(PANE)) {
+    if (el.querySelector(PANE) || found.some((r) => el.contains(r.target))) continue;
     found.push({ kind: "pane", target: firstFocusable(el) ?? el });
   }
 
+  const targets = found.map((r) => r.target);
   return found.map((region) => ({
     ...region,
-    container: exclusiveAncestor(region.target, found.map((r) => r.target)),
+    container: exclusiveAncestor(region.target, targets),
   }));
 }
 
