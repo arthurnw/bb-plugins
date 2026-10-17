@@ -7,7 +7,6 @@ function startOfLocalDay(date: Date): number {
 /** `12:43 PM`, `Yesterday 12:43 PM`, `Aug 12, 12:43 PM`, or `Aug 12, 2025, 12:43 PM`. */
 export function formatSentAt(timestamp: number, now = new Date()): string {
   const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return "";
 
   const time = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
   const day = startOfLocalDay(date);

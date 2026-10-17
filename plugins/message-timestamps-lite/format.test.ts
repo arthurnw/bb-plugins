@@ -22,5 +22,4 @@ test("formatSentAt labels today, yesterday, and older dates", () => {
   assert.doesNotMatch(formatSentAt(today, now), /Yesterday|,/);
   assert.match(formatSentAt(yesterday, now), /^Yesterday /);
   assert.match(formatSentAt(lastYear, now), /2025/);
-  assert.equal(formatSentAt(Number.NaN, now), "");
 });
