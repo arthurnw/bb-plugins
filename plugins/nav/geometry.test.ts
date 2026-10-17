@@ -51,3 +51,10 @@ test("falls back to the nearest non-overlapping box", () => {
   const near = box(200, 150, 300, 250);
   assert.equal(pickNeighbor(from, [far, near], "right"), 1);
 });
+
+test("breaks edge-distance ties by the larger overlap", () => {
+  const from = box(0, 0, 100, 100);
+  const small = box(100, 90, 200, 300);
+  const large = box(100, 20, 200, 80);
+  assert.equal(pickNeighbor(from, [small, large], "right"), 1);
+});
