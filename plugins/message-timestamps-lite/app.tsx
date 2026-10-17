@@ -7,7 +7,7 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import { useEffect, useState } from "react";
 import { formatSentAt, parseMessageRowId } from "./format.ts";
-import type { rpcContract } from "./server.ts";
+import type { Cursor, Page, rpcContract } from "./server.ts";
 import { LAST_REPLY_CHANNEL, type LastReplySignal } from "./shared.ts";
 import "./app.css";
 
@@ -25,14 +25,6 @@ const IN_PROGRESS_RETRY_MS = 3000;
 // timeline that mounts without one. Each tick is one attribute selector query.
 const LIST_CHECK_MS = 1000;
 const NAV_RECHECK_DELAYS_MS = [0, 100, 400, 1000];
-
-type Cursor = { anchorSeq: number; anchorId: string };
-type Page = {
-  messages: { id: string; createdAt: number | null; inProgress?: boolean }[];
-  olderCursor: Cursor | null;
-  maxSeq: number;
-};
-type RpcEnvelope = { ok: true; result: Page } | { ok: false; error?: { message?: string } };
 
 type ThreadState = {
   // null marks a user-role row that has no sent time to show.
@@ -79,8 +71,8 @@ function LastReply({ threadId, isCompactViewport }: PluginThreadHeaderActionProp
   }, [threadId, connected]);
 
   useRealtime(LAST_REPLY_CHANNEL, (payload) => {
-    const signal = payload as Partial<LastReplySignal> | null;
-    if (signal?.threadId === threadId && typeof signal.at === "number") setAt(signal.at);
+    const signal = payload as LastReplySignal;
+    if (signal.threadId === threadId) setAt(signal.at);
   });
 
   if (at == null) return null;
@@ -108,8 +100,6 @@ export default definePluginApp((app) => {
       const threads = new Map<string, ThreadState>();
       const pending = new Map<string, Set<HTMLElement>>();
       const observed = new Map<Element, MutationObserver>();
-      const stamped = new Set<HTMLElement>();
-      const timers = new Set<number>();
 
       const threadState = (threadId: string): ThreadState => {
         let state = threads.get(threadId);
@@ -136,18 +126,17 @@ export default definePluginApp((app) => {
             signal,
           },
         );
-        const envelope = (await response.json()) as RpcEnvelope;
-        if (!response.ok || !envelope.ok) {
-          throw new Error(envelope.ok ? `HTTP ${response.status}` : envelope.error?.message);
-        }
+        const envelope = (await response.json()) as { ok: boolean; result: Page };
+        if (!envelope.ok) throw new Error("userMessageTimes failed");
         return envelope.result;
       };
 
-      const stamp = (row: HTMLElement, createdAt: number) => {
-        const label = formatSentAt(createdAt);
-        if (!label) return;
-        row.style.setProperty(SENT_AT_VAR, JSON.stringify(label));
-        stamped.add(row);
+      // Stamps the row if its time is cached; returns whether it was.
+      const stampKnown = (state: ThreadState | undefined, row: HTMLElement, id: string): boolean => {
+        if (!state?.times.has(id)) return false;
+        const createdAt = state.times.get(id);
+        if (createdAt != null) row.style.setProperty(SENT_AT_VAR, JSON.stringify(formatSentAt(createdAt)));
+        return true;
       };
 
       // Stamps rows whose time is known and returns the ones still unknown.
@@ -157,15 +146,8 @@ export default definePluginApp((app) => {
         const unknown: HTMLElement[] = [];
         for (const row of rows) {
           const id = row.dataset.timelineRowId;
-          if (!row.isConnected || !id) {
-            rows.delete(row);
-          } else if (state.times.has(id)) {
-            const createdAt = state.times.get(id);
-            if (createdAt != null) stamp(row, createdAt);
-            rows.delete(row);
-          } else {
-            unknown.push(row);
-          }
+          if (!row.isConnected || !id || stampKnown(state, row, id)) rows.delete(row);
+          else unknown.push(row);
         }
         if (rows.size === 0) pending.delete(threadId);
         return unknown;
@@ -251,12 +233,7 @@ export default definePluginApp((app) => {
         const id = row.dataset.timelineRowId;
         const parsed = id ? parseMessageRowId(id) : null;
         if (!id || !parsed) return;
-        const state = threads.get(parsed.threadId);
-        if (state?.times.has(id)) {
-          const createdAt = state.times.get(id);
-          if (createdAt != null) stamp(row, createdAt);
-          return;
-        }
+        if (stampKnown(threads.get(parsed.threadId), row, id)) return;
         let rows = pending.get(parsed.threadId);
         if (!rows) pending.set(parsed.threadId, (rows = new Set()));
         rows.add(row);
@@ -272,41 +249,26 @@ export default definePluginApp((app) => {
       const watch = (container: Element) => {
         if (observed.has(container)) return;
         const observer = new MutationObserver((records) => {
-          for (const record of records) {
-            record.addedNodes.forEach(handleNode);
-            record.removedNodes.forEach((node) => {
-              if (node instanceof HTMLElement) stamped.delete(node);
-              const removed = observed.get(node as Element);
-              if (removed) {
-                removed.disconnect();
-                observed.delete(node as Element);
-              }
-            });
-          }
+          for (const record of records) record.addedNodes.forEach(handleNode);
         });
         observer.observe(container, { childList: true });
         observed.set(container, observer);
         for (const child of Array.from(container.children)) handleNode(child);
       };
 
+      // Also drops observers on containers that left the DOM.
       const syncLists = () => {
+        if (signal.aborted) return;
         for (const [container, observer] of observed) {
           if (container.isConnected) continue;
           observer.disconnect();
           observed.delete(container);
         }
-        for (const row of stamped) if (!row.isConnected) stamped.delete(row);
         document.querySelectorAll(LIST_SELECTOR).forEach(watch);
       };
 
       const onNavigate = () => {
-        for (const delay of NAV_RECHECK_DELAYS_MS) {
-          const timer = window.setTimeout(() => {
-            timers.delete(timer);
-            syncLists();
-          }, delay);
-          timers.add(timer);
-        }
+        for (const delay of NAV_RECHECK_DELAYS_MS) window.setTimeout(syncLists, delay);
       };
 
       syncLists();
@@ -317,13 +279,13 @@ export default definePluginApp((app) => {
 
       return () => {
         window.clearInterval(interval);
-        for (const timer of timers) window.clearTimeout(timer);
         for (const state of threads.values()) window.clearTimeout(state.retryTimer);
         if (resolveFrame) window.cancelAnimationFrame(resolveFrame);
         for (const observer of observed.values()) observer.disconnect();
-        for (const row of stamped) row.style.removeProperty(SENT_AT_VAR);
+        document
+          .querySelectorAll<HTMLElement>("[data-timeline-row-id]")
+          .forEach((row) => row.style.removeProperty(SENT_AT_VAR));
         observed.clear();
-        stamped.clear();
         pending.clear();
       };
     },
