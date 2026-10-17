@@ -1,25 +1,12 @@
 import { definePluginApp, experimental_copyToClipboard } from "@get-bb/plugin-sdk/app";
 import { useEffect, useReducer, useRef } from "react";
 import { installComposerVim } from "./src/controller";
-import { DEFAULT_OPTIONS, type ClipboardPolicy, type EngineOptions } from "./src/host";
+import { DEFAULT_OPTIONS, type EngineOptions } from "./src/host";
 import { getStatus, isIndicatorEnabled, setIndicatorEnabled, subscribe } from "./src/store";
 
-interface Settings {
-  clipboard?: unknown;
-  readlineKeys?: unknown;
-  autoPairs?: unknown;
-  showModeIndicator?: unknown;
-}
-
-function toOptions(s: Settings): EngineOptions {
-  const clipboard: ClipboardPolicy =
-    s.clipboard === "all" || s.clipboard === "never" || s.clipboard === "yank" ? s.clipboard : DEFAULT_OPTIONS.clipboard;
-  return {
-    ...DEFAULT_OPTIONS,
-    clipboard,
-    readlineKeys: s.readlineKeys !== false,
-    autoPairs: s.autoPairs === true,
-  };
+/** Values from server.ts's settings, with defaults filled in. */
+interface Settings extends EngineOptions {
+  showModeIndicator: boolean;
 }
 
 async function fetchSettings(pluginId: string, signal: AbortSignal): Promise<Settings | null> {
@@ -94,8 +81,9 @@ export default definePluginApp((app) => {
         lastFetch = Date.now();
         const s = await fetchSettings(pluginId, signal);
         if (!s || signal.aborted) return;
-        options = toOptions(s);
-        setIndicatorEnabled(s.showModeIndicator !== false);
+        const { showModeIndicator, ...engineOptions } = s;
+        options = engineOptions;
+        setIndicatorEnabled(showModeIndicator);
       };
       await refresh();
       installComposerVim({
