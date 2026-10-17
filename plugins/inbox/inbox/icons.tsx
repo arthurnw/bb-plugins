@@ -2,13 +2,10 @@
 // include all of these names.
 import {
   ArrowUpRight,
-  Check,
   CheckCheck,
-  ChevronDown,
   CircleAlert,
   CircleStop,
   Columns3,
-  GitBranch,
   Keyboard,
   List,
   RotateCcw,
@@ -16,20 +13,16 @@ import {
   Sparkle,
   TriangleAlert,
   Wrench,
-  X,
   Inbox,
   type LucideIcon,
 } from "lucide-react";
 
 const ICONS = {
   ArrowUpRight,
-  Check,
   CheckCheck,
-  ChevronDown,
   CircleAlert,
   CircleStop,
   Columns3,
-  GitBranch,
   Keyboard,
   List,
   RotateCcw,
@@ -37,7 +30,6 @@ const ICONS = {
   Sparkle,
   TriangleAlert,
   Wrench,
-  X,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;

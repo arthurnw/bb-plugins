@@ -155,3 +155,15 @@ test("askOf answers a single one-choice question inline, and sends others to the
   assert.equal(open?.kind, "open");
   assert.equal(askOf([{ id: "i4", status: "resolved", payload: { kind: "approval" } }]), null);
 });
+
+test("askOf describes permission and tool approvals", () => {
+  const approval = (subject: Record<string, unknown>) =>
+    askOf([{ id: "i", status: "pending", payload: { kind: "approval", availableDecisions: ["allow_for_session", "deny"], subject } }]);
+  const permissions = { fileSystem: { read: [], write: ["/tmp"] }, network: { enabled: true } };
+  const grant = approval({ kind: "permission_grant", toolName: "Bash", permissions });
+  assert.equal(grant?.title, "Wants permission for Bash");
+  assert.equal(grant?.detail, "Write: /tmp · Network access");
+  assert.deepEqual(grant?.kind === "approval" && grant.approve, { decision: "allow_for_session", grantedPermissions: permissions });
+  const tool = approval({ kind: "tool_use", presentation: { label: { pending: "Edit file" }, title: "a.ts" } });
+  assert.deepEqual([tool?.title, tool?.detail], ["Edit file", "a.ts"]);
+});

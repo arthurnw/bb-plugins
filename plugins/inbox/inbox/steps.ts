@@ -63,7 +63,7 @@ const MAX_STEPS = 4;
 const SOURCE_KINDS = new Set(["file-read", "search", "web-search", "web-fetch"]);
 
 const firstLine = (text: string) => text.trim().split("\n", 1)[0] ?? "";
-const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
+export const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
 const basename = (path: string) => path.split("/").filter(Boolean).pop() ?? path;
 /** "file-read" → "File read", for row kinds this file doesn't know yet. */
 const humanize = (kind: string) => kind.charAt(0).toUpperCase() + kind.slice(1).replace(/[-_]/g, " ");

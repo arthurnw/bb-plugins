@@ -22,14 +22,6 @@ function isTyping(target: EventTarget | null) {
   return target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
 }
 
-function readView(): Layout {
-  try {
-    return localStorage.getItem(VIEW_KEY) === "list" ? "list" : "board";
-  } catch {
-    return "board";
-  }
-}
-
 interface Item {
   thread: PluginSidebarThread;
   status: Status;
@@ -93,7 +85,7 @@ function GroupHeader({ label, count, layout }: { label: string; count: number; l
 export function InboxPage() {
   const { status: loadStatus, threads, projects } = useSidebarThreads();
   const { providers } = useProviders();
-  const [view, setView] = useState<Layout>(readView);
+  const [view, setView] = useState<Layout>(() => (localStorage.getItem(VIEW_KEY) === "list" ? "list" : "board"));
   const [projectId, setProjectId] = useState<string>(ALL_PROJECTS);
   const [openIds, setOpenIds] = useState<ReadonlySet<string>>(() => new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -136,11 +128,7 @@ export function InboxPage() {
 
   const changeView = (next: Layout) => {
     setView(next);
-    try {
-      localStorage.setItem(VIEW_KEY, next);
-    } catch {
-      // Private mode: the choice lasts for this page only.
-    }
+    localStorage.setItem(VIEW_KEY, next);
   };
 
   const toggle = useCallback((id: string) => {
@@ -185,6 +173,7 @@ export function InboxPage() {
   // Keys are read on the window, not the page: clicking a button that then
   // disables itself (Approve) drops focus to the document body, and a page
   // listener would stop hearing keys. Keys typed elsewhere in bb are left alone.
+  const active = useRef(true);
   const onKey = useRef<(event: KeyboardEvent) => void>(() => undefined);
   onKey.current = (event) => {
     const target = event.target;
@@ -230,7 +219,6 @@ export function InboxPage() {
     } else return;
     event.preventDefault();
   };
-  const active = useRef(true);
   useEffect(() => {
     const listener = (event: KeyboardEvent) => onKey.current(event);
     const track = (event: Event) => {

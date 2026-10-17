@@ -5,7 +5,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "re
 
 /** A number whose digits roll vertically when it changes. */
 export function RollingNumber({ value }: { value: number }) {
-  const digits = String(Math.max(0, Math.floor(value))).split("");
+  const digits = String(value).split("");
   return (
     <span className="bb-inbox-roll" aria-label={String(value)}>
       {digits.map((digit, index) => (

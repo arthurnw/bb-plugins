@@ -1,14 +1,6 @@
-// Groups bb's thread state into the inbox's status tags and filter tabs.
+// Maps bb's thread state to the inbox's statuses and groups, and formats times.
 
 export type Status = "waiting" | "running" | "failed" | "done" | "idle";
-
-export const STATUS_LABEL: Record<Status, string> = {
-  waiting: "Needs you",
-  running: "Running",
-  failed: "Failed",
-  done: "Done",
-  idle: "Idle",
-};
 
 /** Rows sort by this rank first, so what needs you is always on top. */
 const RANK: Record<Status, number> = { waiting: 0, failed: 1, running: 2, done: 3, idle: 4 };

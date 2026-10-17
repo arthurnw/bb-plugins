@@ -2,7 +2,7 @@ import { useEffect, useState, type MouseEvent } from "react";
 import { toast } from "sonner";
 import { useBbNavigate, useSdk, type PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
-import { useDetails, type Details } from "./details.ts";
+import { errorText, useDetails, type Details } from "./details.ts";
 import { Icon, type IconName } from "./icons.tsx";
 import type { Ask, Resolution } from "./interaction.ts";
 import { useNow } from "./motion.tsx";
@@ -17,8 +17,6 @@ export interface CardAction {
   variant: keyof typeof BUTTON_VARIANT;
   /** The key that runs it on the selected card. */
   shortcut: string | null;
-  /** Answers what the agent is waiting on. */
-  answers: boolean;
   run(event?: { split: boolean }): void;
 }
 
@@ -33,8 +31,6 @@ const BUTTON_VARIANT = {
   outline: "border border-input bg-transparent hover:bg-state-hover hover:text-foreground",
   ghost: "hover:bg-state-hover hover:text-foreground",
 };
-
-const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 function useActions(thread: PluginSidebarThread, status: Status, ask: Ask | null, onAnswered: () => void) {
   const sdk = useSdk();
@@ -55,34 +51,39 @@ function useActions(thread: PluginSidebarThread, status: Status, ask: Ask | null
       },
     );
   };
-  const resolve = (resolution: Resolution) => () =>
-    sdk.threads.interactions.resolve({
-      threadId: thread.id,
-      interactionId: ask!.id,
-      resolution: resolution as Parameters<typeof sdk.threads.interactions.resolve>[0]["resolution"],
-    });
-
   const actions: CardAction[] = [];
-  const answer = (id: string, label: string, icon: IconName | null, variant: CardAction["variant"], shortcut: string | null, resolution: Resolution) =>
-    actions.push({ id, label, icon, variant, shortcut, answers: true, run: perform(id, label, resolve(resolution), onAnswered) });
+  const add = (
+    id: string,
+    label: string,
+    icon: IconName | null,
+    variant: CardAction["variant"],
+    shortcut: string | null,
+    work: () => Promise<unknown>,
+    after?: () => void,
+  ) => actions.push({ id, label, icon, variant, shortcut, run: perform(id, label, work, after) });
+  const answer = (id: string, label: string, variant: CardAction["variant"], shortcut: string | null, resolution: Resolution) =>
+    add(id, label, null, variant, shortcut, () =>
+      sdk.threads.interactions.resolve({
+        threadId: thread.id,
+        interactionId: ask!.id,
+        resolution: resolution as Parameters<typeof sdk.threads.interactions.resolve>[0]["resolution"],
+      }), onAnswered);
 
   if (status === "waiting" && ask?.kind === "approval") {
-    answer("reject", "Reject", null, "outline", "x", ask.reject);
-    answer("approve", "Approve", null, "default", "a", ask.approve);
+    answer("reject", "Reject", "outline", "x", ask.reject);
+    answer("approve", "Approve", "default", "a", ask.approve);
   }
   if (status === "waiting" && ask?.kind === "choice") {
     ask.options.forEach((option, index) =>
-      answer(`choice-${index}`, option.label, null, index === 0 ? "default" : "outline", index < 9 ? String(index + 1) : null, option.resolution),
+      answer(`choice-${index}`, option.label, index === 0 ? "default" : "outline", String(index + 1), option.resolution),
     );
   }
-  const simple = (id: string, label: string, icon: IconName, variant: CardAction["variant"], shortcut: string, work: () => Promise<unknown>) =>
-    actions.push({ id, label, icon, variant, shortcut, answers: false, run: perform(id, label, work) });
   if (status === "failed" && thread.status === "error") {
-    simple("retry", "Retry", "RotateCcw", "default", "r", () => sdk.threads.retry({ threadId: thread.id }));
+    add("retry", "Retry", "RotateCcw", "default", "r", () => sdk.threads.retry({ threadId: thread.id }));
   }
-  if (status === "running") simple("stop", "Stop", "CircleStop", "outline", "s", () => sdk.threads.stop({ threadId: thread.id }));
+  if (status === "running") add("stop", "Stop", "CircleStop", "outline", "s", () => sdk.threads.stop({ threadId: thread.id }));
   if (thread.isUnread && status !== "waiting" && status !== "running") {
-    simple("read", "Mark read", "CheckCheck", "ghost", "e", () => sdk.threads.markRead({ threadId: thread.id }));
+    add("read", "Mark read", "CheckCheck", "ghost", "e", () => sdk.threads.markRead({ threadId: thread.id }));
   }
   const answeredInThread = status === "waiting" && ask?.kind !== "approval" && ask?.kind !== "choice";
   actions.push({
@@ -91,7 +92,6 @@ function useActions(thread: PluginSidebarThread, status: Status, ask: Ask | null
     icon: "ArrowUpRight",
     variant: actions.some((action) => action.variant === "default") ? "outline" : "default",
     shortcut: "o",
-    answers: false,
     run: (event) => navigate.toThread(thread.id, { split: event?.split ?? false }),
   });
   return { actions, busy };
@@ -234,7 +234,7 @@ export function Card({
             layout === "board" ? "line-clamp-2" : "truncate",
           )}
         >
-          {blurb?.text ?? (meta.parentTitle !== null ? `↳ ${meta.parentTitle}` : context) ?? "\u00a0"}
+          {blurb?.text ?? (meta.parentTitle !== null ? `↳ ${meta.parentTitle}` : context)}
         </p>
         <div className="mt-2 flex items-center gap-2 pl-[1.375rem] text-xs text-muted-foreground">
           <span className="flex min-w-0 flex-1 items-center gap-1.5">

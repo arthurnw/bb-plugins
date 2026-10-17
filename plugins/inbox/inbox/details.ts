@@ -17,7 +17,9 @@ export interface Details {
 type Sdk = ReturnType<typeof useSdk>;
 
 interface Entry {
-  key: string;
+  /** Status and pending interaction: a change here refetches at once. */
+  run: string;
+  updatedAt: number;
   /** Whether the collapsed turn's rows were loaded too. */
   full: boolean;
   details: Details;
@@ -25,6 +27,8 @@ interface Entry {
 }
 
 const cache = new Map<string, Entry>();
+
+export const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 /** A running thread changes constantly; its card refetches at most this often. */
 const RUNNING_REFRESH_MS = { open: 2_000, closed: 10_000 };
@@ -74,17 +78,17 @@ async function load(sdk: Sdk, thread: PluginSidebarThread, running: boolean, ful
 /** Details for `thread`, or null until loaded. An open card also loads the steps of a finished turn. */
 export function useDetails(thread: PluginSidebarThread, status: Status, open: boolean) {
   const sdk = useSdk();
-  const key = `${status}|${thread.hasPendingInteraction}|${thread.updatedAt}`;
+  const run = `${status}|${thread.hasPendingInteraction}`;
+  const { updatedAt } = thread;
   const [details, setDetails] = useState<Details | null>(() => cache.get(thread.id)?.details ?? null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const hit = cache.get(thread.id);
     if (hit !== undefined) setDetails(hit.details);
-    const complete = hit !== undefined && (hit.full || !open);
-    if (complete && hit.key === key) return;
+    const sameRun = hit !== undefined && (hit.full || !open) && hit.run === run;
+    if (sameRun && hit.updatedAt === updatedAt) return;
     // A running thread's updatedAt moves with every event; space those refetches out.
-    const sameRun = hit !== undefined && complete && hit.key.split("|", 2).join("|") === key.split("|", 2).join("|");
     const spacing = status === "running" && sameRun ? RUNNING_REFRESH_MS[open ? "open" : "closed"] : 0;
     const wait = hit === undefined ? 0 : Math.max(0, hit.fetchedAt + spacing - Date.now());
     let cancelled = false;
@@ -92,14 +96,14 @@ export function useDetails(thread: PluginSidebarThread, status: Status, open: bo
       limited(() => (cancelled ? Promise.resolve(null) : load(sdk, thread, status === "running", open))).then(
         (next) => {
           if (next === null) return;
-          cache.set(thread.id, { key, full: open, details: next, fetchedAt: Date.now() });
+          cache.set(thread.id, { run, updatedAt, full: open, details: next, fetchedAt: Date.now() });
           if (!cancelled) {
             setDetails(next);
             setError(null);
           }
         },
         (cause: unknown) => {
-          if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause));
+          if (!cancelled) setError(errorText(cause));
         },
       );
     }, wait);
@@ -107,9 +111,9 @@ export function useDetails(thread: PluginSidebarThread, status: Status, open: bo
       cancelled = true;
       clearTimeout(timer);
     };
-    // `thread` is read through `key`, which carries every field that matters.
+    // `thread` is read through `run` and `updatedAt`, which carry every field that matters.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sdk, thread.id, key, open]);
+  }, [sdk, thread.id, run, updatedAt, open]);
 
   return { details, error };
 }

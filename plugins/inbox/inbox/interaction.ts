@@ -2,6 +2,8 @@
 // inline: approvals get Approve and Reject, a single one-choice question gets
 // its options as buttons, and everything else is answered in the thread.
 
+import { clip } from "./steps.ts";
+
 type Permissions = {
   fileSystem: { read: string[]; write: string[] } | null;
   network: { enabled: boolean | null } | null;
@@ -19,7 +21,7 @@ export type Ask =
       id: string;
       title: string;
       detail: string | null;
-      options: { label: string; description: string | null; resolution: Resolution }[];
+      options: { label: string; resolution: Resolution }[];
     }
   | { kind: "open"; id: string; title: string; detail: string | null };
 
@@ -29,42 +31,39 @@ interface InteractionLike {
   payload: { kind: string } & Record<string, unknown>;
 }
 
-const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
-
-type Subject =
-  | { kind: "command"; command: string; cwd: string | null }
-  | { kind: "file_change"; writeScope: string | null }
-  | { kind: "permission_grant"; toolName: string | null; permissions: Permissions }
-  | { kind: "plan"; plan: string }
-  | { kind: "tool_use"; presentation: { label: { pending: string }; detail?: string; title?: string } }
-  | { kind: string };
+/** An approval's subject; which fields are set depends on `kind`. */
+interface Subject {
+  kind: string;
+  command?: string;
+  writeScope?: string | null;
+  toolName?: string | null;
+  permissions?: Permissions;
+  plan?: string;
+  presentation?: { label: { pending: string }; detail?: string; title?: string };
+}
 
 function describeSubject(subject: Subject): { title: string; detail: string | null } {
   switch (subject.kind) {
-    case "command": {
-      const s = subject as Extract<Subject, { kind: "command" }>;
-      return { title: "Wants to run a command", detail: clip(s.command, 400) };
-    }
-    case "file_change": {
-      const s = subject as Extract<Subject, { kind: "file_change" }>;
-      return { title: "Wants to change files", detail: s.writeScope };
-    }
+    case "command":
+      return { title: "Wants to run a command", detail: clip(subject.command!, 400) };
+    case "file_change":
+      return { title: "Wants to change files", detail: subject.writeScope ?? null };
     case "permission_grant": {
-      const s = subject as Extract<Subject, { kind: "permission_grant" }>;
-      const writes = s.permissions.fileSystem?.write ?? [];
+      const writes = subject.permissions!.fileSystem?.write ?? [];
       const parts = [
         writes.length > 0 ? `Write: ${writes.join(", ")}` : null,
-        s.permissions.network?.enabled ? "Network access" : null,
+        subject.permissions!.network?.enabled ? "Network access" : null,
       ].filter(Boolean);
-      return { title: s.toolName ? `Wants permission for ${s.toolName}` : "Wants more permissions", detail: parts.join(" · ") || null };
+      return {
+        title: subject.toolName ? `Wants permission for ${subject.toolName}` : "Wants more permissions",
+        detail: parts.join(" · ") || null,
+      };
     }
-    case "plan": {
-      const s = subject as Extract<Subject, { kind: "plan" }>;
-      return { title: "Wants to start on a plan", detail: clip(s.plan.trim(), 400) };
-    }
+    case "plan":
+      return { title: "Wants to start on a plan", detail: clip(subject.plan!.trim(), 400) };
     case "tool_use": {
-      const s = subject as Extract<Subject, { kind: "tool_use" }>;
-      return { title: s.presentation.label.pending, detail: s.presentation.detail ?? s.presentation.title ?? null };
+      const { label, detail, title } = subject.presentation!;
+      return { title: label.pending, detail: detail ?? title ?? null };
     }
     default:
       return { title: "Wants your approval", detail: null };
@@ -82,7 +81,7 @@ export function askOf(interactions: readonly InteractionLike[]): Ask | null {
     const subject = payload.subject as Subject;
     const described = describeSubject(subject);
     const reason = typeof payload.reason === "string" ? payload.reason : null;
-    const granted = subject.kind === "permission_grant" ? (subject as { permissions: Permissions }).permissions : null;
+    const granted = subject.kind === "permission_grant" ? subject.permissions! : null;
     if (!decisions.includes("deny") || !(decisions.includes("allow_once") || decisions.includes("allow_for_session"))) {
       return { kind: "open", id: pending.id, ...described };
     }
@@ -104,7 +103,7 @@ export function askOf(interactions: readonly InteractionLike[]): Ask | null {
       id: string;
       prompt: string;
       multiSelect: boolean;
-      options?: { label: string; value: string; description?: string }[];
+      options?: { label: string; value: string }[];
     }[]) ?? [];
     const only = questions.length === 1 ? questions[0] : undefined;
     if (only && !only.multiSelect && only.options && only.options.length > 0 && only.options.length <= 6) {
@@ -115,7 +114,6 @@ export function askOf(interactions: readonly InteractionLike[]): Ask | null {
         detail: null,
         options: only.options.map((option) => ({
           label: option.label,
-          description: option.description ?? null,
           resolution: { kind: "user_answer", answers: { [only.id]: { selected: [option.value] } } },
         })),
       };
