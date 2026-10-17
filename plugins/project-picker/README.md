@@ -118,8 +118,7 @@ bb thread spawn --project <project-id> \
 Worktrees live on the selected machine under this plugin's host-data directory:
 `worktrees/<path-key>/<repository-name>`. This matches the built-in layout, but
 uses `project-picker/host-data` rather than `environment-git-worktree/host-data`
-to keep ownership separate. Repository names unsuitable for directory names
-are sanitized and hashed.
+to keep ownership separate.
 
 The provider returns an owned path, so bb runs `.bb-env-setup.sh` and
 `.bb-env-teardown.sh` with its normal timeout and failure handling. Core retires

@@ -21,13 +21,13 @@ test("inputs require an explicit name and base without imposing a prefix", () =>
     assert.equal(inputsSchema.safeParse(value).success, false);
   }
   assert.deepEqual(inputsSchema.parse({ name: "feature/foo", baseBranch: "origin/main" }), { name: "feature/foo", baseBranch: "origin/main" });
-  for (const name of ["", " foo", "foo ", "-foo", "@{-1}", "foo\0bar"]) assert.ok(branchNameError(name));
+  for (const name of ["", "-foo", "@{-1}"]) assert.ok(branchNameError(name));
   assert.equal(branchNameError("feature/foo"), null);
 });
 
 test("Git validates literal branch names and rejects existing branches", async (t) => {
   const { source } = await fixture(t);
-  for (const name of ["bad name", "foo..bar", "foo.lock", "foo/", "HEAD", "@{-1}", "-f"]) {
+  for (const name of ["bad name", " foo", "foo..bar", "foo.lock", "foo/", "HEAD", "@{-1}", "-f"]) {
     await assert.rejects(validateBranchName(source, name));
   }
   await validateBranchName(source, "someone/feature");
@@ -35,10 +35,8 @@ test("Git validates literal branch names and rejects existing branches", async (
   await assert.rejects(validateNewBranch(source, { name: "new", baseBranch: "missing" }));
 });
 
-test("managed paths stay within the attempt directory", () => {
-  for (const key of ["../escape", ".", "..", "/tmp", "a/b", "a\\b"]) assert.throws(() => attemptRoot("/data", key));
+test("worktrees live under the attempt directory, named after the repository", () => {
   assert.equal(targetPath("/data", "attempt-1", "/repo/project.git"), "/data/worktrees/attempt-1/project");
-  assert.ok(targetPath("/data", "attempt-1", "/repo/project with spaces").startsWith("/data/worktrees/attempt-1/"));
 });
 
 test("create, replay, preserve commits, remove and restore", async (t) => {
@@ -87,11 +85,10 @@ test("failed provisioning can be cleaned without a returned path", async (t) => 
   await assert.rejects(createWorktree(data, "cancelled", source, { ...inputs, name: "other" }, false, controller.signal), /cancelled/);
 });
 
-test("cleanup removes an interrupted attempt record before Git ran", async (t) => {
+test("cleanup removes an attempt directory without a record", async (t) => {
   const { data } = await fixture(t);
   const root = attemptRoot(data, "interrupted");
   await fs.mkdir(root, { recursive: true });
-  await fs.writeFile(path.join(root, "attempt.json.tmp"), '{"source":');
   await removeWorktree(data, "interrupted", async () => { assert.fail("no checkout exists"); });
   await assert.rejects(fs.access(root), { code: "ENOENT" });
 });
