@@ -102,17 +102,19 @@ export default definePluginApp((app) => {
       const observed = new Map<Element, MutationObserver>();
 
       const threadState = (threadId: string): ThreadState => {
-        let state = threads.get(threadId);
-        if (state) {
-          threads.delete(threadId);
-        } else {
-          state = { times: new Map(), loaded: false, maxSeq: 0, olderCursor: null, inFlight: false, inProgress: new Set(), retryTimer: 0 };
-        }
+        // Reinsert so Map order tracks recency for LRU eviction.
+        const state = threads.get(threadId) ?? {
+          times: new Map(),
+          loaded: false,
+          maxSeq: 0,
+          olderCursor: null,
+          inFlight: false,
+          inProgress: new Set(),
+          retryTimer: 0,
+        };
+        threads.delete(threadId);
         threads.set(threadId, state);
-        if (threads.size > MAX_CACHED_THREADS) {
-          const oldest = threads.keys().next().value;
-          if (oldest !== undefined) threads.delete(oldest);
-        }
+        if (threads.size > MAX_CACHED_THREADS) threads.delete(threads.keys().next().value!);
         return state;
       };
 
