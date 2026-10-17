@@ -1,4 +1,4 @@
-import type { EditorHost, EngineOptions, Snapshot } from "./host";
+import type { EditorHost, EngineOptions, ScrollKind, Snapshot } from "./host";
 import {
   ATOM,
   CharClass,
@@ -90,6 +90,9 @@ interface UndoEntry {
 }
 
 const MAX_COUNT = 9999;
+const INDENT = "  ";
+/** Delay before a lone `s` acts as substitute (mini.surround prefix). */
+const SURROUND_TIMEOUT_MS = 300;
 
 const SIMPLE_MOTIONS = new Set([
   "h", "l", "j", "k", "w", "W", "b", "B", "e", "E", "0", "^", "$", "_", "-", "G", "{", "}",
@@ -114,40 +117,75 @@ const VISUAL_SIMPLE = new Set([
   ">", "<", "<A-j>", "<A-k>", "<A-h>", "<A-l>", "v", "V", "<C-d>", "<C-u>", "<C-e>", "<C-y>", "I", "A",
 ]);
 
+/** Lines keep their goal column across these motions. */
+const VERTICAL_MOTIONS = new Set(["j", "k", "<Up>", "<Down>", "gj", "gk"]);
+const SCROLL_KEYS: Record<string, ScrollKind> = {
+  "<C-d>": "halfDown",
+  "<C-u>": "halfUp",
+  "<C-e>": "lineDown",
+  "<C-y>": "lineUp",
+};
+
 /** Map a typed key to the literal character it stands for in an argument slot. */
 function literal(key: string): string | null {
   if (key === "<Space>") return " ";
   if (key === "<Tab>") return "\t";
-  return key.length === 1 || [...key].length === 1 ? key : null;
+  return [...key].length === 1 ? key : null;
+}
+
+function isEscape(key: string): boolean {
+  return key === "<Esc>" || key === "<C-[>" || key === "<C-c>";
 }
 
 function isDigit(k: string | undefined): boolean {
   return k !== undefined && k.length === 1 && k >= "0" && k <= "9";
 }
 
-function surroundPair(ch: string): [string, string] {
-  switch (ch) {
-    case "(":
-      return ["( ", " )"];
-    case "[":
-      return ["[ ", " ]"];
-    case "{":
-      return ["{ ", " }"];
-    case "<":
-      return ["< ", " >"];
-    case ")":
-    case "b":
-      return ["(", ")"];
-    case "]":
-      return ["[", "]"];
-    case "}":
-    case "B":
-      return ["{", "}"];
-    case ">":
-      return ["<", ">"];
-    default:
-      return [ch, ch];
+/** Parse a count starting at keys[i]. A leading 0 is a motion, not a count. */
+function parseCount(keys: string[], i: number): { count: number | null; next: number } {
+  let count: number | null = null;
+  while (isDigit(keys[i]) && (count !== null || keys[i] !== "0")) {
+    count = Math.min(MAX_COUNT, (count ?? 0) * 10 + Number(keys[i]));
+    i++;
   }
+  return { count, next: i };
+}
+
+const SURROUND_PAIRS: Record<string, [string, string]> = {
+  "(": ["( ", " )"],
+  "[": ["[ ", " ]"],
+  "{": ["{ ", " }"],
+  "<": ["< ", " >"],
+  ")": ["(", ")"],
+  b: ["(", ")"],
+  "]": ["[", "]"],
+  "}": ["{", "}"],
+  B: ["{", "}"],
+  ">": ["<", ">"],
+};
+
+function surroundPair(ch: string): [string, string] {
+  return SURROUND_PAIRS[ch] ?? [ch, ch];
+}
+
+/** Opening brackets a bracket text object or surround char refers to. */
+function bracketOpens(ch: string): string[] {
+  if (ch === "b") return ["(", "[", "{"];
+  if (ch === "B") return ["{"];
+  return [ch in OPEN_TO_CLOSE ? ch : CLOSE_TO_OPEN[ch]];
+}
+
+/** Case transform for g~ gu gU (and Visual ~ u U). */
+function caseFn(name: string): (s: string) => string {
+  if (name.endsWith("~")) return toggleCase;
+  return name.endsWith("u") ? (s) => s.toLowerCase() : (s) => s.toUpperCase();
+}
+
+/** End of the next readline word (Alt+F, Alt+D). */
+function readlineWordEnd(t: string, i: number): number {
+  while (i < t.length && charClass(t[i]) !== CharClass.Word) i++;
+  while (i < t.length && charClass(t[i]) === CharClass.Word) i++;
+  return i;
 }
 
 function escapeRegExp(s: string): string {
@@ -169,6 +207,8 @@ export class VimEngine {
   private oneShotNormal = false;
   private insertPending: string | null = null;
   private anchor = 0;
+  /** Visual head kept separately because the host selection spans the range. */
+  private headOverride: number | null = null;
   private lastVisual: { anchor: number; head: number; mode: "visual" | "vline" } | null = null;
   private goalCol: number | null = null;
   private goalX: number | null = null;
@@ -291,21 +331,12 @@ export class VimEngine {
     this.redoStack = [];
   }
 
-  private undo(count: number): void {
+  /** Undo (from undoStack) or redo (from redoStack) count steps. */
+  private travel(from: UndoEntry[], to: UndoEntry[], count: number): void {
     for (let n = 0; n < count; n++) {
-      const entry = this.undoStack.pop();
+      const entry = from.pop();
       if (!entry) break;
-      this.redoStack.push({ snap: this.host.snapshot(), cursor: this.normalCursor() });
-      this.host.restore(entry.snap, entry.cursor);
-    }
-    this.setCursor(this.normalCursor());
-  }
-
-  private redo(count: number): void {
-    for (let n = 0; n < count; n++) {
-      const entry = this.redoStack.pop();
-      if (!entry) break;
-      this.undoStack.push({ snap: this.host.snapshot(), cursor: this.normalCursor() });
+      to.push({ snap: this.host.snapshot(), cursor: this.normalCursor() });
       this.host.restore(entry.snap, entry.cursor);
     }
     this.setCursor(this.normalCursor());
@@ -371,7 +402,7 @@ export class VimEngine {
       }
       return true;
     }
-    if (key === "<Esc>" || key === "<C-[>" || key === "<C-c>") {
+    if (isEscape(key)) {
       this.exitInsert();
       return true;
     }
@@ -395,7 +426,7 @@ export class VimEngine {
         case "<C-w>":
         case "<A-BS>": {
           if (cur === ls) {
-            if (cur > 0) this.kill(cur - 1, cur, true);
+            if (cur > 0) this.kill(cur - 1, cur);
             return true;
           }
           let i = cur;
@@ -404,31 +435,27 @@ export class VimEngine {
             const c = charClass(t[i - 1]);
             while (i > ls && charClass(t[i - 1]) === c) i--;
           }
-          this.kill(i, cur, true);
+          this.kill(i, cur);
           return true;
         }
         case "<C-u>":
           if (cur === ls) {
-            if (cur > 0) this.kill(cur - 1, cur, true);
-          } else this.kill(ls, cur, true);
+            if (cur > 0) this.kill(cur - 1, cur);
+          } else this.kill(ls, cur);
           return true;
         case "<C-k>":
           if (cur === le) {
-            if (le < t.length) this.kill(le, le + 1, false);
-          } else this.kill(cur, le, false);
+            if (le < t.length) this.kill(le, le + 1);
+          } else this.kill(cur, le);
           return true;
         case "<C-q>": {
           const b = wordBackward(t, cur, true);
-          this.kill(b > 0 ? b - 1 : 0, cur, true);
+          this.kill(b > 0 ? b - 1 : 0, cur);
           return true;
         }
-        case "<A-d>": {
-          let i = cur;
-          while (i < t.length && charClass(t[i]) !== CharClass.Word) i++;
-          while (i < t.length && charClass(t[i]) === CharClass.Word) i++;
-          this.kill(cur, i, false);
+        case "<A-d>":
+          this.kill(cur, readlineWordEnd(t, cur));
           return true;
-        }
         case "<C-y>":
           if (this.shared.killBuffer) this.edit(cur, cur, this.shared.killBuffer, cur + this.shared.killBuffer.length, []);
           return true;
@@ -457,13 +484,9 @@ export class VimEngine {
           this.setCursor(i);
           return true;
         }
-        case "<A-f>": {
-          let i = cur;
-          while (i < t.length && charClass(t[i]) !== CharClass.Word) i++;
-          while (i < t.length && charClass(t[i]) === CharClass.Word) i++;
-          this.setCursor(i);
+        case "<A-f>":
+          this.setCursor(readlineWordEnd(t, cur));
           return true;
-        }
       }
     }
 
@@ -506,10 +529,10 @@ export class VimEngine {
     return false;
   }
 
-  private kill(from: number, to: number, backward: boolean): void {
+  private kill(from: number, to: number): void {
     if (from >= to) return;
     this.shared.killBuffer = this.text().slice(from, to).split(ATOM).join("");
-    this.edit(from, to, "", backward ? from : from);
+    this.edit(from, to, "", from);
   }
 
   private autoPair(key: string, t: string, cur: number): boolean {
@@ -557,7 +580,7 @@ export class VimEngine {
       this.mode = line.prev;
       this.searchLine = null;
     };
-    if (key === "<Esc>" || key === "<C-[>" || key === "<C-c>") {
+    if (isEscape(key)) {
       back();
       return true;
     }
@@ -585,24 +608,19 @@ export class VimEngine {
     return true;
   }
 
-  private searchRegex(pattern: string): RegExp | null {
+  private searchRegex(pattern: string): RegExp {
     const flags = /[A-Z]/.test(pattern.replace(/\\./g, "")) ? "g" : "gi";
     const source = pattern.replace(/\\[<>]/g, "\\b");
     try {
       return new RegExp(source, flags);
     } catch {
-      try {
-        return new RegExp(escapeRegExp(pattern), flags);
-      } catch {
-        return null;
-      }
+      return new RegExp(escapeRegExp(pattern), flags);
     }
   }
 
   private matches(): { from: number; to: number }[] {
     if (!this.shared.search) return [];
     const re = this.searchRegex(this.shared.search.pattern);
-    if (!re) return [];
     const t = this.text();
     const out: { from: number; to: number }[] = [];
     for (const m of t.matchAll(re)) {
@@ -677,11 +695,9 @@ export class VimEngine {
       if (reg === null) return "invalid";
       i += 2;
     }
-    let count: number | null = null;
-    while (isDigit(at(i)) && (count !== null || at(i) !== "0")) {
-      count = Math.min(MAX_COUNT, (count ?? 0) * 10 + Number(at(i)));
-      i++;
-    }
+    const parsedCount = parseCount(keys, i);
+    const count = parsedCount.count;
+    i = parsedCount.next;
     const key = at(i);
     if (key === undefined) return "more";
     const done = (kind: Cmd["kind"], name: string, extra: Partial<Cmd> = {}): Cmd => ({
@@ -744,11 +760,8 @@ export class VimEngine {
     }
 
     if (op !== null) {
-      let opCount: number | null = null;
-      while (isDigit(at(j)) && (opCount !== null || at(j) !== "0")) {
-        opCount = Math.min(MAX_COUNT, (opCount ?? 0) * 10 + Number(at(j)));
-        j++;
-      }
+      const { count: opCount, next } = parseCount(keys, j);
+      j = next;
       const k = at(j);
       if (k === undefined) return "more";
       let target: Target | null = null;
@@ -824,7 +837,7 @@ export class VimEngine {
 
   private commandKey(key: string): boolean | Promise<boolean> {
     const visual = this.mode === "visual" || this.mode === "vline";
-    if (key === "<Esc>" || key === "<C-[>" || key === "<C-c>") {
+    if (isEscape(key)) {
       this.clearTimer();
       if (this.pending.length > 0) {
         this.pending = [];
@@ -859,7 +872,7 @@ export class VimEngine {
     const parsed = this.parse(this.pending, visual);
     if (parsed === "more") {
       if (this.pending[this.pending.length - 1] === "s" && this.pending.filter((k) => k === "s").length === 1) {
-        this.armSurroundTimeout(visual);
+        this.armSurroundTimeout();
       }
       return true;
     }
@@ -880,30 +893,21 @@ export class VimEngine {
     return finish();
   }
 
-  private armSurroundTimeout(visual: boolean): void {
+  private armSurroundTimeout(): void {
     this.timer = setTimeout(() => {
-      this.timer = null;
-      if (this.pending[this.pending.length - 1] !== "s") return;
-      const keys = this.pending;
-      this.pending = [];
-      const cmd = this.parse([...keys.slice(0, -1), "s", "<substitute>"], visual);
-      if (cmd !== "more" && cmd !== "invalid") {
-        if (visual) this.execVisual(cmd);
-        else this.execNormal(cmd);
-      }
+      this.flushTimers();
       this.onAsyncChange?.();
-    }, this.options.surroundTimeoutMs);
+    }, SURROUND_TIMEOUT_MS);
   }
 
-  /** Run a deferred `s` immediately (tests). */
+  /** Run a deferred lone `s` as substitute now. */
   flushTimers(): void {
     if (this.timer === null) return;
-    clearTimeout(this.timer);
-    this.timer = null;
+    this.clearTimer();
     const visual = this.mode === "visual" || this.mode === "vline";
     const keys = this.pending;
     this.pending = [];
-    const cmd = this.parse([...keys.slice(0, -1), "s", "<substitute>"], visual);
+    const cmd = this.parse([...keys, "<substitute>"], visual);
     if (cmd !== "more" && cmd !== "invalid") {
       if (visual) this.execVisual(cmd);
       else this.execNormal(cmd);
@@ -1138,8 +1142,7 @@ export class VimEngine {
       case "<":
       case ">":
       case "b": {
-        const opens =
-          obj === "b" ? ["(", "[", "{"] : obj === "B" ? ["{"] : [obj in OPEN_TO_CLOSE ? obj : CLOSE_TO_OPEN[obj]];
+        const opens = bracketOpens(obj);
         let p = findBracketPair(t, cur, opens);
         // Repeating `ib` in Visual mode on an already-selected inner range grows it.
         if (p && a !== b && Math.min(a, b) === p.open + 1 && Math.max(a, b) === p.close - 1) {
@@ -1367,7 +1370,7 @@ export class VimEngine {
     const t = this.text();
     const from = lineStart(t, first);
     const to = lineEnd(t, last);
-    const unit = this.options.indent;
+    const unit = INDENT;
     const lines = t.slice(from, to).split("\n").map((line) => {
       if (line.length === 0) return line;
       if (dir > 0) return unit.repeat(times) + line;
@@ -1483,10 +1486,7 @@ export class VimEngine {
   // Surround (mini.surround)
 
   private findSurround(t: string, cur: number, ch: string): Pair | null {
-    if (ch === "b" || ch in OPEN_TO_CLOSE || ch in CLOSE_TO_OPEN) {
-      const opens = ch === "b" ? ["(", "[", "{"] : [ch in OPEN_TO_CLOSE ? ch : CLOSE_TO_OPEN[ch]];
-      return findBracketPair(t, cur, opens);
-    }
+    if (ch === "b" || ch in OPEN_TO_CLOSE || ch in CLOSE_TO_OPEN) return findBracketPair(t, cur, bracketOpens(ch));
     if (ch === "q") return findQuotePair(t, cur, ['"', "'", "`"]);
     return findQuotePair(t, cur, [ch]);
   }
@@ -1528,8 +1528,7 @@ export class VimEngine {
     if (cmd.kind === "motion") {
       const m = this.motion(cmd.name, cmd.arg, count, cur, null);
       if (m) {
-        const keep = ["j", "k", "<Up>", "<Down>", "gj", "gk"].includes(cmd.name);
-        this.setCursor(clampNormal(this.text(), m.pos), keep);
+        this.setCursor(clampNormal(this.text(), m.pos), VERTICAL_MOTIONS.has(cmd.name));
       }
       return;
     }
@@ -1579,8 +1578,7 @@ export class VimEngine {
         case "g~":
         case "gu":
         case "gU": {
-          const fn = op === "g~" ? toggleCase : op === "gu" ? (s: string) => s.toLowerCase() : (s: string) => s.toUpperCase();
-          this.transformRange(range, fn);
+          this.transformRange(range, caseFn(op));
           this.setCursor(clampNormal(this.text(), range.linewise ? firstNonBlank(this.text(), range.from) : range.from));
           this.commit(snap, cur);
           recordable(false);
@@ -1598,6 +1596,7 @@ export class VimEngine {
     }
 
     // Simple commands
+    if (cmd.name in SCROLL_KEYS) return this.host.scroll(SCROLL_KEYS[cmd.name], n);
     const ls = lineStart(t, cur);
     const le = lineEnd(t, cur);
     const snap = this.host.snapshot();
@@ -1733,10 +1732,10 @@ export class VimEngine {
         return;
       }
       case "u":
-        this.undo(n);
+        this.travel(this.undoStack, this.redoStack, n);
         return;
       case "<C-r>":
-        this.redo(n);
+        this.travel(this.redoStack, this.undoStack, n);
         return;
       case ".":
         this.repeatLast(count);
@@ -1767,27 +1766,13 @@ export class VimEngine {
       case "<A-l>":
         change(() => this.indentLines(cur, cur, cmd.name === "<A-l>" ? 1 : -1, n));
         return;
-      case "<C-d>":
-        this.host.scroll("halfDown", n);
-        return;
-      case "<C-u>":
-        this.host.scroll("halfUp", n);
-        return;
-      case "<C-e>":
-        this.host.scroll("lineDown", n);
-        return;
-      case "<C-y>":
-        this.host.scroll("lineUp", n);
-        return;
     }
   }
 
   private stripCount(cmd: Cmd): string[] {
     const keys = [...cmd.keys];
-    let i = keys[0] === '"' ? 2 : 0;
-    const start = i;
-    while (isDigit(keys[i]) && (i > start || keys[i] !== "0")) i++;
-    keys.splice(start, i - start);
+    const start = keys[0] === '"' ? 2 : 0;
+    keys.splice(start, parseCount(keys, start).next - start);
     return keys;
   }
 
@@ -1804,7 +1789,7 @@ export class VimEngine {
         const r = this.commandKey(k);
         if (r instanceof Promise) break;
       }
-      if (this.pending.length > 0 && this.pending[this.pending.length - 1] === "s") this.flushTimers();
+      this.flushTimers();
       if (this.mode === "insert") {
         if (change.inserted) {
           const cur = this.cursor();
@@ -1839,12 +1824,9 @@ export class VimEngine {
 
   private showVisual(head: number): void {
     const r = this.visualRange(head);
-    this.host.setSelection(r.from, r.linewise ? r.to : r.to);
+    this.host.setSelection(r.from, r.to);
     this.headOverride = head;
   }
-
-  /** Visual head kept separately because the host selection spans the range. */
-  private headOverride: number | null = null;
 
   private visualHead(): number {
     return this.headOverride ?? this.cursor();
@@ -1868,12 +1850,12 @@ export class VimEngine {
     if (cmd.kind === "motion") {
       const m = this.motion(cmd.name, cmd.arg, cmd.count, head, null);
       if (m) {
-        const keep = ["j", "k", "<Up>", "<Down>", "gj", "gk"].includes(cmd.name);
-        if (!keep) this.goalCol = null;
+        if (!VERTICAL_MOTIONS.has(cmd.name)) this.goalCol = null;
         this.showVisual(m.pos);
       }
       return;
     }
+    if (cmd.name in SCROLL_KEYS) return this.host.scroll(SCROLL_KEYS[cmd.name], n);
     const range = this.visualRange(head);
     const snap = this.host.snapshot();
     const startCur = Math.min(this.anchor, head);
@@ -1887,8 +1869,7 @@ export class VimEngine {
         case "g~":
         case "gu":
         case "gU": {
-          const fn = cmd.name === "g~" ? toggleCase : cmd.name === "gu" ? (s: string) => s.toLowerCase() : (s: string) => s.toUpperCase();
-          this.transformRange(range, fn);
+          this.transformRange(range, caseFn(cmd.name));
           finish(range.from);
           return;
         }
@@ -1978,16 +1959,14 @@ export class VimEngine {
         return;
       case "A":
         this.exitVisual(range.to);
-        this.enterInsert(range.linewise ? range.to : range.to, null);
+        this.enterInsert(range.to, null);
         return;
       case "~":
       case "u":
-      case "U": {
-        const fn = cmd.name === "~" ? toggleCase : cmd.name === "u" ? (s: string) => s.toLowerCase() : (s: string) => s.toUpperCase();
-        this.transformRange(range, fn);
+      case "U":
+        this.transformRange(range, caseFn(cmd.name));
         finish(range.from);
         return;
-      }
       case "J":
       case "gJ": {
         const lines = lineIndex(t, range.to) - lineIndex(t, range.from) + 1;
@@ -2046,18 +2025,6 @@ export class VimEngine {
       case "p":
       case "P":
         return this.visualPut(cmd, range, snap, startCur);
-      case "<C-d>":
-        this.host.scroll("halfDown", n);
-        return;
-      case "<C-u>":
-        this.host.scroll("halfUp", n);
-        return;
-      case "<C-e>":
-        this.host.scroll("lineDown", n);
-        return;
-      case "<C-y>":
-        this.host.scroll("lineUp", n);
-        return;
     }
   }
 
@@ -2067,7 +2034,6 @@ export class VimEngine {
     const replaced = this.captureRange(range);
     let text = r.text;
     if (r.linewise && !range.linewise) text = "\n" + text;
-    else if (!r.linewise && range.linewise) text = text;
     else if (r.linewise && range.linewise) text = text.endsWith("\n") ? text.slice(0, -1) : text;
     this.edit(range.from, range.to, text, range.from, r.atoms);
     if (cmd.name === "p") this.writeRegister(null, replaced, "delete");

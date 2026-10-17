@@ -7,18 +7,12 @@ export interface EngineOptions {
   clipboard: ClipboardPolicy;
   readlineKeys: boolean;
   autoPairs: boolean;
-  /** Indent unit for >, <, and mini.move. */
-  indent: string;
-  /** Delay before a lone `s` acts as substitute (mini.surround prefix). */
-  surroundTimeoutMs: number;
 }
 
 export const DEFAULT_OPTIONS: EngineOptions = {
   clipboard: "yank",
   readlineKeys: true,
   autoPairs: false,
-  indent: "  ",
-  surroundTimeoutMs: 300,
 };
 
 export interface Snapshot {

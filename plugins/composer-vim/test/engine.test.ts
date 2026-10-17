@@ -192,6 +192,19 @@ describe("operators", () => {
     expect(v.host.value).toBe("HELLO world");
     await v.press("guu");
     expect(v.host.value).toBe("hello world");
+    await v.press("0veU");
+    expect(v.host.value).toBe("HELLO world");
+    await v.press("wve~");
+    expect(v.host.value).toBe("HELLO WORLD");
+    await v.press("Vu");
+    expect(v.host.value).toBe("hello world");
+  });
+
+  it("scrolls the thread in Normal and Visual", async () => {
+    const v = setup("|abc");
+    await v.press("2<C-d>v<C-y>");
+    expect(v.host.scrolls).toEqual(["halfDown", "lineUp"]);
+    expect(v.engine.mode).toBe("visual");
   });
 
   it("joins lines and indents", async () => {
@@ -251,6 +264,8 @@ describe("surround (mini.surround)", () => {
     await v.press("sx");
     expect(v.host.value).toBe("xc");
     expect(v.engine.mode).toBe("insert");
+    await v.press("<Esc>l.");
+    expect(v.host.value).toBe("xx");
   });
 });
 
@@ -296,6 +311,11 @@ describe("insert mode", () => {
     expect(v.host.value).toBe("hello big ");
     await v.press("<C-u>");
     expect(v.host.value).toBe("");
+    v.type("one two three");
+    await v.press("<C-a><A-f>");
+    expect(v.show()).toBe("one| two three");
+    await v.press("<A-d>");
+    expect(v.show()).toBe("one| three");
   });
 
   it("ctrl+q deletes the previous WORD and the char before it", async () => {
