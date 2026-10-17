@@ -125,8 +125,7 @@ export class ProseMirrorHost implements EditorHost {
     return this.pending;
   }
 
-  /** Dispatch pending edits now. */
-  flush(): void {
+  private flush(): void {
     const tr = this.pending;
     this.pending = null;
     if (!tr || this.editor.isDestroyed) return;
@@ -134,10 +133,6 @@ export class ProseMirrorHost implements EditorHost {
     tr.setMeta(VIM_META, true);
     tr.scrollIntoView();
     this.view.dispatch(tr);
-  }
-
-  get hasPendingEdits(): boolean {
-    return this.pending?.docChanged ?? false;
   }
 
   text(): string {
@@ -152,8 +147,7 @@ export class ProseMirrorHost implements EditorHost {
 
   atomText(atom: unknown): string {
     const node = atom as PMNode;
-    const serialized = node.attrs?.serializedText;
-    return typeof serialized === "string" ? serialized : node.textContent;
+    return node.attrs.serializedText ?? node.textContent;
   }
 
   selection(): { anchor: number; head: number } {
@@ -258,7 +252,7 @@ export class ProseMirrorHost implements EditorHost {
 
   moveDisplayLine(pos: number, dir: 1 | -1, goalX: number | null): { pos: number; x: number } | null {
     // Coordinates come from the rendered view, which lags pending edits.
-    if (this.hasPendingEdits) return null;
+    if (this.pending?.docChanged) return null;
     const view = this.view;
     const f = this.flat();
     try {
@@ -284,23 +278,16 @@ export class ProseMirrorHost implements EditorHost {
     this.copy(text);
   }
 
-  async readClipboard(): Promise<string | null> {
-    try {
-      const read = navigator.clipboard?.readText();
-      if (!read) return null;
-      const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 500));
-      return await Promise.race([read, timeout]);
-    } catch {
-      return null;
-    }
+  readClipboard(): Promise<string | null> {
+    // readText can stall on a permission prompt; fall back to the register.
+    const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 500));
+    return Promise.race([navigator.clipboard.readText().catch(() => null), timeout]);
   }
 
   setSearchHighlight(matches: SearchMatch[] | null): void {
-    const registry = (globalThis as { CSS?: { highlights?: Map<string, unknown> } }).CSS?.highlights;
-    const HighlightCtor = (globalThis as { Highlight?: new (...r: Range[]) => unknown }).Highlight;
-    if (!registry || !HighlightCtor) return;
     if (!matches || matches.length === 0) {
-      if (this.highlighted) registry.delete(HIGHLIGHT_NAME);
+      // The highlight is global; only clear it if this composer set it.
+      if (this.highlighted) CSS.highlights.delete(HIGHLIGHT_NAME);
       this.highlighted = false;
       return;
     }
@@ -318,7 +305,7 @@ export class ProseMirrorHost implements EditorHost {
         // Positions inside node views cannot be mapped; skip them.
       }
     }
-    registry.set(HIGHLIGHT_NAME, new HighlightCtor(...ranges));
+    CSS.highlights.set(HIGHLIGHT_NAME, new Highlight(...ranges));
     this.highlighted = true;
   }
 
@@ -334,7 +321,7 @@ export class ProseMirrorHost implements EditorHost {
   /** Viewport rectangle of the flat character at pos, for the block cursor. */
   charRect(pos: number): { left: number; top: number; width: number; height: number } | null {
     const view = this.view;
-    const f = this.flat(this.view.state.doc);
+    const f = this.flat(view.state.doc);
     try {
       const p = this.toPos(f, pos);
       const c = view.coordsAtPos(p, 1);

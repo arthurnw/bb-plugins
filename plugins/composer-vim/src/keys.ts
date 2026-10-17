@@ -14,8 +14,6 @@ const SPECIAL: Record<string, string> = {
   PageDown: "PageDown",
 };
 
-const MODIFIER_KEYS = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock", "Fn", "Hyper", "Super"]);
-
 /** Base key from the physical code, so macOS Option-letter combos map to letters. */
 function codeBase(e: KeyboardEvent): string | null {
   const { code } = e;
@@ -37,7 +35,7 @@ function codeBase(e: KeyboardEvent): string | null {
  */
 export function keyName(e: KeyboardEvent): string | null {
   if (e.isComposing || e.keyCode === 229) return null;
-  if (e.metaKey || MODIFIER_KEYS.has(e.key)) return null;
+  if (e.metaKey) return null;
   if (e.ctrlKey && e.altKey) return null;
   if (e.altKey) {
     const base = codeBase(e);

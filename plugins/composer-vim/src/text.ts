@@ -264,10 +264,7 @@ export function findBracketPair(t: string, pos: number, opens: string[]): Pair |
   let best: Pair | null = null;
   for (const open of opens) {
     const close = OPEN_TO_CLOSE[open];
-    let o: number | null;
-    if (t[pos] === open) o = pos;
-    else if (t[pos] === close) o = scanOpen(t, pos - 1, open, close);
-    else o = scanOpen(t, pos - 1, open, close);
+    const o = t[pos] === open ? pos : scanOpen(t, pos - 1, open, close);
     if (o === null) continue;
     const c = scanClose(t, o + 1, open, close);
     if (c === null || c < pos) continue;
