@@ -22,7 +22,6 @@ import {
   Folder,
   FolderGit2,
   GitBranch,
-  GitFork,
   GitPullRequest,
   LayoutGrid,
   Maximize,
@@ -59,7 +58,6 @@ const ICONS = {
   Folder,
   FolderGit2,
   GitBranch,
-  GitFork,
   GitPullRequest,
   LayoutGrid,
   Maximize,
@@ -69,7 +67,6 @@ const ICONS = {
   Search,
   StickyNote,
   Undo2,
-  Workflow,
   X,
 } satisfies Record<string, LucideIcon>;
 

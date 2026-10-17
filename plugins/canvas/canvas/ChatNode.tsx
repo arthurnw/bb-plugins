@@ -1,19 +1,17 @@
 import { memo, useRef, useState } from "react";
-import { Handle, NodeResizer, Position, useStore, type Node, type NodeProps } from "@xyflow/react";
+import { Handle, NodeResizer, Position, type Node, type NodeProps } from "@xyflow/react";
 import { ThreadChat, type PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
 import type { PinnedChat } from "../server";
 import { useReleaseChatFocus } from "./chatFocus.ts";
 import { useArchive } from "./archive.ts";
-import { useCanvasActions } from "./context";
+import { useCanvasActions, useIsFar } from "./context";
 import { Icon } from "./icons.tsx";
 import type { Bucket } from "./status.ts";
 
 export const CHAT_HEADER_H = 36;
 export const CHAT_W = 400;
 export const CHAT_H = 460;
-/** Below this zoom a pinned chat shows only its title, like a far-off card. */
-const FAR_ZOOM = 0.5;
 
 export type ChatNodeData = {
   chat: PinnedChat;
@@ -37,7 +35,7 @@ export type ChatFlowNode = Node<ChatNodeData, "chat">;
 export const ChatNode = memo(function ChatNode({ data }: NodeProps<ChatFlowNode>) {
   const { chat, thread, bucket, focused, focusRequest, zoom } = data;
   const actions = useCanvasActions();
-  const far = useStore((state) => state.transform[2] < FAR_ZOOM);
+  const far = useIsFar();
   const ref = useRef<HTMLDivElement>(null);
   useReleaseChatFocus(ref, thread.id, focusRequest, actions.releaseFocus);
   const collapsed = chat.minimized || far;

@@ -1,4 +1,5 @@
 import { createContext, useContext } from "react";
+import { useStore } from "@xyflow/react";
 import type { Note, PinnedChat } from "../server";
 import type { FrameNodeData } from "./nodes";
 import type { FrameColor } from "./shared.ts";
@@ -28,6 +29,10 @@ export interface CanvasActions {
   releaseFocus(): void;
   deleteNote(id: string): void;
 }
+
+/** Below this zoom, cards, frames, and pinned chats switch to a large-title summary. */
+const FAR_ZOOM = 0.5;
+export const useIsFar = () => useStore((state) => state.transform[2] < FAR_ZOOM);
 
 export const CanvasActionsContext = createContext<CanvasActions | null>(null);
 

@@ -1,12 +1,11 @@
 import { memo, useEffect, useRef, useState } from "react";
-import { Handle, NodeResizer, Position, useStore, type Node, type NodeProps } from "@xyflow/react";
+import { Handle, NodeResizer, Position, type Node, type NodeProps } from "@xyflow/react";
 import {
   experimental_ProviderIcon as ProviderIcon,
   experimental_ThreadActionsContextMenu as ThreadActionsContextMenu,
   experimental_ThreadStatusGlyph as ThreadStatusGlyph,
   experimental_useProviders as useProviders,
   experimental_useSidebarThreadPullRequest as useSidebarThreadPullRequest,
-  type PluginSidebarPullRequest,
   type PluginSidebarThread,
 } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
@@ -15,14 +14,10 @@ import type { Note } from "../server";
 import { FRAME_COLORS, NOTE_COLORS, type FrameColor, type Grouping } from "./shared.ts";
 import { ChatNode, type ChatFlowNode } from "./ChatNode.tsx";
 import { threadTarget, useArchive } from "./archive.ts";
-import { useCanvasActions } from "./context";
+import { useCanvasActions, useIsFar } from "./context";
 import { CHILD_ROW_H } from "./children.ts";
 import { CARD_H, CARD_W, FRAME_HEADER } from "./layout.ts";
 import { BUCKET_LABEL, type Bucket } from "./status.ts";
-
-/** Below this zoom cards switch to a large-title summary. */
-const FAR_ZOOM = 0.5;
-const useIsFar = () => useStore((state) => state.transform[2] < FAR_ZOOM);
 
 export type ThreadNodeData = {
   thread: PluginSidebarThread;
@@ -76,7 +71,9 @@ export type NoteFlowNode = Node<NoteNodeData, "note">;
 export type CanvasNode = ThreadFlowNode | FrameFlowNode | NoteFlowNode | ChatFlowNode;
 
 
-function PullRequestBadge({ pullRequest }: { pullRequest: PluginSidebarPullRequest }) {
+function PullRequest({ threadId }: { threadId: string }) {
+  const { pullRequest } = useSidebarThreadPullRequest(threadId);
+  if (pullRequest === null) return null;
   const checks = pullRequest.experimental_checks.state;
   const tone =
     pullRequest.state === "merged"
@@ -103,11 +100,6 @@ function PullRequestBadge({ pullRequest }: { pullRequest: PluginSidebarPullReque
       {pullRequest.state === "draft" ? <span className="text-muted-foreground"> draft</span> : null}
     </a>
   );
-}
-
-function PullRequest({ threadId }: { threadId: string }) {
-  const { pullRequest } = useSidebarThreadPullRequest(threadId);
-  return pullRequest === null ? null : <PullRequestBadge pullRequest={pullRequest} />;
 }
 
 function activityParts(thread: PluginSidebarThread): string[] {

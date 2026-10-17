@@ -26,9 +26,9 @@ export interface LayoutThread {
 
 export const CARD_W = 300;
 export const CARD_H = 116;
-export const GAP_X = 56;
-export const GAP_Y = 20;
-export const FRAME_PAD = 24;
+const GAP_X = 56;
+const GAP_Y = 20;
+const FRAME_PAD = 24;
 export const FRAME_HEADER = 44;
 const FRAME_GAP = 96;
 const ROW_MAX_WIDTH = 2600;
@@ -98,7 +98,7 @@ function layoutGroup(threads: readonly LayoutThread[], options: ArrangeOptions =
   const tree = treeCells(threads);
   if (options.style === "tree") return placeCells(tree, heights, CARD_W + GAP_X);
   const order = [...tree.keys()];
-  const size = Math.max(1, Math.round(options.gridSize));
+  const size = options.gridSize;
   const cell = (index: number): { col: number; row: number } => {
     switch (options.style) {
       case "row":

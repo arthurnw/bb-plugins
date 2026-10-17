@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Icon, type IconName } from "./icons.tsx";
 import { rankMatches } from "./nav.ts";
@@ -26,7 +26,6 @@ export function Picker({
   items,
   onPick,
   onClose,
-  footer,
   create,
 }: {
   title: string;
@@ -34,7 +33,6 @@ export function Picker({
   items: readonly PickerItem[];
   onPick(item: PickerItem): void;
   onClose(): void;
-  footer?: ReactNode;
   /** Adds a last row that creates something named after the query. */
   create?: { label(query: string): string; run(query: string): void };
 }) {
@@ -131,7 +129,6 @@ export function Picker({
           <span>↑↓ or ⌃J/⌃K to move</span>
           <span>↵ to pick</span>
           <span>esc to close</span>
-          {footer}
         </div>
       </div>
     </div>
