@@ -1,30 +1,14 @@
 import * as React from "react";
-
-import {
-  COARSE_POINTER_INPUT_HEIGHT_CLASS,
-  COARSE_POINTER_TEXT_BASE_CLASS,
-} from "./coarse-pointer-sizing.js";
 import { cn } from "../../lib/utils";
-import { CONTROL_HOVER_TRANSITION } from "./motion.js";
 
-const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
-  ({ className, type, ...props }, ref) => {
-    return (
-      <input
-        type={type}
-        autoComplete="off"
-        className={cn(
-          `flex w-full rounded-md border border-input bg-transparent pl-3 pr-3 py-1 ${CONTROL_HOVER_TRANSITION} file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50`,
-          COARSE_POINTER_INPUT_HEIGHT_CLASS,
-          COARSE_POINTER_TEXT_BASE_CLASS,
-          className,
-        )}
-        ref={ref}
-        {...props}
-      />
-    );
-  },
-);
-Input.displayName = "Input";
-
-export { Input };
+export const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(({ className, ...props }, ref) => (
+  <input
+    autoComplete="off"
+    className={cn(
+      "flex h-9 w-full rounded-md border border-input bg-transparent py-1 pl-3 pr-3 text-sm transition-colors duration-150 hover:duration-0 placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 max-md:pointer-coarse:h-10 max-md:pointer-coarse:text-base",
+      className,
+    )}
+    ref={ref}
+    {...props}
+  />
+));
