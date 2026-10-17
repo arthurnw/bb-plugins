@@ -12,5 +12,5 @@
     "allowImportingTsExtensions": true,
     "skipLibCheck": false
   },
-  "include": ["server.ts", "app.tsx", "canvas", "components", "lib", "hooks"]
+  "include": ["server.ts", "app.tsx", "canvas", "components", "lib"]
 }
