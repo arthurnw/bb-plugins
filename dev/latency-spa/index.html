@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Latency lab</title>
+<style>
+  :root { color-scheme: light dark; --bg:#0f1115; --panel:#181b22; --text:#e6e8ee; --muted:#8b91a1; --accent:#5b8def; --good:#3fb97a; --warn:#e0a63a; --bad:#e5534b; }
+  @media (prefers-color-scheme: light) { :root { --bg:#f6f7f9; --panel:#fff; --text:#1c2027; --muted:#6a7180; } }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 system-ui, sans-serif; background:var(--bg); color:var(--text); }
+  nav { display:flex; gap:4px; padding:10px 16px; border-bottom:1px solid #8882; position:sticky; top:0; background:var(--bg); }
+  nav a { color:var(--muted); text-decoration:none; padding:6px 10px; border-radius:6px; }
+  nav a.active { color:var(--text); background:var(--panel); }
+  main { padding:16px; max-width:900px; margin:0 auto; display:grid; gap:16px; }
+  section { background:var(--panel); border-radius:10px; padding:16px; }
+  h2 { margin:0 0 4px; font-size:15px; } p.hint { margin:0 0 12px; color:var(--muted); }
+  .stats { display:flex; gap:20px; flex-wrap:wrap; font-variant-numeric:tabular-nums; }
+  .stat b { display:block; font-size:22px; } .stat span { color:var(--muted); font-size:12px; }
+  canvas { width:100%; display:block; border-radius:8px; background:#8881; touch-action:none; }
+  button, input { font:inherit; padding:8px 12px; border-radius:6px; border:1px solid #8884; background:var(--bg); color:var(--text); }
+  button { cursor:pointer; } button:active { transform:scale(.97); }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .chip { padding:2px 8px; border-radius:99px; font-size:12px; background:#8882; }
+  ul.todos { list-style:none; padding:0; margin:12px 0 0; } ul.todos li { padding:6px 0; border-bottom:1px solid #8882; display:flex; gap:8px; }
+  li.done span { text-decoration:line-through; color:var(--muted); }
+  #ball { width:48px; height:48px; border-radius:50%; background:var(--accent); position:relative; }
+</style>
+</head>
+<body>
+<nav id="nav">
+  <a href="#/network">Network</a>
+  <a href="#/input">Input</a>
+  <a href="#/draw">Draw</a>
+  <a href="#/app">Mini app</a>
+</nav>
+<main id="view"></main>
+
+<script>
+// ---------- helpers ----------
+const $ = (sel, root = document) => root.querySelector(sel);
+const pct = (arr, p) => { if (!arr.length) return 0; const s = [...arr].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(p / 100 * s.length))]; };
+const fmt = (ms) => ms < 10 ? ms.toFixed(1) : Math.round(ms).toString();
+const color = (ms) => ms < 50 ? "var(--good)" : ms < 150 ? "var(--warn)" : "var(--bad)";
+function sparkline(canvas, values, maxHint = 100) {
+  const dpr = devicePixelRatio || 1, w = canvas.clientWidth, h = canvas.clientHeight;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const ctx = canvas.getContext("2d"); ctx.scale(dpr, dpr); ctx.clearRect(0, 0, w, h);
+  const max = Math.max(maxHint, ...values);
+  const step = w / Math.max(1, values.length - 1);
+  values.forEach((v, i) => { ctx.fillStyle = color(v); ctx.fillRect(i * step - 1, h - (v / max) * h, 3, (v / max) * h); });
+  ctx.fillStyle = "#8888"; ctx.font = "11px system-ui"; ctx.fillText(`${Math.round(max)} ms`, 4, 12);
+}
+let cleanup = [];
+const onCleanup = (fn) => cleanup.push(fn);
+
+// ---------- views ----------
+const views = {
+  network(view) {
+    view.innerHTML = `
+      <section>
+        <h2>Round trip to the mini</h2>
+        <p class="hint">fetch /api/ping every 250 ms through tailscale serve. This is the latency every API call pays.</p>
+        <div class="stats">
+          <div class="stat"><b id="last">–</b><span>last ms</span></div>
+          <div class="stat"><b id="p50">–</b><span>p50 ms</span></div>
+          <div class="stat"><b id="p95">–</b><span>p95 ms</span></div>
+          <div class="stat"><b id="count">0</b><span>samples</span></div>
+          <div class="stat"><b id="errs">0</b><span>errors</span></div>
+        </div>
+        <canvas id="spark" style="height:90px;margin-top:12px"></canvas>
+      </section>
+      <section>
+        <h2>Payload echo</h2>
+        <p class="hint">POST a payload and time the response, to see bandwidth cost on top of latency.</p>
+        <div class="row">
+          <button data-kb="1">1 KB</button><button data-kb="100">100 KB</button><button data-kb="1000">1 MB</button><button data-kb="5000">5 MB</button>
+          <span id="echo" class="chip">–</span>
+        </div>
+      </section>
+      <section>
+        <h2>Server push (SSE)</h2>
+        <p class="hint">The server sends an event every 250 ms. Jitter is how far arrival gaps drift from 250 ms.</p>
+        <div class="stats">
+          <div class="stat"><b id="sseCount">0</b><span>events</span></div>
+          <div class="stat"><b id="jitter">–</b><span>p95 jitter ms</span></div>
+          <div class="stat"><b id="sseState" style="font-size:15px">connecting</b><span>stream</span></div>
+        </div>
+      </section>`;
+    const samples = []; let errors = 0, inflight = false;
+    const tick = async () => {
+      if (inflight) return; inflight = true;
+      const t0 = performance.now();
+      try {
+        await (await fetch("/api/ping", { cache: "no-store" })).json();
+        const ms = performance.now() - t0; samples.push(ms); if (samples.length > 120) samples.shift();
+        $("#last").textContent = fmt(ms); $("#last").style.color = color(ms);
+        $("#p50").textContent = fmt(pct(samples, 50)); $("#p95").textContent = fmt(pct(samples, 95));
+        $("#count").textContent = Number($("#count").textContent) + 1;
+        sparkline($("#spark"), samples);
+      } catch { $("#errs").textContent = ++errors; }
+      inflight = false;
+    };
+    const timer = setInterval(tick, 250); tick(); onCleanup(() => clearInterval(timer));
+
+    view.querySelectorAll("[data-kb]").forEach((b) => b.onclick = async () => {
+      const body = "x".repeat(Number(b.dataset.kb) * 1024);
+      $("#echo").textContent = "…"; const t0 = performance.now();
+      const text = await (await fetch("/api/echo", { method: "POST", body })).text();
+      const ms = performance.now() - t0;
+      $("#echo").textContent = `${b.dataset.kb} KB round trip: ${fmt(ms)} ms (${(text.length * 2 / 1024 / 1024 / (ms / 1000)).toFixed(1)} MB/s both ways)`;
+    });
+
+    const es = new EventSource("/api/events"); let lastAt = 0; const gaps = [];
+    es.onopen = () => $("#sseState").textContent = "open";
+    es.onerror = () => $("#sseState").textContent = "reconnecting";
+    es.onmessage = () => {
+      const now = performance.now();
+      if (lastAt) { gaps.push(Math.abs(now - lastAt - 250)); if (gaps.length > 120) gaps.shift(); }
+      lastAt = now;
+      $("#sseCount").textContent = Number($("#sseCount").textContent) + 1;
+      $("#jitter").textContent = gaps.length ? fmt(pct(gaps, 95)) : "–";
+    };
+    onCleanup(() => es.close());
+  },
+
+  input(view) {
+    view.innerHTML = `
+      <section>
+        <h2>Keystroke to paint</h2>
+        <p class="hint">Time from the key event to the next frame. This runs entirely in the laptop's browser, so it should be near one frame (~8–16 ms) regardless of network.</p>
+        <input id="type" placeholder="Type here…" style="width:100%">
+        <div class="stats" style="margin-top:12px">
+          <div class="stat"><b id="kLast">–</b><span>last ms</span></div>
+          <div class="stat"><b id="kP95">–</b><span>p95 ms</span></div>
+          <div class="stat"><b id="fps">–</b><span>fps</span></div>
+        </div>
+      </section>
+      <section>
+        <h2>Click to server and back</h2>
+        <p class="hint">Each click increments a counter on the server-side round trip, so you can feel network delay on a button.</p>
+        <div class="row"><button id="remoteBtn">Click me</button><span id="remoteOut" class="chip">0</span><span id="remoteMs" class="chip">–</span></div>
+      </section>
+      <section>
+        <h2>Animation</h2>
+        <p class="hint">A CSS-free JS animation. Stutter here means the browser or GPU is busy, not the network.</p>
+        <div style="height:56px"><div id="ball"></div></div>
+      </section>`;
+    const kSamples = [];
+    $("#type").addEventListener("keydown", (e) => {
+      const start = e.timeStamp;
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const ms = performance.now() - start; kSamples.push(ms); if (kSamples.length > 60) kSamples.shift();
+        $("#kLast").textContent = fmt(ms); $("#kLast").style.color = color(ms * 3);
+        $("#kP95").textContent = fmt(pct(kSamples, 95));
+      }));
+    });
+    let n = 0;
+    $("#remoteBtn").onclick = async () => {
+      const t0 = performance.now(); await fetch("/api/ping", { cache: "no-store" });
+      $("#remoteOut").textContent = ++n; $("#remoteMs").textContent = `${fmt(performance.now() - t0)} ms`;
+    };
+    let raf, frames = 0, fpsAt = performance.now();
+    const loop = (t) => {
+      const ball = $("#ball"); if (!ball) return;
+      ball.style.left = `${(Math.sin(t / 500) + 1) / 2 * (ball.parentElement.clientWidth - 48)}px`;
+      frames++; if (t - fpsAt > 1000) { $("#fps").textContent = Math.round(frames * 1000 / (t - fpsAt)); frames = 0; fpsAt = t; }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop); onCleanup(() => cancelAnimationFrame(raf));
+  },
+
+  draw(view) {
+    view.innerHTML = `
+      <section>
+        <h2>Pointer drawing</h2>
+        <p class="hint">Draw with the mouse or trackpad. Lines should track the pointer with no visible lag; this is local rendering.</p>
+        <div class="row" style="margin-bottom:8px"><button id="clear">Clear</button><span id="events" class="chip">0 pointer events</span></div>
+        <canvas id="pad" style="height:420px"></canvas>
+      </section>`;
+    const pad = $("#pad"), dpr = devicePixelRatio || 1;
+    pad.width = pad.clientWidth * dpr; pad.height = pad.clientHeight * dpr;
+    const ctx = pad.getContext("2d"); ctx.scale(dpr, dpr); ctx.lineWidth = 3; ctx.lineCap = "round"; ctx.strokeStyle = "#5b8def";
+    let drawing = false, count = 0;
+    pad.onpointerdown = (e) => { drawing = true; pad.setPointerCapture(e.pointerId); ctx.beginPath(); ctx.moveTo(e.offsetX, e.offsetY); };
+    pad.onpointermove = (e) => {
+      if (!drawing) return;
+      for (const p of e.getCoalescedEvents?.() ?? [e]) ctx.lineTo(p.offsetX, p.offsetY);
+      ctx.stroke(); $("#events").textContent = `${++count} pointer events`;
+    };
+    pad.onpointerup = () => drawing = false;
+    $("#clear").onclick = () => ctx.clearRect(0, 0, pad.width, pad.height);
+  },
+
+  app(view) {
+    const saved = JSON.parse(localStorage.getItem("todos") ?? "[]");
+    view.innerHTML = `
+      <section>
+        <h2>Mini app</h2>
+        <p class="hint">Client-side state with filtering, to check that an ordinary SPA feels local. Saved in localStorage.</p>
+        <form id="add" class="row"><input id="title" placeholder="Add a todo" style="flex:1"><button>Add</button></form>
+        <div class="row" style="margin-top:10px">
+          <input id="filter" placeholder="Filter…" style="flex:1">
+          <span id="summary" class="chip"></span>
+        </div>
+        <ul class="todos" id="list"></ul>
+      </section>`;
+    const todos = saved;
+    const render = () => {
+      const q = $("#filter").value.toLowerCase();
+      $("#list").innerHTML = "";
+      todos.filter((t) => t.title.toLowerCase().includes(q)).forEach((t) => {
+        const li = document.createElement("li"); li.className = t.done ? "done" : "";
+        li.innerHTML = `<input type="checkbox" ${t.done ? "checked" : ""}><span style="flex:1"></span><button>✕</button>`;
+        li.querySelector("span").textContent = t.title;
+        li.querySelector("input").onchange = () => { t.done = !t.done; save(); };
+        li.querySelector("button").onclick = () => { todos.splice(todos.indexOf(t), 1); save(); };
+        $("#list").append(li);
+      });
+      $("#summary").textContent = `${todos.filter((t) => !t.done).length} open / ${todos.length}`;
+    };
+    const save = () => { localStorage.setItem("todos", JSON.stringify(todos)); render(); };
+    $("#add").onsubmit = (e) => { e.preventDefault(); const title = $("#title").value.trim(); if (title) { todos.push({ title, done: false }); $("#title").value = ""; save(); } };
+    $("#filter").oninput = render;
+    render();
+  },
+};
+
+// ---------- router ----------
+function route() {
+  cleanup.forEach((fn) => fn()); cleanup = [];
+  const name = location.hash.replace("#/", "") || "network";
+  const view = views[name] ? name : "network";
+  document.querySelectorAll("nav a").forEach((a) => a.classList.toggle("active", a.getAttribute("href") === `#/${view}`));
+  views[view]($("#view"));
+}
+addEventListener("hashchange", route);
+route();
+</script>
+</body>
+</html>
