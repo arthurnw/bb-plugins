@@ -8,7 +8,7 @@
   },
   "bb": {
     "name": "Pane Navigator",
-    "description": "Move focus between the composer, terminals, the sidebar, and other panes with Ctrl+H/J/K/L, like vim-tmux-navigator.",
+    "description": "Move focus between the composer, terminals, the sidebar, and other panes with Ctrl+H/J/K/L, like vim-tmux-navigator, and move through pickers with Ctrl+N/P.",
     "branding": {
       "icon": "Move"
     },

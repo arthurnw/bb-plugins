@@ -1,5 +1,6 @@
 import { definePluginApp } from "@get-bb/plugin-sdk/app";
 import type { Direction } from "./geometry";
+import { handlePickerKey } from "./pickers";
 import { activate, collectRegions, currentRegion, findNeighbor } from "./regions";
 
 const DIRECTIONS: Record<string, Direction> = {
@@ -15,7 +16,8 @@ const OWNS_KEYS = "[role='dialog'], [role='menu'], [role='listbox'], [cmdk-root]
 
 function onKeyDown(event: KeyboardEvent) {
   if (!event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
-  if (event.isComposing || event.repeat) return;
+  if (event.isComposing) return;
+  if (handlePickerKey(event) || event.repeat) return;
   const direction = DIRECTIONS[event.key.toLowerCase()];
   if (direction === undefined) return;
 

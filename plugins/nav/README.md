@@ -22,6 +22,14 @@ The neighbor is chosen by on-screen position: the nearest region in that
 direction that overlaps the current one, otherwise the nearest region in that
 direction.
 
+## Pickers
+
+Ctrl+N / Ctrl+P move down and up in pickers, as in macOS text fields: the
+command palette, quick open, the model picker, other bb comboboxes, and the
+composer's `/` and `@` menus while one is open. Elsewhere the keys are
+unchanged. The plugin replaces the chord with an ArrowDown / ArrowUp on the
+same element, so each picker keeps its own behavior.
+
 ## Behavior notes
 
 - In a terminal with no pane in that direction, the key goes to the terminal,
@@ -44,6 +52,7 @@ bb plugin install .
 bb plugin dev      # rebuild and reload on save
 ```
 
-`regions.ts` relies on bb's DOM attributes (`data-split-pane-id`,
-`data-app-composer`, `data-app-terminal`, `data-app-browser`,
-`data-sidebar`), which are not a public API and may change between bb releases.
+`regions.ts` and `pickers.ts` rely on bb's DOM attributes
+(`data-split-pane-id`, `data-app-composer`, `data-app-terminal`,
+`data-app-browser`, `data-sidebar`, `data-promptbox-typeahead-menu`), which are
+not a public API and may change between bb releases.

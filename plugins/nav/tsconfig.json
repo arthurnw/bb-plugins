@@ -12,5 +12,5 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["server.ts", "app.tsx", "geometry.ts", "regions.ts", "geometry.test.ts"]
+  "include": ["server.ts", "app.tsx", "geometry.ts", "regions.ts", "pickers.ts", "geometry.test.ts"]
 }
