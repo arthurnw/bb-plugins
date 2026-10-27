@@ -1,9 +1,7 @@
-// The Plannotator Inbox sends X-Frame-Options: DENY, so it cannot be embedded.
-// The page starts it and opens its URL with BB's openUrl instead. BB Desktop
-// may run on another machine than the BB server, so the tailnet address is
-// preferred whenever the Inbox is published there.
+// Shows the Plannotator Inbox in the page itself, through the plugin's proxy
+// (see server.ts). The Inbox's port changes when it restarts, so the page asks
+// the server for current addresses on every visit.
 import { useCallback, useEffect, useState } from "react";
-import type { ReactNode } from "react";
 import {
   definePluginApp,
   experimental_copyToClipboard as copyToClipboard,
@@ -19,11 +17,14 @@ type InboxState =
   | { status: "ready"; info: InboxInfo }
   | { status: "error"; message: string };
 
+// The header and the body are separate components; this lets the header's
+// Reload button reach the body.
+const reloadEvents = new EventTarget();
+
 function useInbox() {
   const rpc = useRpc<typeof rpcContract>();
   const [state, setState] = useState<InboxState>({ status: "loading" });
   const refresh = useCallback(async (): Promise<InboxInfo | null> => {
-    setState({ status: "loading" });
     try {
       const info = await rpc.call("inbox_ensure", null);
       setState({ status: "ready", info });
@@ -36,103 +37,101 @@ function useInbox() {
   return { state, refresh };
 }
 
-function Row({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex items-baseline justify-between gap-4 py-2 text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="min-w-0 truncate text-right">{children}</span>
-    </div>
-  );
+const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/** The proxy address this client can reach: loopback when BB itself is loaded from loopback. */
+function frameUrl(info: InboxInfo): string | null {
+  if (LOOPBACK.has(window.location.hostname)) return info.frameLocalUrl;
+  return info.frameTailnetUrl ?? null;
 }
 
 function InboxPage() {
   const { state, refresh } = useInbox();
-  const navigate = useBbNavigate();
-
-  // The Inbox port changes when it restarts, so fetch the URL right before opening.
-  const open = useCallback(async () => {
-    const info = await refresh();
-    if (info) navigate.openUrl(info.url);
-  }, [refresh, navigate]);
+  const [frameKey, setFrameKey] = useState(0);
 
   useEffect(() => {
     void refresh();
+    const onReload = () => {
+      void refresh().then(() => setFrameKey((key) => key + 1));
+    };
+    reloadEvents.addEventListener("reload", onReload);
+    return () => reloadEvents.removeEventListener("reload", onReload);
   }, [refresh]);
 
+  if (state.status === "loading") {
+    return <Message>Starting the Plannotator Inbox…</Message>;
+  }
+  if (state.status === "error") {
+    return <Message tone="error">{state.message}</Message>;
+  }
+  const src = frameUrl(state.info);
+  if (!src) {
+    return (
+      <Message>
+        BB is open on another computer, and the Inbox isn't published on your tailnet. Turn on
+        Tailscale in the Inbox's Settings, or set <code>"inboxTailscale": true</code> in{" "}
+        <code>~/.plannotator/config.json</code>, then reload.
+      </Message>
+    );
+  }
   return (
-    <div className="h-full min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto box-border w-full max-w-3xl space-y-4 p-4 md:p-5">
-        <p className="text-sm text-muted-foreground">
-          Messages, questions and files that agents leave for you without waiting on an answer.
-        </p>
+    <iframe
+      key={frameKey}
+      src={src}
+      title="Plannotator Inbox"
+      className="block h-full min-h-0 w-full flex-1 border-0"
+      allow="clipboard-read; clipboard-write"
+    />
+  );
+}
 
-        <div className="rounded-lg border border-border bg-card px-4 py-1">
-          <Row label="Status">
-            {state.status === "loading" ? (
-              "Starting…"
-            ) : state.status === "error" ? (
-              <span className="text-destructive">Not running</span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5">
-                <span className="size-2 rounded-full bg-green-500" aria-hidden />
-                Running
-              </span>
-            )}
-          </Row>
-          {state.status === "ready" ? (
-            <>
-              <Row label="Tailnet">
-                {state.info.tailnetUrl ? (
-                  <span className="font-mono text-xs">{state.info.tailnetUrl}</span>
-                ) : (
-                  <span className="text-muted-foreground">Not published</span>
-                )}
-              </Row>
-              <Row label="This machine">
-                <span className="font-mono text-xs">{state.info.localUrl}</span>
-              </Row>
-              {state.info.version ? <Row label="Version">{state.info.version}</Row> : null}
-              {state.info.startedAt ? (
-                <Row label="Started">{new Date(state.info.startedAt).toLocaleString()}</Row>
-              ) : null}
-            </>
-          ) : null}
-        </div>
+function Message({ children, tone }: { children: React.ReactNode; tone?: "error" }) {
+  return (
+    <div className="flex h-full flex-1 items-center justify-center p-6">
+      <p
+        role={tone === "error" ? "alert" : "status"}
+        className={tone === "error" ? "max-w-lg text-sm text-destructive" : "max-w-lg text-sm text-muted-foreground"}
+      >
+        {children}
+      </p>
+    </div>
+  );
+}
 
-        {state.status === "error" ? (
-          <p role="alert" className="text-sm text-destructive">
-            {state.message}
-          </p>
-        ) : null}
-
-        <div className="flex flex-wrap gap-2">
-          <Button onClick={() => void open()} disabled={state.status === "loading"}>
-            <Icon name="ExternalLink" className="size-4" />
-            Open Inbox
-          </Button>
-          <Button
-            variant="outline"
-            disabled={state.status !== "ready"}
-            onClick={() => {
-              if (state.status === "ready") void copyToClipboard({ text: state.info.url });
-            }}
-          >
-            <Icon name="Copy" className="size-4" />
-            Copy URL
-          </Button>
-          <Button variant="ghost" onClick={() => void refresh()} disabled={state.status === "loading"}>
-            <Icon name="RefreshCw" className="size-4" />
-            Refresh
-          </Button>
-        </div>
-
-        {state.status === "ready" && !state.info.tailnetUrl ? (
-          <p className="text-xs text-muted-foreground">
-            The Inbox only listens on the BB server machine. To open it from another device, or
-            from BB Desktop on another computer, turn on Tailscale in the Inbox's Settings.
-          </p>
-        ) : null}
-      </div>
+function InboxHeader() {
+  const { refresh } = useInbox();
+  const navigate = useBbNavigate();
+  return (
+    <div className="flex items-center gap-1">
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => reloadEvents.dispatchEvent(new Event("reload"))}
+        aria-label="Reload Inbox"
+      >
+        <Icon name="RotateCcw" className="size-4" />
+        Reload
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => {
+          void refresh().then((info) => info && navigate.openUrl(info.url));
+        }}
+      >
+        <Icon name="ExternalLink" className="size-4" />
+        Open in browser
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => {
+          void refresh().then((info) => info && copyToClipboard({ text: info.url }));
+        }}
+      >
+        <Icon name="Copy" className="size-4" />
+        Copy URL
+      </Button>
     </div>
   );
 }
@@ -144,5 +143,6 @@ export default definePluginApp((app) => {
     icon: "plannotator-inbox/mailbox",
     path: "inbox",
     component: InboxPage,
+    headerContent: InboxHeader,
   });
 });
