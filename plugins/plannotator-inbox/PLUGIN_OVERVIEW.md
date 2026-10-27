@@ -4,7 +4,10 @@ Adds a Plannotator Inbox page to BB's navigation rail.
 
 - A **Plannotator Inbox** icon in the navigation rail.
 - A page that starts the Inbox if it is stopped and shows its address and version.
-- **Open Inbox**, which opens the Inbox through BB, and **Copy URL**.
+- **Open Inbox**, which opens the Inbox through BB, and **Copy URL**. When the Inbox is
+  published on your tailnet (Inbox Settings, or `"inboxTailscale": true` in
+  `~/.plannotator/config.json`), both use the tailnet address, so they work from BB Desktop
+  on another computer and from your phone.
 
 ## How it works
 

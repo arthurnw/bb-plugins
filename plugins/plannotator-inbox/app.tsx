@@ -1,5 +1,7 @@
 // The Plannotator Inbox sends X-Frame-Options: DENY, so it cannot be embedded.
-// The page starts it and opens its URL with BB's openUrl instead.
+// The page starts it and opens its URL with BB's openUrl instead. BB Desktop
+// may run on another machine than the BB server, so the tailnet address is
+// preferred whenever the Inbox is published there.
 import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import {
@@ -79,8 +81,15 @@ function InboxPage() {
           </Row>
           {state.status === "ready" ? (
             <>
-              <Row label="Address">
-                <span className="font-mono text-xs">{state.info.url}</span>
+              <Row label="Tailnet">
+                {state.info.tailnetUrl ? (
+                  <span className="font-mono text-xs">{state.info.tailnetUrl}</span>
+                ) : (
+                  <span className="text-muted-foreground">Not published</span>
+                )}
+              </Row>
+              <Row label="This machine">
+                <span className="font-mono text-xs">{state.info.localUrl}</span>
               </Row>
               {state.info.version ? <Row label="Version">{state.info.version}</Row> : null}
               {state.info.startedAt ? (
@@ -117,10 +126,12 @@ function InboxPage() {
           </Button>
         </div>
 
-        <p className="text-xs text-muted-foreground">
-          The Inbox only listens on this machine. To open it from another device, turn on Tailscale
-          in the Inbox's Settings.
-        </p>
+        {state.status === "ready" && !state.info.tailnetUrl ? (
+          <p className="text-xs text-muted-foreground">
+            The Inbox only listens on the BB server machine. To open it from another device, or
+            from BB Desktop on another computer, turn on Tailscale in the Inbox's Settings.
+          </p>
+        ) : null}
       </div>
     </div>
   );

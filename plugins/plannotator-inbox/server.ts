@@ -15,7 +15,10 @@ const execFileAsync = promisify(execFile);
 const EXTRA_PATH = [join(homedir(), ".local/bin"), "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"];
 
 const inboxSchema = z.object({
+  /** The address to open: the tailnet address when published, else the local one. */
   url: z.string(),
+  localUrl: z.string(),
+  tailnetUrl: z.string().nullable(),
   port: z.number().nullable(),
   version: z.string().nullable(),
   startedAt: z.string().nullable(),
@@ -34,6 +37,7 @@ const stateSchema = z.object({
   port: z.number().optional(),
   version: z.string().optional(),
   startedAt: z.string().optional(),
+  tailscale: z.object({ url: z.string().nullable().optional() }).nullable().optional(),
 });
 
 function dataDir(): string {
@@ -76,11 +80,16 @@ export default async function plugin(bb: BbPluginApi) {
       bb.log.warn(`plannotator inbox --background failed: ${detail}`);
       throw new Error(`Could not start the Plannotator Inbox: ${detail}`);
     }
-    const url = stdout.match(/https?:\/\/\S+/)?.[0];
-    if (!url) throw new Error(`plannotator inbox --background printed no URL: ${stdout.trim()}`);
+    // Output: an optional "Over your tailnet: https://…" line, then the local URL.
+    const tailnetFromStdout = stdout.match(/Over your tailnet:\s*(https:\/\/\S+)/)?.[1] ?? null;
+    const localUrl = stdout.match(/http:\/\/(?:localhost|127\.0\.0\.1):\d+\/?/)?.[0];
+    if (!localUrl) throw new Error(`plannotator inbox --background printed no URL: ${stdout.trim()}`);
     const state = await readState();
+    const tailnetUrl = state?.tailscale?.url ?? tailnetFromStdout;
     return {
-      url,
+      url: tailnetUrl ?? localUrl,
+      localUrl,
+      tailnetUrl,
       port: state?.port ?? null,
       version: state?.version ?? null,
       startedAt: state?.startedAt ?? null,
