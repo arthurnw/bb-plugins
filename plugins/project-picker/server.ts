@@ -10,6 +10,11 @@ export const quickComposeRpcContract = defineRpcContract({
     input: z.object({ request: z.custom<NewThreadRequest>() }),
     output: z.object({ threadId: z.string() }),
   },
+  // A fork keeps the source's provider and model, so only these request fields apply.
+  forkThread: {
+    input: z.object({ sourceThreadId: z.string().min(1), request: z.custom<NewThreadRequest>() }),
+    output: z.object({ threadId: z.string() }),
+  },
 });
 
 const TIMEOUT_MS = 900_000;
@@ -18,6 +23,11 @@ export default async function plugin(bb: BbPluginApi) {
   bb.rpc.register(quickComposeRpcContract, {
     async createThread({ request }) {
       const thread = await bb.sdk.threads.spawn(request);
+      return { threadId: thread.id };
+    },
+    async forkThread({ sourceThreadId, request }) {
+      const thread = await bb.sdk.threads.fork({ sourceThreadId, input: request.input, environment: request.environment,
+        permissionMode: request.permissionMode });
       return { threadId: thread.id };
     },
   });

@@ -1,14 +1,14 @@
 // Adapted from Sawyer Hood’s Quick Compose; see THIRD_PARTY_LICENSES.md.
 // Window-local state shared by the overlay and commands.
 
-export type QuickComposeKind = "new-thread" | "handoff";
+export type QuickComposeKind = "new-thread" | "handoff" | "fork";
 
 export interface QuickComposeSession {
   /** Changes whenever a fresh session starts; keys the composer's mount. */
   id: number;
   /** The project in view when the session started; seeds the project picker. */
   projectId: string | null;
-  /** The thread being handed off, or null for a plain new thread. */
+  /** The thread being handed off or forked, or null for a plain new thread. */
   sourceThreadId: string | null;
 }
 
@@ -27,7 +27,7 @@ export interface QuickComposeContext {
 
 let state: QuickComposeState = {
   active: null,
-  sessions: { "new-thread": null, handoff: null },
+  sessions: { "new-thread": null, handoff: null, fork: null },
   focusRequest: 0,
 };
 let nextSessionId = 1;
@@ -67,7 +67,7 @@ export const quickCompose = {
       : {
           id: nextSessionId++,
           projectId: context.projectId,
-          sourceThreadId: kind === "handoff" ? context.threadId : null,
+          sourceThreadId: kind === "new-thread" ? null : context.threadId,
         };
     update({
       active: kind,

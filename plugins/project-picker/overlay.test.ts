@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { quickCompose } from "./overlay-store.ts";
 import { projectShortcut } from "./overlay-keys.ts";
 
-beforeEach(() => { quickCompose.finish("new-thread"); quickCompose.finish("handoff"); });
+beforeEach(() => { quickCompose.finish("new-thread"); quickCompose.finish("handoff"); quickCompose.finish("fork"); });
 test("a session with a draft survives reopening elsewhere", () => {
   const unregister = quickCompose.registerDraftCheck(() => true);
   quickCompose.open("new-thread", { projectId: "a", threadId: null });
@@ -62,4 +62,14 @@ test("branch name shortcut matches Mod+Shift+B only", () => {
   assert.equal(projectShortcut({ ...b, ctrlKey: true }, true), null);
   assert.equal(projectShortcut({ ...b, metaKey: true, altKey: true }, true), null);
   assert.equal(projectShortcut({ ...b, metaKey: true, shiftKey: false }, true), null);
+});
+
+test("fork sessions are scoped to their source thread", () => {
+  quickCompose.toggle("fork", { projectId: "a", threadId: "t1" });
+  const fork = quickCompose.getState().sessions.fork;
+  assert.equal(fork?.sourceThreadId, "t1");
+  assert.equal(quickCompose.getState().sessions.handoff, null);
+  quickCompose.toggle("fork", { projectId: "a", threadId: "t2" });
+  assert.equal(quickCompose.getState().sessions.fork?.sourceThreadId, "t2");
+  quickCompose.finish("fork");
 });

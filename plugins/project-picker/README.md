@@ -11,6 +11,7 @@ floating composer and thread handoff adapted from Sawyer Hood's Quick Compose.
 | Project Picker: named worktree branch name | `Mod+Shift+B` | Switch the environment to Named worktree and focus its branch name field. In the overlay this re-seeds selections (like the project shortcuts) unless the field is already shown. |
 | Project Picker: quick compose | `Mod+Shift+L` | Toggle a floating New thread composer without navigating. |
 | Project Picker: hand off this thread | `Mod+Shift+H` | Open a composer mentioning the current thread and initially reusing its environment. |
+| Project Picker: fork this thread into a named worktree | none | Open a composer that forks the current thread into a Named worktree based on the source's branch. Also in every thread actions menu as **Fork into named worktree**. |
 
 `Mod` means Cmd on macOS and Ctrl elsewhere, matching Quick Compose's source
 bindings. Projects follow bb's order; "No project" is last.
@@ -127,6 +128,29 @@ bb thread spawn --project <project-id> \
 ```
 
 Pass `"name":""` to name the branch from the thread title.
+
+### Forks
+
+**Fork into named worktree** (thread actions menu, or the command above) opens
+the overlay seeded with Named worktree, an empty name, and the source thread's
+branch as the base on the source's machine. Submitting calls `threads.fork`, so
+the new thread inherits the source conversation, provider, and model; the
+composer's model picker is ignored and the project cannot change. The worktree
+starts from the base branch's commits, not the source's uncommitted changes.
+Equivalent API request:
+
+```sh
+curl -X POST http://127.0.0.1:38886/api/v1/threads/fork -H 'content-type: application/json' -d '{
+  "sourceThreadId": "<thread-id>",
+  "input": [{"type": "text", "text": "Continue"}],
+  "environment": {"type": "provider", "environmentProviderId": "named-worktree",
+    "machine": {"type": "existing", "hostId": "<host-id>"},
+    "inputs": {"name": "", "baseBranch": "main"}}
+}'
+```
+
+bb's own Fork and `bb thread fork --new-environment worktree` still use the
+built-in Worktree provider.
 
 Worktrees live on the selected machine under this plugin's host-data directory:
 `worktrees/<path-key>/<repository-name>`. This matches the built-in layout, but

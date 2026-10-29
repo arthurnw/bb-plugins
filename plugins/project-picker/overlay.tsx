@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import {
   experimental_NewThreadComposer as NewThreadComposer,
   experimental_useSidebarThreads as useSidebarThreads,
-  useBbNavigate, useRpc,
+  useBbNavigate, useRpc, useSdk,
   type PluginAppBuilder,
 } from "@get-bb/plugin-sdk/app";
 import type { quickComposeRpcContract } from "./server";
@@ -23,6 +23,13 @@ function hasDraft(section: HTMLElement | null, draftKey: string): boolean {
   return !!section?.querySelector("[data-promptbox-editor-content]")?.textContent?.trim()
     || localStorage.getItem(`bb.promptbox.contents-plugin-draft-${encodeURIComponent(draftKey)}-3`) !== null;
 }
+
+const LABELS: Record<QuickComposeKind, { dialog: string; placeholder: string }> = {
+  "new-thread": { dialog: "Project Picker quick compose", placeholder: "Start a new thread" },
+  handoff: { dialog: "Project Picker handoff", placeholder: "Hand off this thread" },
+  // Forks keep the source's provider and model; the composer's pickers for those are ignored.
+  fork: { dialog: "Project Picker fork", placeholder: "Fork this thread into a new worktree" },
+};
 
 interface Bounds { left: number; width: number }
 
@@ -66,8 +73,18 @@ function Session({ session, kind, visible, focusRequest }: {
   const [namedWorktree, setNamedWorktree] = useState(false);
   const bounds = useContentBounds(visible);
   const projects = useProjectOptions();
+  const sdk = useSdk();
+  // A fork's worktree defaults to the source's branch on the source's machine.
+  const [forkBase, setForkBase] = useState<{ branch: string | null; hostId: string | null }>();
   useEffect(() => {
-    if (source || (kind === "handoff" && sidebar.status === "loading")) return;
+    if (kind !== "fork" || !source || forkBase) return;
+    if (!source.environmentId) { setForkBase({ branch: null, hostId: null }); return; }
+    sdk.environments.get({ environmentId: source.environmentId }).then(
+      env => setForkBase({ branch: env.branchName, hostId: env.hostId }),
+      () => setForkBase({ branch: null, hostId: null }));
+  }, [kind, source, forkBase, sdk]);
+  useEffect(() => {
+    if (source || (kind !== "new-thread" && sidebar.status === "loading")) return;
     const thread = sidebar.threads.find(t => t.id === session.sourceThreadId);
     const resolved = { projectId: thread?.projectId ?? session.projectId, environmentId: thread?.environment?.id ?? null };
     setSource(resolved);
@@ -76,7 +93,7 @@ function Session({ session, kind, visible, focusRequest }: {
 
   const choose = (id: string) => { setProjectId(id); setPopup(false); setFocus(n => n + 1); };
   const sectionRef = useRef<HTMLElement>(null);
-  const draftKey = session.sourceThreadId ? `project-picker-handoff:${session.sourceThreadId}` : "project-picker-compose";
+  const draftKey = session.sourceThreadId ? `project-picker-${kind}:${session.sourceThreadId}` : "project-picker-compose";
   useEffect(() => {
     if (kind === "new-thread") return quickCompose.registerDraftCheck(() => hasDraft(sectionRef.current, draftKey));
   }, [kind, draftKey]);
@@ -107,6 +124,8 @@ function Session({ session, kind, visible, focusRequest }: {
       if (!action) return;
       event.preventDefault();
       event.stopImmediatePropagation();
+      // A fork stays in its source's project.
+      if (kind === "fork" && action !== "branch-name") return;
       if (action === "open") { setPopup(value => !value); return; }
       if (action === "branch-name") {
         const section = sectionRef.current;
@@ -121,25 +140,32 @@ function Session({ session, kind, visible, focusRequest }: {
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [visible, projects, projectId]);
+  }, [visible, projects, projectId, kind]);
 
   const close = (e: { target: EventTarget; currentTarget: EventTarget }) => { if (e.target === e.currentTarget) quickCompose.close(); };
   return <div style={{ display: visible ? "block" : "none", position: "fixed", inset: 0, zIndex: 50, background: "rgb(0 0 0 / .3)" }} onPointerDown={close}>
     <div style={{ position: "absolute", top: 0, bottom: 0, left: bounds?.left ?? 0, width: bounds?.width ?? "100%", display: "flex", justifyContent: "center", alignItems: "flex-start", padding: "15vh 16px 16px", overflowY: "auto", boxSizing: "border-box" }} onPointerDown={close}>
-    <section role="dialog" aria-label={kind === "handoff" ? "Project Picker handoff" : "Project Picker quick compose"} style={{ width: "100%", maxWidth: 720, padding: 16, borderRadius: 12, background: "var(--background)", color: "var(--foreground)" }} ref={sectionRef}>
-      {source && <NewThreadComposer
+    <section role="dialog" aria-label={LABELS[kind].dialog} style={{ width: "100%", maxWidth: 720, padding: 16, borderRadius: 12, background: "var(--background)", color: "var(--foreground)" }} ref={sectionRef}>
+      {source && (kind !== "fork" || forkBase) && <NewThreadComposer
         defaultProjectId={projectId ?? undefined}
-        defaultEnvironment={namedWorktree ? { type: "provider", environmentProviderId: PROVIDER_ID, inputs: null }
+        defaultEnvironment={kind === "fork" && forkBase ? {
+            type: "provider", environmentProviderId: PROVIDER_ID,
+            inputs: forkBase.branch ? { name: "", baseBranch: forkBase.branch } : null,
+            ...(forkBase.hostId ? { machine: { type: "existing", hostId: forkBase.hostId } } : {}),
+          }
+          : namedWorktree ? { type: "provider", environmentProviderId: PROVIDER_ID, inputs: null }
           : projectId === source.projectId && source.environmentId ? { type: "reuse", environmentId: source.environmentId } : undefined}
-        initialPrompt={session.sourceThreadId ? `@thread:${session.sourceThreadId} ` : undefined}
+        initialPrompt={kind === "handoff" && session.sourceThreadId ? `@thread:${session.sourceThreadId} ` : undefined}
         draftKey={draftKey}
         layout="document" focusRequest={visible ? focusRequest + focus : undefined}
-        placeholder={kind === "handoff" ? "Hand off this thread" : "Start a new thread"}
+        placeholder={LABELS[kind].placeholder}
         onSubmit={async request => {
           try {
-            const { threadId } = await rpc.call("createThread", { request });
+            const { threadId } = kind === "fork" && session.sourceThreadId
+              ? await rpc.call("forkThread", { sourceThreadId: session.sourceThreadId, request })
+              : await rpc.call("createThread", { request });
             quickCompose.finish(kind);
-            toast.success("Thread started", { action: { label: "Open", onClick: () => navigate.toThread(threadId) } });
+            toast.success(kind === "fork" ? "Fork started" : "Thread started", { action: { label: "Open", onClick: () => navigate.toThread(threadId) } });
           } catch (error) { toast.error(`Could not start thread: ${String(error)}`); throw error; }
         }}
       />}
@@ -153,7 +179,7 @@ function Session({ session, kind, visible, focusRequest }: {
 
 function Overlay() {
   const state = useSyncExternalStore(subscribe, quickCompose.getState, quickCompose.getState);
-  return <TooltipProvider delayDuration={300}>{(["new-thread", "handoff"] as const).map(kind => {
+  return <TooltipProvider delayDuration={300}>{(["new-thread", "handoff", "fork"] as const).map(kind => {
     const session = state.sessions[kind];
     return session && <Session key={session.id} session={session} kind={kind} visible={state.active === kind} focusRequest={state.focusRequest} />;
   })}</TooltipProvider>;
@@ -163,4 +189,13 @@ export function registerOverlay(app: PluginAppBuilder) {
   app.slots.experimental_appOverlay({ id: "quick-compose", component: Overlay });
   app.commands.register({ id: "new-thread", title: "Project Picker: quick compose", defaultShortcut: { key: "l", mod: true, shift: true }, run: context => quickCompose.toggle("new-thread", context) });
   app.commands.register({ id: "handoff", title: "Project Picker: hand off this thread", defaultShortcut: { key: "h", mod: true, shift: true }, isAvailable: context => context.threadId !== null, run: context => quickCompose.toggle("handoff", context) });
+  app.commands.register({ id: "fork", title: "Project Picker: fork this thread into a named worktree", isAvailable: context => context.threadId !== null, run: context => quickCompose.toggle("fork", context) });
+  app.slots.experimental_threadAction({
+    id: "fork-named-worktree", title: "Fork into named worktree", icon: "GitBranch",
+    group: "1_open", // experimental_THREAD_ACTION_GROUPS.open
+    item: ({ thread }) => thread.archivedAt !== null ? null : {
+      label: "Fork into named worktree", icon: "GitBranch",
+      run: () => quickCompose.open("fork", { projectId: thread.projectId, threadId: thread.id }),
+    },
+  });
 }
