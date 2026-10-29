@@ -11,6 +11,6 @@ const wtSetup = z.discriminatedUnion("status", [
 export const hostContract = defineRpcContract({
   validate: { input: source, output: z.object({ error: z.string().nullable() }) },
   target: { input: launch, output: z.object({ path: z.string() }) },
-  create: { input: launch, output: z.object({ path: z.string(), name: z.string(), wtSetup }) },
+  create: { input: launch, output: z.object({ path: z.string(), name: z.string(), baseBranch: z.string(), wtSetup }) },
   remove: { input: z.object({ pathKey: z.string().min(1) }), output: z.object({ status: z.literal("removed") }) },
 });

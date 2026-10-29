@@ -35,13 +35,35 @@ async function branchExists(source: string, name: string, signal?: AbortSignal) 
     .split("\n").includes(`refs/heads/${name}`);
 }
 
+/**
+ * The project's default branch, chosen like bb's built-in Worktree: origin's
+ * HEAD (e.g. `origin/main`), fetched first when `fetch` is set (best effort,
+ * so offline use still works), unless the local branch is ahead or has
+ * diverged; then the local branch, keeping its commits. Without origin's HEAD,
+ * the source checkout's current branch.
+ */
+export async function defaultBase(source: string, { fetch = false, signal }: { fetch?: boolean; signal?: AbortSignal } = {}) {
+  const remote = await git(source, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"], signal).catch(() => "");
+  if (remote.startsWith("origin/")) {
+    const local = remote.slice("origin/".length);
+    if (fetch) await git(source, ["fetch", "--quiet", "origin", local], signal).catch(() => signal?.throwIfAborted());
+    if (!await branchExists(source, local, signal)) return remote;
+    const behindOrEqual = await git(source, ["merge-base", "--is-ancestor", `refs/heads/${local}`, `refs/remotes/${remote}`], signal)
+      .then(() => true, () => { signal?.throwIfAborted(); return false; });
+    return behindOrEqual ? remote : local;
+  }
+  signal?.throwIfAborted();
+  return git(source, ["symbolic-ref", "--quiet", "--short", "HEAD"], signal).catch(() => "HEAD");
+}
+
 /** Checks that `inputs` can create a new branch; returns the base commit. An empty name checks only the base. */
 export async function validateNewBranch(source: string, inputs: NamedWorktreeInputs, signal?: AbortSignal) {
   if (inputs.name !== "") {
     await validateBranchName(source, inputs.name, signal);
     if (await branchExists(source, inputs.name, signal)) throw new Error(`Branch "${inputs.name}" already exists. Choose a new branch name.`);
   }
-  return git(source, ["rev-parse", "--verify", "--end-of-options", `${inputs.baseBranch}^{commit}`], signal);
+  const base = inputs.baseBranch || await defaultBase(source, { signal });
+  return git(source, ["rev-parse", "--verify", "--end-of-options", `${base}^{commit}`], signal);
 }
 
 /** `name`, or `name-2`, `name-3`, ... for the first that is not a branch yet. */
@@ -105,18 +127,19 @@ export async function createWorktree(dataDir: string, pathKey: string, source: s
   const state = await readState(root);
   let name = state !== null && autoName && !restore ? state.name : inputs.name;
   const resumed = state !== null && await registeredBranch(source, target, signal) === name;
+  const baseBranch = state?.baseBranch || inputs.baseBranch || await defaultBase(source, { fetch: !resumed && !restore, signal });
   if (!resumed) {
     if (restore && !await branchExists(source, name, signal)) throw new Error(`Cannot restore: branch "${name}" no longer exists.`);
     if (autoName && !restore) name = await freeBranchName(source, inputs.name, signal);
-    const base = restore ? null : await validateNewBranch(source, { ...inputs, name }, signal);
+    const base = restore ? null : await validateNewBranch(source, { name, baseBranch }, signal);
     await fs.mkdir(root, { recursive: true });
     // Written before git runs so cleanup can find a partially created worktree.
-    await fs.writeFile(path.join(root, "attempt.json"), JSON.stringify({ source, target, ...inputs, name }));
+    await fs.writeFile(path.join(root, "attempt.json"), JSON.stringify({ source, target, name, baseBranch }));
     await git(source, base === null ? ["worktree", "add", "--", target, name]
       : ["worktree", "add", "-b", name, "--", target, base], signal);
   }
   await copyIncluded(source, target, signal);
-  return { path: target, name };
+  return { path: target, name, baseBranch };
 }
 
 /** The `wt` executable on PATH or in ~/.local/bin, or null when it is not installed. */

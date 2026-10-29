@@ -102,6 +102,17 @@ base with **Branch from**. The name starts with bb's branch prefix
 setting is empty), which you can edit or delete. Local and remote-tracking
 branches are available through bb's branch picker.
 
+Leave **Branch from** empty to use the project's default branch, chosen as
+bb's built-in Worktree does: origin's HEAD (for example `origin/main`), fetched
+first, unless the local branch is ahead or has diverged, in which case the
+local branch keeps its commits. The fetch is best effort, so offline creation
+uses the last fetched copy. Without an `origin` HEAD it uses the source
+checkout's current branch.
+
+With both fields empty the option needs no input, so it works as a per-project
+default: bb's composer remembers the last environment chosen for each project
+in this browser (`bb.promptbox.environment-<project-id>-1` in local storage).
+
 Leave the name empty (or only the prefix) to name the branch from the thread
 title, as bb's built-in Worktree does, but without the thread ID:
 `<prefix><title-slug>`. When that branch exists, the plugin adds `-2`, `-3`, and
@@ -127,7 +138,8 @@ bb thread spawn --project <project-id> \
   --prompt 'Work on foo'
 ```
 
-Pass `"name":""` to name the branch from the thread title.
+Pass `"name":""` to name the branch from the thread title and `"baseBranch":""`
+for the default branch.
 
 ### Forks
 
@@ -168,10 +180,8 @@ and the source checkout must remain accessible for lifecycle operations.
 
 Differences from built-in Worktree:
 
-- An explicit base is required; there is no automatic default-base selection.
-- Remote bases use the locally available remote-tracking ref without fetching.
-  Fetch first when you want the latest remote commits. This keeps creation
-  deterministic and usable offline.
+- An explicitly chosen remote base uses the locally available remote-tracking
+  ref without fetching. Only the default base is fetched.
 - `.worktreeinclude` copies matching untracked files without overwriting files
   in the checkout and skips symlinks, as the built-in provider does. Copy errors
   fail provisioning instead of being logged and skipped.

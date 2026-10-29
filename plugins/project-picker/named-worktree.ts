@@ -9,10 +9,13 @@ export function branchNameError(name: string): string | null {
   return null;
 }
 
-/** An empty `name` asks the provider to name the branch from the thread title. */
+/**
+ * An empty `name` asks the provider to name the branch from the thread title;
+ * an empty `baseBranch` means the project's default branch.
+ */
 export const inputsSchema = z.object({
   name: z.string().refine((name) => name === "" || branchNameError(name) === null, { message: "Enter a new Git branch name." }),
-  baseBranch: z.string().min(1, "Choose a base branch."),
+  baseBranch: z.string(),
 }).strict();
 export type NamedWorktreeInputs = z.infer<typeof inputsSchema>;
 

@@ -43,13 +43,13 @@ export default async function plugin(bb: BbPluginApi) {
     const { path } = await host.call("target", input, options);
     if (!await context.experimental_claimPath(path)) return { status: "failed" as const, message: "Worktree directory is already in use." };
     context.report.step(step);
-    const { name, wtSetup } = await host.call("create", input, options);
+    const { name, baseBranch, wtSetup } = await host.call("create", input, options);
     if (mode.autoName) context.report.step(`Created branch ${name}`);
     if (wtSetup.status !== "missing") {
       if (wtSetup.output) context.report.log(wtSetup.output);
       context.report.step(wtSetup.status === "done" ? "wt setup finished" : "wt setup failed; the worktree is kept");
     }
-    return { status: "created" as const, path, ownsPath: true, mergeBaseBranch: inputs.baseBranch };
+    return { status: "created" as const, path, ownsPath: true, mergeBaseBranch: baseBranch };
   }
 
   bb.experimental_environments.register({
@@ -68,11 +68,11 @@ export default async function plugin(bb: BbPluginApi) {
     async create(context) {
       const { inputs } = context;
       if (inputs.name !== "") {
-        return provision(context, inputs, { restore: false, autoName: false }, `Creating branch ${inputs.name} from ${inputs.baseBranch}`);
+        return provision(context, inputs, { restore: false, autoName: false }, `Creating branch ${inputs.name} from ${inputs.baseBranch || "the default branch"}`);
       }
       const { generalSettings } = await bb.sdk.system.config();
       const name = autoBranchName(context.suggestedBranchName, context.thread.id, generalSettings.managedBranchPrefix);
-      return provision(context, { ...inputs, name }, { restore: false, autoName: true }, `Creating a branch from ${inputs.baseBranch}`);
+      return provision(context, { ...inputs, name }, { restore: false, autoName: true }, `Creating a branch from ${inputs.baseBranch || "the default branch"}`);
     },
     async restore(context) {
       const name = context.previous.environment.branchName;

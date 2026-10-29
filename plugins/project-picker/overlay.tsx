@@ -150,7 +150,7 @@ function Session({ session, kind, visible, focusRequest }: {
         defaultProjectId={projectId ?? undefined}
         defaultEnvironment={kind === "fork" && forkBase ? {
             type: "provider", environmentProviderId: PROVIDER_ID,
-            inputs: forkBase.branch ? { name: "", baseBranch: forkBase.branch } : null,
+            inputs: { name: "", baseBranch: forkBase.branch ?? "" },
             ...(forkBase.hostId ? { machine: { type: "existing", hostId: forkBase.hostId } } : {}),
           }
           : namedWorktree ? { type: "provider", environmentProviderId: PROVIDER_ID, inputs: null }

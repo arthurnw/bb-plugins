@@ -33,7 +33,8 @@ export function NamedWorktreeInputs(props: PluginEnvironmentProviderInputsProps)
 function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProviderInputsProps) {
   const parsed = inputsSchema.safeParse(value);
   const [name, setName] = useState(parsed.success ? parsed.data.name : "");
-  const [baseBranch, setBaseBranch] = useState<string | null>(parsed.success ? parsed.data.baseBranch : null);
+  // null (shown as "Default branch") submits "", the project's default branch.
+  const [baseBranch, setBaseBranch] = useState<string | null>(parsed.success && parsed.data.baseBranch ? parsed.data.baseBranch : null);
   const hostId = target.kind === "existing-host" ? target.hostId : null;
   const field = useRef<HTMLInputElement>(null);
   const sdk = useSdk();
@@ -62,10 +63,9 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
   useEffect(() => {
     // An empty name, or only the prefix, lets the provider name the branch from the thread title.
     const chosen = name === prefix ? "" : name;
-    const reason = (chosen === "" ? null : branchNameError(chosen))
-      ?? (baseBranch === null ? "Choose a base branch." : null);
+    const reason = chosen === "" ? null : branchNameError(chosen);
     if (reason) onChange({ status: "blocked", reason });
-    else onChange({ status: "ready", value: { name: chosen, baseBranch } });
+    else onChange({ status: "ready", value: { name: chosen, baseBranch: baseBranch ?? "" } });
   }, [name, prefix, baseBranch, onChange]);
   return (
     <div style={{ display: "flex", flexWrap: "nowrap", alignItems: "center", gap: 8, whiteSpace: "nowrap", minWidth: 0, flexShrink: 1 }}>
@@ -80,7 +80,7 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
           background: "transparent", color: "var(--foreground)", fontSize: 13 }} />
       <div style={{ minWidth: 0, flexShrink: 1, overflow: "hidden" }}>
         <BranchPicker hostId={hostId} projectId={projectId} value={baseBranch} onChange={setBaseBranch}
-          label="Branch from:" placeholder="Base branch" />
+          label="Branch from:" placeholder="Default branch" />
       </div>
     </div>
   );

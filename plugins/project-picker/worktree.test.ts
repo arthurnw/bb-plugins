@@ -4,7 +4,7 @@ import * as fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { autoBranchName, branchNameError, inputsSchema } from "./named-worktree.ts";
-import { attemptRoot, createWorktree, findWt, git, removeWorktree, runWtSetup, targetPath, validateBranchName, validateNewBranch } from "./worktree.ts";
+import { attemptRoot, createWorktree, defaultBase, findWt, git, removeWorktree, runWtSetup, targetPath, validateBranchName, validateNewBranch } from "./worktree.ts";
 
 async function fixture(t: { after: (fn: () => Promise<void>) => void }) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "named-worktree-test-"));
@@ -16,12 +16,12 @@ async function fixture(t: { after: (fn: () => Promise<void>) => void }) {
   return { root, source, data };
 }
 
-test("inputs require a base, accept an empty name for auto naming, and impose no prefix", () => {
+test("inputs accept empty names and bases for automatic choices and impose no prefix", () => {
   for (const value of [null, {}, { name: "-foo", baseBranch: "main" }, { name: "foo" }, { name: "foo", baseBranch: "main", extra: 1 }]) {
     assert.equal(inputsSchema.safeParse(value).success, false);
   }
   assert.deepEqual(inputsSchema.parse({ name: "feature/foo", baseBranch: "origin/main" }), { name: "feature/foo", baseBranch: "origin/main" });
-  assert.deepEqual(inputsSchema.parse({ name: "", baseBranch: "main" }), { name: "", baseBranch: "main" });
+  assert.deepEqual(inputsSchema.parse({ name: "", baseBranch: "" }), { name: "", baseBranch: "" });
   for (const name of ["", "-foo", "@{-1}"]) assert.ok(branchNameError(name));
   assert.equal(branchNameError("feature/foo"), null);
 });
@@ -130,4 +130,21 @@ test("wt setup runs in the worktree and reports failure without throwing", async
   process.env.WT_FAIL = "1";
   t.after(() => { delete process.env.WT_FAIL; });
   assert.equal((await runWtSetup(root, undefined, wt)).status, "failed");
+});
+
+test("an empty base uses origin's default branch after fetching, local when ahead, else the checkout's branch", async (t) => {
+  const { root, source, data } = await fixture(t);
+  assert.equal(await defaultBase(source), "main");
+  const remote = path.join(root, "remote.git"), clone = path.join(root, "clone");
+  await git(root, ["clone", "--quiet", "--bare", source, remote]);
+  await git(root, ["clone", "--quiet", remote, clone]);
+  await git(source, ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-m", "newer"]);
+  await git(source, ["push", "--quiet", remote, "main"]);
+  assert.equal(await defaultBase(clone), "origin/main");
+  const created = await createWorktree(data, "default", clone, { name: "topic", baseBranch: "" });
+  assert.equal(created.baseBranch, "origin/main");
+  assert.equal(await git(created.path, ["rev-parse", "HEAD"]), await git(source, ["rev-parse", "main"]));
+  await git(clone, ["merge", "--quiet", "--ff-only", "origin/main"]);
+  await git(clone, ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-m", "local only"]);
+  assert.equal(await defaultBase(clone, { fetch: true }), "main");
 });
