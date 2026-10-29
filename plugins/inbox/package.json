@@ -1,0 +1,41 @@
+{
+  "name": "bb-plugin-inbox",
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "bb": ">=0.46",
+    "bbPluginSdk": ">=0.6.49"
+  },
+  "bb": {
+    "name": "Inbox",
+    "description": "An inbox for your bb agent threads: live status, filter tabs, and rows that unfold to the latest steps with Approve, Reject, Retry, and Open.",
+    "branding": {
+      "icon": "./assets/icon.svg"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx",
+    "skills": []
+  },
+  "dependencies": {
+    "lucide-react": "^1.58.0"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "0.6.49",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "clsx": "^2.1.1",
+    "hono": "^4.11.9",
+    "sonner": "^1.7.4",
+    "tailwind-merge": "^3.4.0",
+    "typescript": "^5.7.0"
+  },
+  "description": "An inbox for your bb agent threads: live status, filter tabs, and rows that unfold to the latest steps with Approve, Reject, Retry, and Open.",
+  "license": "MIT",
+  "scripts": {
+    "build": "bb plugin build",
+    "typecheck": "tsc",
+    "test": "node --test inbox/*.test.ts"
+  }
+}

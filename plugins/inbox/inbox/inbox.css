@@ -1,0 +1,102 @@
+/* Status hues sit beside the host theme's tokens and are mixed with the
+   theme's own colors, so they read in light and dark themes alike. */
+.bb-inbox {
+  --inbox-waiting: oklch(0.75 0.16 70);
+  --inbox-running: oklch(0.62 0.17 258);
+  --inbox-failed: oklch(0.62 0.21 25);
+  --inbox-done: oklch(0.64 0.15 152);
+  --inbox-idle: oklch(0.65 0.01 260);
+}
+
+.bb-inbox [data-status="waiting"] { --tone: var(--inbox-waiting); }
+.bb-inbox [data-status="running"] { --tone: var(--inbox-running); }
+.bb-inbox [data-status="failed"] { --tone: var(--inbox-failed); }
+.bb-inbox [data-status="done"] { --tone: var(--inbox-done); }
+.bb-inbox [data-status="idle"] { --tone: var(--inbox-idle); }
+
+.bb-inbox-tone { color: var(--tone); }
+.bb-inbox-tone-bg { background: var(--tone); }
+
+/* Columns and list sections sit on a muted well; cards float on it. */
+.bb-inbox-well {
+  background: color-mix(in oklab, var(--muted) 70%, var(--background));
+}
+
+.bb-inbox-spinner {
+  border: 1.5px solid color-mix(in oklab, var(--tone) 25%, transparent);
+  border-top-color: var(--tone);
+  animation: bb-inbox-spin 0.9s linear infinite;
+}
+
+.bb-inbox-ask {
+  background: color-mix(in oklab, var(--inbox-waiting) 9%, transparent);
+  border: 1px solid color-mix(in oklab, var(--inbox-waiting) 28%, transparent);
+}
+.bb-inbox-error {
+  color: color-mix(in oklab, var(--inbox-failed) 75%, var(--foreground));
+}
+
+.bb-inbox-steps::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.35rem;
+  bottom: 0.35rem;
+  width: 1px;
+  background: var(--border);
+}
+.bb-inbox-step-dot[data-tone="normal"] { background: var(--muted-foreground); opacity: 0.6; }
+.bb-inbox-step-dot[data-tone="last"] { background: var(--foreground); }
+.bb-inbox-step-dot[data-tone="error"] { background: var(--inbox-failed); }
+.bb-inbox-step-dot[data-tone="pending"] { background: var(--inbox-running); }
+
+/* A card unfolds by animating its grid track from 0fr to 1fr. */
+.bb-inbox-fold {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.bb-inbox-fold[data-open="true"] {
+  grid-template-rows: 1fr;
+}
+.bb-inbox-fold > div {
+  min-height: 0;
+  overflow: hidden;
+}
+.bb-inbox-fold > div > div {
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 200ms ease, transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.bb-inbox-fold[data-open="true"] > div > div {
+  opacity: 1;
+  transform: none;
+  transition-delay: 60ms;
+}
+
+/* Rolling counts: each digit is a 0–9 strip shifted to show one digit. */
+.bb-inbox-roll {
+  display: inline-flex;
+  font-variant-numeric: tabular-nums;
+}
+.bb-inbox-roll-column {
+  display: inline-block;
+  height: 1lh;
+  overflow: hidden;
+}
+.bb-inbox-roll-strip {
+  display: flex;
+  flex-direction: column;
+  transition: transform 450ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes bb-inbox-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bb-inbox *, .bb-inbox *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
