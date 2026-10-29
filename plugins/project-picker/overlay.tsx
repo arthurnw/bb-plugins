@@ -1,0 +1,208 @@
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { TooltipProvider } from "@radix-ui/react-tooltip";
+import { toast } from "sonner";
+import {
+  experimental_NewThreadComposer as NewThreadComposer,
+  experimental_useSidebarThreads as useSidebarThreads,
+  useBbNavigate, useRpc, useSdk,
+  type PluginAppBuilder,
+} from "@get-bb/plugin-sdk/app";
+import type { quickComposeRpcContract } from "./server";
+import { quickCompose, subscribe, type QuickComposeKind, type QuickComposeSession } from "./overlay-store";
+import { cycle } from "./projects";
+import { ProjectList, useProjectOptions } from "./project-list";
+import { projectShortcut } from "./overlay-keys";
+import { PROVIDER_ID } from "./named-worktree";
+import { focusBranchName } from "./named-worktree-inputs";
+
+// The SDK exposes no draft state for the embedded composer. Check the editor
+// text, then bb's persisted draft (which also covers attachments). The storage
+// key format is bb-internal (0.46.1); if it changes, attachment-only drafts
+// re-seed their selections, but the draft itself is kept by draftKey.
+function hasDraft(section: HTMLElement | null, draftKey: string): boolean {
+  return !!section?.querySelector("[data-promptbox-editor-content]")?.textContent?.trim()
+    || localStorage.getItem(`bb.promptbox.contents-plugin-draft-${encodeURIComponent(draftKey)}-3`) !== null;
+}
+
+const LABELS: Record<QuickComposeKind, { dialog: string; placeholder: string }> = {
+  "new-thread": { dialog: "Project Picker quick compose", placeholder: "Start a new thread" },
+  handoff: { dialog: "Project Picker handoff", placeholder: "Hand off this thread" },
+  // Forks keep the source's provider and model; the composer's pickers for those are ignored.
+  fork: { dialog: "Project Picker fork", placeholder: "Fork this thread into a new worktree" },
+};
+
+interface Bounds { left: number; width: number }
+
+// bb's desktop side panel can hold a native browser view, which draws above
+// any page content. Center the overlay in the conversation area left of the
+// panel instead of the whole window. Falls back to the window when bb's
+// layout attributes are missing.
+function contentBounds(): Bounds {
+  const shell = document.querySelector("[data-app-content-shell]")?.getBoundingClientRect();
+  const left = shell && shell.width > 0 ? shell.left : 0;
+  let right = shell && shell.width > 0 ? shell.right : window.innerWidth;
+  const panel = document.querySelector("[data-panel-id$='secondary-panel']")?.getBoundingClientRect();
+  if (panel && panel.width > 0 && panel.left > left) right = Math.min(right, panel.left);
+  return { left, width: right - left };
+}
+
+function useContentBounds(active: boolean): Bounds | null {
+  const [bounds, setBounds] = useState<Bounds | null>(null);
+  useEffect(() => {
+    if (!active) return;
+    const update = () => setBounds(contentBounds());
+    update();
+    const observer = new ResizeObserver(update);
+    for (const el of document.querySelectorAll("[data-app-content-shell], [data-panel-id$='secondary-panel']")) observer.observe(el);
+    window.addEventListener("resize", update);
+    return () => { observer.disconnect(); window.removeEventListener("resize", update); };
+  }, [active]);
+  return bounds;
+}
+
+function Session({ session, kind, visible, focusRequest }: {
+  session: QuickComposeSession; kind: QuickComposeKind; visible: boolean; focusRequest: number;
+}) {
+  const rpc = useRpc<typeof quickComposeRpcContract>();
+  const navigate = useBbNavigate();
+  const sidebar = useSidebarThreads();
+  const [source, setSource] = useState<{ projectId: string | null; environmentId: string | null }>();
+  const [projectId, setProjectId] = useState(session.projectId);
+  const [popup, setPopup] = useState(false);
+  const [focus, setFocus] = useState(0);
+  const [namedWorktree, setNamedWorktree] = useState(false);
+  const bounds = useContentBounds(visible);
+  const projects = useProjectOptions();
+  const sdk = useSdk();
+  // A fork's worktree defaults to the source's branch on the source's machine.
+  const [forkBase, setForkBase] = useState<{ branch: string | null; hostId: string | null }>();
+  useEffect(() => {
+    if (kind !== "fork" || !source || forkBase) return;
+    if (!source.environmentId) { setForkBase({ branch: null, hostId: null }); return; }
+    sdk.environments.get({ environmentId: source.environmentId }).then(
+      env => setForkBase({ branch: env.branchName, hostId: env.hostId }),
+      () => setForkBase({ branch: null, hostId: null }));
+  }, [kind, source, forkBase, sdk]);
+  useEffect(() => {
+    if (source || (kind !== "new-thread" && sidebar.status === "loading")) return;
+    const thread = sidebar.threads.find(t => t.id === session.sourceThreadId);
+    const resolved = { projectId: thread?.projectId ?? session.projectId, environmentId: thread?.environment?.id ?? null };
+    setSource(resolved);
+    setProjectId(resolved.projectId);
+  }, [source, kind, sidebar, session]);
+
+  const choose = (id: string) => { setProjectId(id); setPopup(false); setFocus(n => n + 1); };
+  const sectionRef = useRef<HTMLElement>(null);
+  const draftKey = session.sourceThreadId
+    ? `project-picker-${kind}:${session.sourceThreadId}${session.sourceSeqEnd === null ? "" : `@${session.sourceSeqEnd}`}`
+    : "project-picker-compose";
+  useEffect(() => {
+    if (kind === "new-thread") return quickCompose.registerDraftCheck(() => hasDraft(sectionRef.current, draftKey));
+  }, [kind, draftKey]);
+
+  // bb's editor calls preventDefault on every Escape, so this listens in the
+  // capture phase. It is added after composer-vim's capture listener, so an
+  // Escape that vim consumes (Insert → Normal) is already defaultPrevented;
+  // the next Escape reaches here and closes.
+  useEffect(() => {
+    if (!visible || popup) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) return;
+      const section = sectionRef.current;
+      if (!section || !(event.target instanceof Node) || !section.contains(event.target)) return;
+      // Let bb close its @-mention and command menu first.
+      if (section.querySelector("[data-promptbox-typeahead-menu]")) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      quickCompose.close();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [visible, popup]);
+  useEffect(() => {
+    if (!visible) { setPopup(false); return; }
+    const onKey = (event: KeyboardEvent) => {
+      const action = projectShortcut(event, /Mac|iPhone|iPad/.test(navigator.platform));
+      if (!action) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      // A fork stays in its source's project.
+      if (kind === "fork" && action !== "branch-name") return;
+      if (action === "open") { setPopup(value => !value); return; }
+      if (action === "branch-name") {
+        const section = sectionRef.current;
+        if (!section) return;
+        const within = (el: HTMLElement) => section.contains(el);
+        // Re-seeding the environment resets the other selections, so only do it when the field is not already shown.
+        if (!focusBranchName(within)) { setNamedWorktree(true); focusBranchName(within, 2000); }
+        return;
+      }
+      const next = projects && cycle(projects, projectId, action === "next" ? 1 : -1);
+      if (next) choose(next.id);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [visible, projects, projectId, kind]);
+
+  const close = (e: { target: EventTarget; currentTarget: EventTarget }) => { if (e.target === e.currentTarget) quickCompose.close(); };
+  return <div style={{ display: visible ? "block" : "none", position: "fixed", inset: 0, zIndex: 50, background: "rgb(0 0 0 / .3)" }} onPointerDown={close}>
+    <div style={{ position: "absolute", top: 0, bottom: 0, left: bounds?.left ?? 0, width: bounds?.width ?? "100%", display: "flex", justifyContent: "center", alignItems: "flex-start", padding: "15vh 16px 16px", overflowY: "auto", boxSizing: "border-box" }} onPointerDown={close}>
+    <section role="dialog" aria-label={LABELS[kind].dialog} style={{ width: "100%", maxWidth: 720, padding: 16, borderRadius: 12, background: "var(--background)", color: "var(--foreground)" }} ref={sectionRef}>
+      {source && (kind !== "fork" || forkBase) && <NewThreadComposer
+        defaultProjectId={projectId ?? undefined}
+        defaultEnvironment={kind === "fork" && forkBase ? {
+            type: "provider", environmentProviderId: PROVIDER_ID,
+            inputs: { name: "", baseBranch: forkBase.branch ?? "" },
+            ...(forkBase.hostId ? { machine: { type: "existing", hostId: forkBase.hostId } } : {}),
+          }
+          : namedWorktree ? { type: "provider", environmentProviderId: PROVIDER_ID, inputs: null }
+          : projectId === source.projectId && source.environmentId ? { type: "reuse", environmentId: source.environmentId } : undefined}
+        initialPrompt={kind === "handoff" && session.sourceThreadId ? `@thread:${session.sourceThreadId} ` : undefined}
+        draftKey={draftKey}
+        layout="document" focusRequest={visible ? focusRequest + focus : undefined}
+        placeholder={kind === "fork" && session.sourceSeqEnd !== null ? "Fork from this message into a new worktree" : LABELS[kind].placeholder}
+        onSubmit={async request => {
+          try {
+            const { threadId } = kind === "fork" && session.sourceThreadId
+              ? await rpc.call("forkThread", { sourceThreadId: session.sourceThreadId, request,
+                ...(session.sourceSeqEnd === null ? {} : { sourceSeqEnd: session.sourceSeqEnd }) })
+              : await rpc.call("createThread", { request });
+            quickCompose.finish(kind);
+            toast.success(kind === "fork" ? "Fork started" : "Thread started", { action: { label: "Open", onClick: () => navigate.toThread(threadId) } });
+          } catch (error) { toast.error(`Could not start thread: ${String(error)}`); throw error; }
+        }}
+      />}
+      {popup && <div style={{ marginTop: 8, border: "1px solid var(--border)", borderRadius: 8, background: "var(--popover, var(--background))", overflow: "hidden" }}>
+        <ProjectList selectedLabel="last chosen here" selectedId={projectId} onChoose={option => choose(option.id)} onClose={() => { setPopup(false); setFocus(n => n + 1); }} />
+      </div>}
+    </section>
+    </div>
+  </div>;
+}
+
+function Overlay() {
+  const state = useSyncExternalStore(subscribe, quickCompose.getState, quickCompose.getState);
+  return <TooltipProvider delayDuration={300}>{(["new-thread", "handoff", "fork"] as const).map(kind => {
+    const session = state.sessions[kind];
+    return session && <Session key={session.id} session={session} kind={kind} visible={state.active === kind} focusRequest={state.focusRequest} />;
+  })}</TooltipProvider>;
+}
+
+export function registerOverlay(app: PluginAppBuilder) {
+  app.slots.experimental_appOverlay({ id: "quick-compose", component: Overlay });
+  app.commands.register({ id: "new-thread", title: "Project Picker: quick compose", defaultShortcut: { key: "l", mod: true, shift: true }, run: context => quickCompose.toggle("new-thread", context) });
+  app.commands.register({ id: "handoff", title: "Project Picker: hand off this thread", defaultShortcut: { key: "h", mod: true, shift: true }, isAvailable: context => context.threadId !== null, run: context => quickCompose.toggle("handoff", context) });
+  app.commands.register({ id: "fork", title: "Project Picker: fork this thread into a named worktree", isAvailable: context => context.threadId !== null, run: context => quickCompose.toggle("fork", context) });
+  app.slots.messageAction({
+    id: "fork-named-worktree", title: "Fork into named worktree", icon: "GitBranch",
+    run: ({ threadId, message }) => quickCompose.open("fork", { projectId: null, threadId, sourceSeqEnd: message.sourceSeqEnd }),
+  });
+  app.slots.experimental_threadAction({
+    id: "fork-named-worktree", title: "Fork into named worktree", icon: "GitBranch",
+    group: "1_open", // experimental_THREAD_ACTION_GROUPS.open
+    item: ({ thread }) => thread.archivedAt !== null ? null : {
+      label: "Fork into named worktree", icon: "GitBranch",
+      run: () => quickCompose.open("fork", { projectId: thread.projectId, threadId: thread.id }),
+    },
+  });
+}
