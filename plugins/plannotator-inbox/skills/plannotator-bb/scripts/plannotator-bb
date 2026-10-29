@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# Open a Plannotator annotate or code review session in BB's in-app browser
+# and send the reviewer's decision back to the calling thread as a new message.
+#
+# Usage: plannotator-bb <file> [more files...] [extra plannotator annotate flags]
+#        plannotator-bb review [DIRECTORY | PR_URL] [extra plannotator review flags]
+#
+# Returns once the session is open. The decision arrives later as a message
+# from `bb thread tell`, so the agent should end its turn after calling this.
+set -euo pipefail
+
+usage="usage: plannotator-bb <file> [more files...] [annotate flags]
+       plannotator-bb review [DIRECTORY | PR_URL] [review flags]"
+if [ $# -eq 0 ]; then
+	echo "$usage" >&2
+	exit 2
+fi
+mode=annotate
+if [ "$1" = review ]; then
+	mode=review
+	shift
+elif [ "$1" = annotate ] && [ $# -gt 1 ]; then
+	shift
+fi
+if [ "$mode" = annotate ] && [ $# -eq 0 ]; then
+	echo "$usage" >&2
+	exit 2
+fi
+: "${BB_THREAD_ID:?plannotator-bb must run inside a BB thread}"
+
+storage="${BB_THREAD_STORAGE:-${TMPDIR:-/tmp}}"
+session_dir="$storage/plannotator/$(date +%Y%m%d-%H%M%S)-$$"
+mkdir -p "$session_dir"
+ready="$session_dir/ready.jsonl"
+result="$session_dir/result.json"
+
+# Label feedback with the thread's real provider. Plannotator falls back to
+# "Claude Code" when it cannot detect the agent.
+provider="$(bb thread show "$BB_THREAD_ID" --json 2>/dev/null | jq -r '.thread.providerId // empty' || true)"
+case "$provider" in
+pi | codex | claude-code) export PLANNOTATOR_ORIGIN="$provider" ;;
+esac
+
+export PLANNOTATOR_PORT="${PLANNOTATOR_PORT:-19432-19441}"
+# Without this, Plannotator opens $BROWSER (bankshot) instead of BB's pane.
+export PLANNOTATOR_SKIP_BROWSER_OPEN=1
+export PLANNOTATOR_READY_FILE="$ready"
+
+thread_id="$BB_THREAD_ID"
+(
+	set +e
+	if [ "$mode" = review ]; then
+		# review has no --result-file; its --json record is the last stdout line.
+		plannotator review "$@" --gate --json \
+			>"$session_dir/out.log" 2>"$session_dir/err.log"
+		code=$?
+		grep '^{' "$session_dir/out.log" | tail -1 >"$result" || true
+	else
+		plannotator annotate "$@" --gate --json --result-file "$result" \
+			>"$session_dir/out.log" 2>"$session_dir/err.log"
+		code=$?
+	fi
+	msg="$session_dir/message.md"
+	{
+		echo "[plannotator-bb] $mode finished (exit $code) for: ${*:-$PWD}"
+		echo
+		if [ -s "$result" ]; then
+			echo '```json'
+			cat "$result"
+			echo '```'
+			echo
+			echo "Act on this decision. \"approved\" means proceed; \"annotated\" means revise using the feedback; \"dismissed\" means the reviewer closed it without a decision."
+			[ "$mode" = review ] && echo "For review, the feedback and any instructions for handling it are in \"message\"; follow those instructions."
+		else
+			echo "No decision was recorded. stderr:"
+			echo '```'
+			tail -20 "$session_dir/err.log"
+			echo '```'
+		fi
+	} >"$msg"
+	bb thread tell "$thread_id" --mode auto --message-file "$msg" >"$session_dir/tell.log" 2>&1
+) </dev/null >/dev/null 2>&1 &
+disown
+
+for _ in $(seq 1 50); do
+	[ -s "$ready" ] && break
+	sleep 0.2
+done
+if [ ! -s "$ready" ]; then
+	echo "plannotator-bb: session did not start. See $session_dir/err.log" >&2
+	cat "$session_dir/err.log" >&2 || true
+	exit 1
+fi
+
+url="$(head -1 "$ready" | jq -r '.url')"
+port="$(head -1 "$ready" | jq -r '.port')"
+# bb preview opens the tab in this thread, now or when the user next opens it.
+case "$url" in
+*://localhost:* | *://127.0.0.1:*) bb preview open "$port" >/dev/null ;;
+*) bb preview url "$url" >/dev/null ;;
+esac
+
+echo "Plannotator session open in BB: $url"
+echo "Session files: $session_dir"
+echo "The decision will arrive as a new message in this thread. End your turn now."
