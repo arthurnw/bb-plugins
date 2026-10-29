@@ -135,7 +135,7 @@ function FooterPicker() {
         aria-label={`Permission mode: ${label}`}
         className={cn(
           "inline-flex h-6 cursor-pointer select-none items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-state-active max-md:pointer-coarse:h-11 max-md:pointer-coarse:px-2.5",
-          mode === "yolo" && "text-destructive hover:text-destructive",
+          mode === "yolo" && "text-warning-text hover:text-warning-text",
         )}
       >
         <Icon name={icon} className="size-3.5" />
@@ -151,7 +151,7 @@ function FooterPicker() {
               key={option}
               role="menuitemradio"
               aria-checked={option === mode}
-              variant={option === "yolo" ? "destructive" : "default"}
+              className={cn(option === "yolo" && "text-warning-text focus:text-warning-text")}
               onSelect={() => void choose(option)}
             >
               <Icon name={item.icon} />
