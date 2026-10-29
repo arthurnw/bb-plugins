@@ -1,8 +1,43 @@
 {
   "$schema": "https://getbb.app/schemas/plugins.schema.json",
   "schemaVersion": 1,
-  "name": "bb-remote-tools",
+  "name": "bb-plugins",
   "plugins": [
-    { "name": "tailnet-preview", "source": "./plugins/tailnet-preview" }
+    {
+      "name": "canvas",
+      "source": "./plugins/canvas"
+    },
+    {
+      "name": "composer-vim",
+      "source": "./plugins/composer-vim"
+    },
+    {
+      "name": "inbox",
+      "source": "./plugins/inbox"
+    },
+    {
+      "name": "message-timestamps-lite",
+      "source": "./plugins/message-timestamps-lite"
+    },
+    {
+      "name": "nav",
+      "source": "./plugins/nav"
+    },
+    {
+      "name": "permission-gate",
+      "source": "./plugins/permission-gate"
+    },
+    {
+      "name": "plannotator-inbox",
+      "source": "./plugins/plannotator-inbox"
+    },
+    {
+      "name": "project-picker",
+      "source": "./plugins/project-picker"
+    },
+    {
+      "name": "tailnet-preview",
+      "source": "./plugins/tailnet-preview"
+    }
   ]
 }

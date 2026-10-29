@@ -5,7 +5,7 @@ A [bb](https://getbb.app) plugin that adds a **Canvas** page to bb's navigation 
 ## Install
 
 ```sh
-bb plugin install https://github.com/arthurnw/bb-canvas
+bb plugin install git:https://github.com/arthurnw/bb-plugins.git --plugin canvas
 ```
 
 Then open **Canvas** in bb's navigation rail. bb builds the plugin when it installs it. `bb plugin update canvas` pulls new commits.

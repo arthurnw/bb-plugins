@@ -5,7 +5,7 @@ A [bb](https://getbb.app) plugin that adds an **Inbox** page to bb's navigation 
 ## Install
 
 ```sh
-bb plugin install /path/to/bb-inbox
+bb plugin install path:/path/to/bb-plugins --plugin inbox
 ```
 
 Then open **Inbox** in bb's navigation rail. Its entry shows how many threads need you.

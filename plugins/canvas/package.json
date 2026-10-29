@@ -5,9 +5,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/arthurnw/bb-canvas.git"
+    "url": "git+https://github.com/arthurnw/bb-plugins.git",
+    "directory": "plugins/canvas"
   },
-  "homepage": "https://github.com/arthurnw/bb-canvas#readme",
+  "homepage": "https://github.com/arthurnw/bb-plugins/tree/main/plugins/canvas#readme",
   "type": "module",
   "engines": {
     "bb": ">=0.46",
