@@ -8,7 +8,7 @@
   },
   "bb": {
     "name": "Permission Gate",
-    "description": "Shows a Pi thread's permission-gate mode above the composer and switches it.",
+    "description": "Switch a Pi thread's permission-gate mode from the composer's + menu.",
     "branding": {
       "icon": "SecurityCheck"
     },

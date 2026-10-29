@@ -1,10 +1,10 @@
-// A chip in the context row above a Pi thread's composer: shows the
-// permission-gate mode and, when expanded, switches it.
-import { useCallback, useEffect, useState } from "react";
+// A "Permissions" row in a Pi thread's composer `+` menu. It opens a popup that
+// shows the permission-gate mode and switches it.
+import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   definePluginApp,
-  type ExperimentalThreadContextSegmentInput,
-  type ExperimentalThreadContextSegmentProps,
+  type PluginComposerApi,
+  useComposer,
   useRealtime,
   useRpc,
 } from "@get-bb/plugin-sdk/app";
@@ -16,7 +16,6 @@ import {
   permissionModes,
   type rpcContract,
 } from "./server";
-import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 
@@ -32,9 +31,6 @@ function isModeChanged(value: unknown): value is ModeChanged {
   return typeof threadId === "string" && permissionModes.includes(mode as PermissionMode);
 }
 
-/** Smaller than the "sm" button: 28px tall, tighter padding, 14px icons. */
-const PILL = "h-7 gap-1.5 px-2 text-xs [&_[data-icon-root]]:size-3.5";
-
 /** The thread's last reported mode; null until Pi's bb-bridge reports one. */
 function useThreadMode(threadId: string): PermissionMode | null {
   const rpc = useRpc<typeof rpcContract>();
@@ -42,6 +38,7 @@ function useThreadMode(threadId: string): PermissionMode | null {
   useEffect(() => {
     let live = true;
     setMode(null);
+    if (threadId === "") return;
     rpc.call("mode_get", { threadId }).then(
       (result) => {
         if (live) setMode(result.mode);
@@ -64,39 +61,29 @@ function useThreadMode(threadId: string): PermissionMode | null {
   return mode;
 }
 
-function useVisible({ threadId }: ExperimentalThreadContextSegmentInput): boolean {
-  return useThreadMode(threadId) !== null;
+const POPUP_ID = "permission-mode";
+
+function isPiThread(composer: PluginComposerApi): boolean {
+  return composer.scope.kind === "thread" && composer.selection?.providerId === "pi";
 }
 
-function Summary({ threadId, isExpanded, onToggle }: ExperimentalThreadContextSegmentProps) {
-  const mode = useThreadMode(threadId);
-  if (mode === null) return null;
-  const { label, icon } = MODE_LABELS[mode];
-  return (
-    <Button
-      size="sm"
-      variant="ghost"
-      onClick={onToggle}
-      aria-expanded={isExpanded}
-      aria-label={`Permission mode: ${label}. Change`}
-      className={cn(PILL, "ml-1", mode === "yolo" && "text-destructive hover:text-destructive")}
-    >
-      <Icon name={icon} />
-      {label}
-      <Icon name={isExpanded ? "ChevronUp" : "ChevronDown"} />
-    </Button>
-  );
-}
-
-function Details({ threadId, isExpanded, onToggle }: ExperimentalThreadContextSegmentProps) {
+/** The `+` > Permissions popup: the three modes, the current one checked. */
+function PermissionPopup() {
+  const composer = useComposer();
+  const threadId = composer.scope.kind === "thread" ? composer.scope.threadId : null;
   const rpc = useRpc<typeof rpcContract>();
-  const current = useThreadMode(threadId);
+  const current = useThreadMode(threadId ?? "");
   const [pending, setPending] = useState<PermissionMode | null>(null);
-  if (!isExpanded) return null;
+  const buttons = useRef<Array<HTMLButtonElement | null>>([]);
+
+  useEffect(() => {
+    const index = current ? permissionModes.indexOf(current) : 0;
+    buttons.current[index]?.focus();
+  }, [current]);
 
   const choose = async (mode: PermissionMode) => {
-    if (mode === current) {
-      onToggle();
+    if (threadId === null || mode === current) {
+      composer.experimental_closePopup();
       return;
     }
     setPending(mode);
@@ -106,7 +93,7 @@ function Details({ threadId, isExpanded, onToggle }: ExperimentalThreadContextSe
         toast.error("Pi isn't running in this thread. Send a message, then try again.");
         return;
       }
-      onToggle();
+      composer.experimental_closePopup();
     } catch (cause) {
       toast.error(`Couldn't switch to ${MODE_LABELS[mode].label}: ${cause instanceof Error ? cause.message : String(cause)}`);
     } finally {
@@ -114,24 +101,44 @@ function Details({ threadId, isExpanded, onToggle }: ExperimentalThreadContextSe
     }
   };
 
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const index = buttons.current.findIndex((button) => button === document.activeElement);
+    const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
+    if (step === 0) return;
+    event.preventDefault();
+    const next = (index + step + permissionModes.length) % permissionModes.length;
+    buttons.current[next]?.focus();
+  };
+
   return (
-    <div className="flex flex-wrap gap-1 px-2 py-1" data-permission-details="" role="group" aria-label="Permission mode">
-      {permissionModes.map((mode) => {
+    <div className="flex min-w-56 flex-col p-1" role="menu" aria-label="Permission mode" onKeyDown={onKeyDown}>
+      <div className="px-2 pb-1 pt-1.5 text-xs text-muted-foreground">Permissions</div>
+      {permissionModes.map((mode, index) => {
         const { label, icon, detail } = MODE_LABELS[mode];
+        const selected = mode === current;
         return (
-          <Button
+          <button
             key={mode}
-            size="sm"
-            variant="ghost"
-            className={PILL}
-            aria-pressed={mode === current}
-            aria-description={detail}
+            ref={(element) => {
+              buttons.current[index] = element;
+            }}
+            type="button"
+            role="menuitemradio"
+            aria-checked={selected}
             disabled={pending !== null}
             onClick={() => void choose(mode)}
+            className={cn(
+              "flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none hover:bg-state-hover focus-visible:bg-state-hover disabled:opacity-50",
+              mode === "yolo" && "text-destructive",
+            )}
           >
-            <Icon name={pending === mode ? "Spinner" : icon} className={cn(pending === mode && "animate-spin")} />
-            {label}
-          </Button>
+            <Icon name={pending === mode ? "Spinner" : icon} className={cn("size-4 shrink-0", pending === mode && "animate-spin")} />
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span>{label}</span>
+              <span className="text-xs text-muted-foreground">{detail}</span>
+            </span>
+            {selected ? <Icon name="Check" className="size-4 shrink-0" /> : null}
+          </button>
         );
       })}
     </div>
@@ -139,12 +146,21 @@ function Details({ threadId, isExpanded, onToggle }: ExperimentalThreadContextSe
 }
 
 export default definePluginApp((app) => {
-  app.slots.experimental_threadContextSegment({
-    id: "mode",
-    title: "Permission mode",
-    group: "2_permission",
-    summary: Summary,
-    details: Details,
-    useVisible,
+  app.composer.customize({
+    id: "permission-mode",
+    scopes: ["thread"],
+    plusMenu: [
+      {
+        id: "permissions",
+        label: "Permissions",
+        icon: "SecurityCheck",
+        description: "Switch Pi's permission-gate mode",
+        disabled: (composer) => !isPiThread(composer),
+        run: ({ composer }) => {
+          composer.experimental_openPopup(POPUP_ID);
+        },
+      },
+    ],
+    experimental_popups: [{ id: POPUP_ID, label: "Permission mode", component: PermissionPopup }],
   });
 });

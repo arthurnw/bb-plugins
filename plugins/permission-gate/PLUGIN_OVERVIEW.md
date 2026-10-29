@@ -1,15 +1,15 @@
-Shows the permission-gate mode of a Pi thread above its composer and lets you switch it.
+Switch a Pi thread's permission-gate mode from the composer's `+` menu.
 
 ## What you get
 
-- A chip in the context row above the composer of any Pi thread running the
-  permission-gate extension: Protected, Permissive, or YOLO.
-- Click the chip to pick another mode. The plugin sends `/protected`,
-  `/permissive`, or `/yolo` to the thread, and Pi replies with the new mode.
+- A **Permissions** row in the `+` menu of Pi thread composers. It opens a
+  popup with Protected, Permissive, and YOLO; the current mode is checked.
+- The same menu works on phone, web, and desktop. The row is greyed out in
+  threads that don't run Pi.
 
 ## How it works
 
 Pi's bb-bridge extension runs `bb permission-gate report <mode>` when a session
 starts and whenever the mode changes. The plugin stores the mode as thread
-metadata and pushes it to open windows. Threads that never report a mode show
-no chip.
+metadata and pushes it to open windows. Picks go to Pi through `bb permission-gate wait`, which
+Pi's bb-bridge long-polls; no message or model turn is involved.
