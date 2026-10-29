@@ -4,16 +4,9 @@
 // for modes picked in the chip.
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
+import { MODE_CHANGED, type ModeChanged, type PermissionMode, permissionModes } from "./shared";
 
-export const permissionModes = ["protected", "permissive", "yolo"] as const;
-export type PermissionMode = (typeof permissionModes)[number];
 const modeSchema = z.enum(permissionModes);
-
-export const MODE_CHANGED = "mode-changed";
-export interface ModeChanged {
-  threadId: string;
-  mode: PermissionMode;
-}
 
 export const rpcContract = defineRpcContract({
   mode_get: {

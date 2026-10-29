@@ -9,13 +9,8 @@ import {
   useRpc,
 } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
-import {
-  MODE_CHANGED,
-  type ModeChanged,
-  type PermissionMode,
-  permissionModes,
-  type rpcContract,
-} from "./server";
+import { MODE_CHANGED, type ModeChanged, type PermissionMode, permissionModes } from "./shared";
+import type { rpcContract } from "./server";
 import {
   DropdownMenu,
   DropdownMenuContent,
