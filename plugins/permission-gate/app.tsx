@@ -1,9 +1,9 @@
-// A "Permissions" row in a Pi thread's composer `+` menu. It opens a popup that
-// shows the permission-gate mode and switches it.
-import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
+// A permission-mode picker in a Pi thread's composer footer, next to the
+// context donut, inserted into bb's own markup.
+import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   definePluginApp,
-  type PluginComposerApi,
   useComposer,
   useRealtime,
   useRpc,
@@ -16,6 +16,13 @@ import {
   permissionModes,
   type rpcContract,
 } from "./server";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 
@@ -61,106 +68,107 @@ function useThreadMode(threadId: string): PermissionMode | null {
   return mode;
 }
 
-const POPUP_ID = "permission-mode";
+/**
+ * The right-hand group of the primary composer's footer, where the context
+ * donut lives. This is bb's internal markup, not a plugin API, so a bb update
+ * can move or rename it; the picker then just doesn't show.
+ */
+const FOOTER_GROUP = "[data-app-composer-role=primary] [data-follow-up-composer-footer] > div:last-child";
 
-function isPiThread(composer: PluginComposerApi): boolean {
-  return composer.scope.kind === "thread" && composer.selection?.providerId === "pi";
-}
-
-/** The `+` > Permissions popup: the three modes, the current one checked. */
-function PermissionPopup() {
-  const composer = useComposer();
-  const threadId = composer.scope.kind === "thread" ? composer.scope.threadId : null;
-  const rpc = useRpc<typeof rpcContract>();
-  const current = useThreadMode(threadId ?? "");
-  const [pending, setPending] = useState<PermissionMode | null>(null);
-  const buttons = useRef<Array<HTMLButtonElement | null>>([]);
-
+/** A host node in the footer, recreated whenever bb re-renders the footer. */
+function useFooterSlot(enabled: boolean): HTMLElement | null {
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
   useEffect(() => {
-    const index = current ? permissionModes.indexOf(current) : 0;
-    buttons.current[index]?.focus();
-  }, [current]);
-
-  const choose = async (mode: PermissionMode) => {
-    if (threadId === null || mode === current) {
-      composer.experimental_closePopup();
+    if (!enabled) {
+      setSlot(null);
       return;
     }
-    setPending(mode);
-    try {
-      const { delivered } = await rpc.call("mode_set", { threadId, mode });
-      if (!delivered) {
-        toast.error("Pi isn't running in this thread. Send a message, then try again.");
+    const node = document.createElement("div");
+    node.dataset.permissionGateSlot = "";
+    node.className = "contents";
+    const place = () => {
+      const group = document.querySelector(FOOTER_GROUP);
+      if (group === null) {
+        node.remove();
+        setSlot(null);
         return;
       }
-      composer.experimental_closePopup();
+      if (node.parentElement !== group || group.firstElementChild !== node) group.prepend(node);
+      setSlot(node);
+    };
+    place();
+    const observer = new MutationObserver(place);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => {
+      observer.disconnect();
+      node.remove();
+      setSlot(null);
+    };
+  }, [enabled]);
+  return slot;
+}
+
+function FooterPicker() {
+  const composer = useComposer();
+  // Only Pi threads running bb-bridge report a mode, so a recorded mode marks a
+  // Pi thread. (`selection` is null outside a composer slot.)
+  const threadId = composer.scope.kind === "thread" ? composer.scope.threadId : null;
+  const mode = useThreadMode(threadId ?? "");
+  const slot = useFooterSlot(threadId !== null && mode !== null);
+  const rpc = useRpc<typeof rpcContract>();
+  if (slot === null || threadId === null || mode === null) return null;
+
+  const choose = async (next: PermissionMode) => {
+    if (next === mode) return;
+    try {
+      const { delivered } = await rpc.call("mode_set", { threadId, mode: next });
+      if (!delivered) toast.error("Pi isn't running in this thread. Send a message, then try again.");
     } catch (cause) {
-      toast.error(`Couldn't switch to ${MODE_LABELS[mode].label}: ${cause instanceof Error ? cause.message : String(cause)}`);
-    } finally {
-      setPending(null);
+      toast.error(`Couldn't switch to ${MODE_LABELS[next].label}: ${cause instanceof Error ? cause.message : String(cause)}`);
     }
   };
 
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    const index = buttons.current.findIndex((button) => button === document.activeElement);
-    const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
-    if (step === 0) return;
-    event.preventDefault();
-    const next = (index + step + permissionModes.length) % permissionModes.length;
-    buttons.current[next]?.focus();
-  };
-
-  return (
-    <div className="flex min-w-56 flex-col p-1" role="menu" aria-label="Permission mode" onKeyDown={onKeyDown}>
-      <div className="px-2 pb-1 pt-1.5 text-xs text-muted-foreground">Permissions</div>
-      {permissionModes.map((mode, index) => {
-        const { label, icon, detail } = MODE_LABELS[mode];
-        const selected = mode === current;
-        return (
-          <button
-            key={mode}
-            ref={(element) => {
-              buttons.current[index] = element;
-            }}
-            type="button"
-            role="menuitemradio"
-            aria-checked={selected}
-            disabled={pending !== null}
-            onClick={() => void choose(mode)}
-            className={cn(
-              "flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none hover:bg-state-hover focus-visible:bg-state-hover disabled:opacity-50",
-              mode === "yolo" && "text-destructive",
-            )}
-          >
-            <Icon name={pending === mode ? "Spinner" : icon} className={cn("size-4 shrink-0", pending === mode && "animate-spin")} />
-            <span className="flex min-w-0 flex-1 flex-col">
-              <span>{label}</span>
-              <span className="text-xs text-muted-foreground">{detail}</span>
-            </span>
-            {selected ? <Icon name="Check" className="size-4 shrink-0" /> : null}
-          </button>
-        );
-      })}
-    </div>
+  const { label, icon } = MODE_LABELS[mode];
+  return createPortal(
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label={`Permission mode: ${label}`}
+        className={cn(
+          "inline-flex h-6 cursor-pointer select-none items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-state-active max-md:pointer-coarse:h-11 max-md:pointer-coarse:px-2.5",
+          mode === "yolo" && "text-destructive hover:text-destructive",
+        )}
+      >
+        <Icon name={icon} className="size-3.5" />
+        <span>{label}</span>
+        <Icon name="ChevronDown" className="size-3 opacity-70" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" side="top" mobileTitle="Permissions" className="min-w-60">
+        <DropdownMenuLabel>Permissions</DropdownMenuLabel>
+        {permissionModes.map((option) => {
+          const item = MODE_LABELS[option];
+          return (
+            <DropdownMenuItem
+              key={option}
+              role="menuitemradio"
+              aria-checked={option === mode}
+              variant={option === "yolo" ? "destructive" : "default"}
+              onSelect={() => void choose(option)}
+            >
+              <Icon name={item.icon} />
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span>{item.label}</span>
+                <span className="text-muted-foreground">{item.detail}</span>
+              </span>
+              {option === mode ? <Icon name="Check" /> : null}
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>,
+    slot,
   );
 }
 
 export default definePluginApp((app) => {
-  app.composer.customize({
-    id: "permission-mode",
-    scopes: ["thread"],
-    plusMenu: [
-      {
-        id: "permissions",
-        label: "Permissions",
-        icon: "SecurityCheck",
-        description: "Switch Pi's permission-gate mode",
-        disabled: (composer) => !isPiThread(composer),
-        run: ({ composer }) => {
-          composer.experimental_openPopup(POPUP_ID);
-        },
-      },
-    ],
-    experimental_popups: [{ id: POPUP_ID, label: "Permission mode", component: PermissionPopup }],
-  });
+  app.slots.experimental_appOverlay({ id: "footer-permission-picker", component: FooterPicker });
 });
