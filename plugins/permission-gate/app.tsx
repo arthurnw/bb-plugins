@@ -70,21 +70,18 @@ function Summary({ threadId, isExpanded, onToggle }: ExperimentalThreadContextSe
   if (mode === null) return null;
   const { label, icon } = MODE_LABELS[mode];
   return (
-    <button
-      type="button"
+    <Button
+      size="sm"
+      variant="ghost"
       onClick={onToggle}
       aria-expanded={isExpanded}
       aria-label={`Permission mode: ${label}. Change`}
-      className={cn(
-        "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground",
-        mode === "yolo" && "text-destructive",
-        isExpanded && "bg-state-active text-foreground",
-      )}
+      className={cn("ml-1", mode === "yolo" && "text-destructive hover:text-destructive")}
     >
-      <Icon name={icon} className="size-3.5" />
+      <Icon name={icon} />
       {label}
-      <Icon name={isExpanded ? "ChevronUp" : "ChevronDown"} className="size-3" />
-    </button>
+      <Icon name={isExpanded ? "ChevronUp" : "ChevronDown"} />
+    </Button>
   );
 }
 
@@ -115,7 +112,7 @@ function Details({ threadId, isExpanded, onToggle }: ExperimentalThreadContextSe
   };
 
   return (
-    <div className="flex flex-wrap gap-1.5 py-1.5" role="group" aria-label="Permission mode">
+    <div className="flex flex-wrap gap-1.5 px-2 py-1.5" data-permission-details="" role="group" aria-label="Permission mode">
       {permissionModes.map((mode) => {
         const { label, icon, detail } = MODE_LABELS[mode];
         return (
