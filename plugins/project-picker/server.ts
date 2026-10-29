@@ -2,7 +2,7 @@
 import { defineRpcContract, type BbPluginApi, type NewThreadRequest } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { hostContract } from "./contract.ts";
-import { inputsSchema, PROVIDER_ID, type NamedWorktreeInputs } from "./named-worktree.ts";
+import { autoBranchName, inputsSchema, PROVIDER_ID, type NamedWorktreeInputs } from "./named-worktree.ts";
 
 export const quickComposeRpcContract = defineRpcContract({
   // Forwarded unchanged; `threads.spawn` validates the request.
@@ -26,21 +26,26 @@ export default async function plugin(bb: BbPluginApi) {
 
   async function provision(context: {
     projectCheckout: { path: string }; host: { id: string }; pathKey: string; signal: AbortSignal;
-    experimental_claimPath(path: string): Promise<boolean>; report: { step(message: string): void };
-  }, inputs: NamedWorktreeInputs, restore: boolean, step: string) {
-    const input = { sourcePath: context.projectCheckout.path, pathKey: context.pathKey, inputs, restore };
+    experimental_claimPath(path: string): Promise<boolean>; report: { step(message: string): void; log(text: string): void };
+  }, inputs: NamedWorktreeInputs, mode: { restore: boolean; autoName: boolean }, step: string) {
+    const input = { sourcePath: context.projectCheckout.path, pathKey: context.pathKey, inputs, ...mode };
     const options = { hostId: context.host.id, signal: context.signal, timeoutMs: TIMEOUT_MS };
     const { path } = await host.call("target", input, options);
     if (!await context.experimental_claimPath(path)) return { status: "failed" as const, message: "Worktree directory is already in use." };
     context.report.step(step);
-    await host.call("create", input, options);
+    const { name, wtSetup } = await host.call("create", input, options);
+    if (mode.autoName) context.report.step(`Created branch ${name}`);
+    if (wtSetup.status !== "missing") {
+      if (wtSetup.output) context.report.log(wtSetup.output);
+      context.report.step(wtSetup.status === "done" ? "wt setup finished" : "wt setup failed; the worktree is kept");
+    }
     return { status: "created" as const, path, ownsPath: true, mergeBaseBranch: inputs.baseBranch };
   }
 
   bb.experimental_environments.register({
     id: PROVIDER_ID,
     displayName: "Named worktree",
-    description: "Create a Git worktree with a branch name and base branch you choose.",
+    description: "Create a Git worktree from a base branch you choose, named by you or from the thread title.",
     icon: "FolderGit",
     requires: { gitCheckout: true },
     inputs: inputsSchema,
@@ -50,12 +55,19 @@ export default async function plugin(bb: BbPluginApi) {
         { hostId: context.host.id });
       return error === null ? { action: "accept" } : { action: "refuse", message: error };
     },
-    create: (context) => provision(context, context.inputs, false,
-      `Creating branch ${context.inputs.name} from ${context.inputs.baseBranch}`),
+    async create(context) {
+      const { inputs } = context;
+      if (inputs.name !== "") {
+        return provision(context, inputs, { restore: false, autoName: false }, `Creating branch ${inputs.name} from ${inputs.baseBranch}`);
+      }
+      const { generalSettings } = await bb.sdk.system.config();
+      const name = autoBranchName(context.suggestedBranchName, context.thread.id, generalSettings.managedBranchPrefix);
+      return provision(context, { ...inputs, name }, { restore: false, autoName: true }, `Creating a branch from ${inputs.baseBranch}`);
+    },
     async restore(context) {
       const name = context.previous.environment.branchName;
       if (name === null) return { status: "failed", message: "The removed worktree had no branch to restore." };
-      return provision(context, { ...context.inputs, name }, true, `Restoring branch ${name}`);
+      return provision(context, { ...context.inputs, name }, { restore: true, autoName: false }, `Restoring branch ${name}`);
     },
     async remove(context) {
       if (context.hostId === null) return { status: "failed", message: "The worktree machine is unknown." };

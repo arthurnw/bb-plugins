@@ -101,6 +101,17 @@ base with **Branch from**. The name starts with bb's branch prefix
 setting is empty), which you can edit or delete. Local and remote-tracking
 branches are available through bb's branch picker.
 
+Leave the name empty (or only the prefix) to name the branch from the thread
+title, as bb's built-in Worktree does, but without the thread ID:
+`<prefix><title-slug>`. When that branch exists, the plugin adds `-2`, `-3`, and
+so on. A thread with no usable title gets `<prefix>thread-<UTC timestamp>`.
+
+After creating or restoring the worktree, the plugin runs `wt setup <worktree>`
+when [`wt`](https://github.com/arthurnw/wt) is on the host's `PATH` or in
+`~/.local/bin`; otherwise it skips this step. Its output appears in the
+provisioning log. A failed `wt setup` is reported and the worktree is kept;
+run `wt setup` in the worktree to retry. It runs before `.bb-env-setup.sh`.
+
 Git validates names with `git check-ref-format --branch`. Existing branches are
 rejected with a clear error; creation uses `git worktree add -b` and never resets
 an existing branch. To reuse an existing worktree, use bb's built-in Worktree
@@ -114,6 +125,8 @@ bb thread spawn --project <project-id> \
   --environment-inputs '{"name":"feature/foo","baseBranch":"main"}' \
   --prompt 'Work on foo'
 ```
+
+Pass `"name":""` to name the branch from the thread title.
 
 Worktrees live on the selected machine under this plugin's host-data directory:
 `worktrees/<path-key>/<repository-name>`. This matches the built-in layout, but

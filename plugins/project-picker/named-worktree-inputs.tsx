@@ -60,14 +60,16 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
     return () => { cancelAnimationFrame(frame); fields.delete(el); };
   }, []);
   useEffect(() => {
-    const reason = (name === prefix ? branchNameError("") : branchNameError(name))
+    // An empty name, or only the prefix, lets the provider name the branch from the thread title.
+    const chosen = name === prefix ? "" : name;
+    const reason = (chosen === "" ? null : branchNameError(chosen))
       ?? (baseBranch === null ? "Choose a base branch." : null);
     if (reason) onChange({ status: "blocked", reason });
-    else onChange({ status: "ready", value: { name, baseBranch } });
+    else onChange({ status: "ready", value: { name: chosen, baseBranch } });
   }, [name, prefix, baseBranch, onChange]);
   return (
     <div style={{ display: "flex", flexWrap: "nowrap", alignItems: "center", gap: 8, whiteSpace: "nowrap", minWidth: 0, flexShrink: 1 }}>
-      <input ref={field} aria-label="New branch name" placeholder="branch-name" value={name}
+      <input ref={field} aria-label="New branch name" placeholder="auto from title" value={name}
         onChange={(event) => setName(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === "Enter") event.preventDefault();

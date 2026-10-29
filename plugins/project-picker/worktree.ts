@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
-import { constants, existsSync } from "node:fs";
+import { accessSync, constants, existsSync } from "node:fs";
 import * as fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { branchNameError, type NamedWorktreeInputs } from "./named-worktree.ts";
@@ -34,11 +35,22 @@ async function branchExists(source: string, name: string, signal?: AbortSignal) 
     .split("\n").includes(`refs/heads/${name}`);
 }
 
-/** Checks that `inputs` can create a new branch; returns the base commit. */
+/** Checks that `inputs` can create a new branch; returns the base commit. An empty name checks only the base. */
 export async function validateNewBranch(source: string, inputs: NamedWorktreeInputs, signal?: AbortSignal) {
-  await validateBranchName(source, inputs.name, signal);
-  if (await branchExists(source, inputs.name, signal)) throw new Error(`Branch "${inputs.name}" already exists. Choose a new branch name.`);
+  if (inputs.name !== "") {
+    await validateBranchName(source, inputs.name, signal);
+    if (await branchExists(source, inputs.name, signal)) throw new Error(`Branch "${inputs.name}" already exists. Choose a new branch name.`);
+  }
   return git(source, ["rev-parse", "--verify", "--end-of-options", `${inputs.baseBranch}^{commit}`], signal);
+}
+
+/** `name`, or `name-2`, `name-3`, ... for the first that is not a branch yet. */
+export async function freeBranchName(source: string, name: string, signal?: AbortSignal) {
+  await validateBranchName(source, name, signal);
+  for (let n = 1; ; n++) {
+    const candidate = n === 1 ? name : `${name}-${n}`;
+    if (!await branchExists(source, candidate, signal)) return candidate;
+  }
 }
 
 export function attemptRoot(dataDir: string, pathKey: string) {
@@ -78,22 +90,63 @@ async function copyIncluded(source: string, target: string, signal?: AbortSignal
   }
 }
 
+export interface CreateOptions {
+  /** Check out the existing branch `inputs.name` instead of creating one. */
+  restore?: boolean;
+  /** `inputs.name` is a generated stem: add a numeric suffix instead of refusing an existing branch. */
+  autoName?: boolean;
+  signal?: AbortSignal;
+}
+
 export async function createWorktree(dataDir: string, pathKey: string, source: string,
-  inputs: NamedWorktreeInputs, restore: boolean, signal?: AbortSignal) {
+  inputs: NamedWorktreeInputs, { restore = false, autoName = false, signal }: CreateOptions = {}) {
   const root = attemptRoot(dataDir, pathKey), target = targetPath(dataDir, pathKey, source);
-  // A replay of this attempt resumes its own registered worktree.
-  const resumed = await readState(root) !== null && await registeredBranch(source, target, signal) === inputs.name;
+  // A replay of this attempt resumes its own registered worktree, under the name it chose.
+  const state = await readState(root);
+  let name = state !== null && autoName && !restore ? state.name : inputs.name;
+  const resumed = state !== null && await registeredBranch(source, target, signal) === name;
   if (!resumed) {
-    if (restore && !await branchExists(source, inputs.name, signal)) throw new Error(`Cannot restore: branch "${inputs.name}" no longer exists.`);
-    const base = restore ? null : await validateNewBranch(source, inputs, signal);
+    if (restore && !await branchExists(source, name, signal)) throw new Error(`Cannot restore: branch "${name}" no longer exists.`);
+    if (autoName && !restore) name = await freeBranchName(source, inputs.name, signal);
+    const base = restore ? null : await validateNewBranch(source, { ...inputs, name }, signal);
     await fs.mkdir(root, { recursive: true });
     // Written before git runs so cleanup can find a partially created worktree.
-    await fs.writeFile(path.join(root, "attempt.json"), JSON.stringify({ source, target, ...inputs }));
-    await git(source, base === null ? ["worktree", "add", "--", target, inputs.name]
-      : ["worktree", "add", "-b", inputs.name, "--", target, base], signal);
+    await fs.writeFile(path.join(root, "attempt.json"), JSON.stringify({ source, target, ...inputs, name }));
+    await git(source, base === null ? ["worktree", "add", "--", target, name]
+      : ["worktree", "add", "-b", name, "--", target, base], signal);
   }
   await copyIncluded(source, target, signal);
-  return target;
+  return { path: target, name };
+}
+
+/** The `wt` executable on PATH or in ~/.local/bin, or null when it is not installed. */
+export function findWt(env: NodeJS.ProcessEnv = process.env, home = os.homedir()): string | null {
+  const dirs = [...(env.PATH ?? "").split(path.delimiter).filter(Boolean), path.join(home, ".local", "bin")];
+  for (const dir of dirs) {
+    const file = path.join(dir, "wt");
+    try { accessSync(file, constants.X_OK); return file; } catch {}
+  }
+  return null;
+}
+
+export type WtSetupResult = { status: "done" | "failed"; output: string } | { status: "missing" };
+
+/**
+ * Runs `wt setup` (local files, branch documents, Direnv, setup commands) in a
+ * new worktree. Failures are returned, not thrown, so a broken setup command
+ * does not cost the thread its worktree.
+ */
+export async function runWtSetup(target: string, signal?: AbortSignal, wt = findWt()): Promise<WtSetupResult> {
+  if (wt === null) return { status: "missing" };
+  try {
+    const { stdout, stderr } = await execFileAsync(wt, ["setup", target], { cwd: target, signal,
+      maxBuffer: 8 * 1024 * 1024, timeout: 840_000 });
+    return { status: "done", output: `${stdout}${stderr}`.trim() };
+  } catch (error) {
+    signal?.throwIfAborted();
+    const { stdout = "", stderr = "", message } = error as { stdout?: string; stderr?: string; message: string };
+    return { status: "failed", output: `${stdout}${stderr}`.trim() || message };
+  }
 }
 
 export async function removeWorktree(dataDir: string, pathKey: string,

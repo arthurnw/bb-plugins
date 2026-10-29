@@ -1,6 +1,6 @@
 import { experimental_defineHostEntry, experimental_killProcessesWithCwdUnder } from "@get-bb/plugin-sdk/host";
 import { hostContract } from "./contract.ts";
-import { createWorktree, removeWorktree, targetPath, validateNewBranch } from "./worktree.ts";
+import { createWorktree, removeWorktree, runWtSetup, targetPath, validateNewBranch } from "./worktree.ts";
 
 export default experimental_defineHostEntry({
   contract: hostContract,
@@ -12,8 +12,10 @@ export default experimental_defineHostEntry({
     async target({ pathKey, sourcePath }, context) {
       return { path: targetPath(context.experimental_paths.dataDir, pathKey, sourcePath) };
     },
-    async create({ pathKey, sourcePath, inputs, restore }, context) {
-      return { path: await createWorktree(context.experimental_paths.dataDir, pathKey, sourcePath, inputs, restore, context.signal) };
+    async create({ pathKey, sourcePath, inputs, restore, autoName }, context) {
+      const created = await createWorktree(context.experimental_paths.dataDir, pathKey, sourcePath, inputs,
+        { restore, autoName, signal: context.signal });
+      return { ...created, wtSetup: await runWtSetup(created.path, context.signal) };
     },
     async remove({ pathKey }, context) {
       await removeWorktree(context.experimental_paths.dataDir, pathKey,
