@@ -1,0 +1,25 @@
+/* The content script sets --bb-sent-at on the timeline row, which React
+   does not re-render. User times sit above the bubble; agent times sit below
+   the reply because they mark when it finished. */
+[data-timeline-row-id] .group\/message.ml-auto::before,
+[data-timeline-row-id] .group\/message:not(.ml-auto)::after {
+  color: var(--muted-foreground);
+  content: var(--bb-sent-at, none);
+  display: block;
+  font-size: 0.6875rem;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+}
+
+[data-timeline-row-id] .group\/message.ml-auto::before {
+  margin-bottom: 0.25rem;
+  text-align: right;
+}
+
+[data-timeline-row-id] .group\/message:not(.ml-auto)::after {
+  margin-top: 0.25rem;
+  text-align: left;
+}
