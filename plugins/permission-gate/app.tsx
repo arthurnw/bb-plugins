@@ -32,6 +32,9 @@ function isModeChanged(value: unknown): value is ModeChanged {
   return typeof threadId === "string" && permissionModes.includes(mode as PermissionMode);
 }
 
+/** Smaller than the "sm" button: 28px tall, tighter padding, 14px icons. */
+const PILL = "h-7 gap-1.5 px-2 text-xs [&_[data-icon-root]]:size-3.5";
+
 /** The thread's last reported mode; null until Pi's bb-bridge reports one. */
 function useThreadMode(threadId: string): PermissionMode | null {
   const rpc = useRpc<typeof rpcContract>();
@@ -76,7 +79,7 @@ function Summary({ threadId, isExpanded, onToggle }: ExperimentalThreadContextSe
       onClick={onToggle}
       aria-expanded={isExpanded}
       aria-label={`Permission mode: ${label}. Change`}
-      className={cn("ml-1", mode === "yolo" && "text-destructive hover:text-destructive")}
+      className={cn(PILL, "ml-1", mode === "yolo" && "text-destructive hover:text-destructive")}
     >
       <Icon name={icon} />
       {label}
@@ -112,7 +115,7 @@ function Details({ threadId, isExpanded, onToggle }: ExperimentalThreadContextSe
   };
 
   return (
-    <div className="flex flex-wrap gap-1.5 px-2 py-1.5" data-permission-details="" role="group" aria-label="Permission mode">
+    <div className="flex flex-wrap gap-1 px-2 py-1" data-permission-details="" role="group" aria-label="Permission mode">
       {permissionModes.map((mode) => {
         const { label, icon, detail } = MODE_LABELS[mode];
         return (
@@ -120,6 +123,7 @@ function Details({ threadId, isExpanded, onToggle }: ExperimentalThreadContextSe
             key={mode}
             size="sm"
             variant="ghost"
+            className={PILL}
             aria-pressed={mode === current}
             aria-description={detail}
             disabled={pending !== null}
