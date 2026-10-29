@@ -30,7 +30,7 @@ const usage = [
   "Usage:",
   "  bb permission-gate report <protected|permissive|yolo> [--thread <id>]",
   "  bb permission-gate show [--thread <id>]",
-  "  bb permission-gate wait [--thread <id>]",
+  "  bb permission-gate wait [--mode <current>] [--thread <id>]",
 ].join("\n");
 
 /** How long one `wait` call blocks before returning `{ mode: null }`. */
@@ -52,6 +52,7 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   async function recordMode(threadId: string, mode: PermissionMode): Promise<void> {
+    if ((await readMode(threadId)) === mode) return;
     await bb.sdk.threads.updatePluginMetadata({ threadId, set: { mode } });
     bb.realtime.publish(MODE_CHANGED, { threadId, mode } satisfies ModeChanged);
   }
@@ -126,8 +127,8 @@ export default async function plugin(bb: BbPluginApi) {
       },
       {
         name: "wait",
-        summary: "Wait up to 25s for a mode picked in bb; prints it, or null on timeout",
-        usage: "bb permission-gate wait [--thread <id>]",
+        summary: "Wait up to 25s for a mode picked in bb; prints it, or null on timeout. --mode also records the current mode",
+        usage: "bb permission-gate wait [--mode <current>] [--thread <id>]",
       },
       {
         name: "show",
@@ -138,9 +139,14 @@ export default async function plugin(bb: BbPluginApi) {
     async run(argv, ctx) {
       const json = argv.includes("--json");
       const args = argv.filter((arg) => arg !== "--json");
-      const threadFlag = args.indexOf("--thread");
-      const threadId = threadFlag >= 0 ? args[threadFlag + 1] : ctx.threadId;
-      const positionals = threadFlag >= 0 ? args.filter((_, i) => i !== threadFlag && i !== threadFlag + 1) : args;
+      const flags = new Map<string, string | undefined>();
+      const positionals: string[] = [];
+      for (let i = 0; i < args.length; i++) {
+        const arg = args[i] ?? "";
+        if (arg === "--thread" || arg === "--mode") flags.set(arg, args[++i]);
+        else positionals.push(arg);
+      }
+      const threadId = flags.get("--thread") ?? ctx.threadId;
       const [command, value] = positionals;
       const fail = (message: string) =>
         json
@@ -161,6 +167,13 @@ export default async function plugin(bb: BbPluginApi) {
         return { exitCode: 0, stdout: json ? JSON.stringify({ threadId, mode }) : (mode ?? "unknown") };
       }
       if (command === "wait") {
+        // Each poll carries Pi's current mode, so a missed report or a stray
+        // process's report is corrected within one poll.
+        if (flags.has("--mode")) {
+          const current = modeSchema.safeParse(flags.get("--mode"));
+          if (!current.success) return fail(`Unknown mode: ${flags.get("--mode") ?? "(missing)"}`);
+          await recordMode(threadId, current.data);
+        }
         const mode = await waitForPick(threadId, ctx.signal);
         return { exitCode: 0, stdout: json ? JSON.stringify({ threadId, mode }) : (mode ?? "null") };
       }
