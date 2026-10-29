@@ -93,7 +93,9 @@ function Session({ session, kind, visible, focusRequest }: {
 
   const choose = (id: string) => { setProjectId(id); setPopup(false); setFocus(n => n + 1); };
   const sectionRef = useRef<HTMLElement>(null);
-  const draftKey = session.sourceThreadId ? `project-picker-${kind}:${session.sourceThreadId}` : "project-picker-compose";
+  const draftKey = session.sourceThreadId
+    ? `project-picker-${kind}:${session.sourceThreadId}${session.sourceSeqEnd === null ? "" : `@${session.sourceSeqEnd}`}`
+    : "project-picker-compose";
   useEffect(() => {
     if (kind === "new-thread") return quickCompose.registerDraftCheck(() => hasDraft(sectionRef.current, draftKey));
   }, [kind, draftKey]);
@@ -158,11 +160,12 @@ function Session({ session, kind, visible, focusRequest }: {
         initialPrompt={kind === "handoff" && session.sourceThreadId ? `@thread:${session.sourceThreadId} ` : undefined}
         draftKey={draftKey}
         layout="document" focusRequest={visible ? focusRequest + focus : undefined}
-        placeholder={LABELS[kind].placeholder}
+        placeholder={kind === "fork" && session.sourceSeqEnd !== null ? "Fork from this message into a new worktree" : LABELS[kind].placeholder}
         onSubmit={async request => {
           try {
             const { threadId } = kind === "fork" && session.sourceThreadId
-              ? await rpc.call("forkThread", { sourceThreadId: session.sourceThreadId, request })
+              ? await rpc.call("forkThread", { sourceThreadId: session.sourceThreadId, request,
+                ...(session.sourceSeqEnd === null ? {} : { sourceSeqEnd: session.sourceSeqEnd }) })
               : await rpc.call("createThread", { request });
             quickCompose.finish(kind);
             toast.success(kind === "fork" ? "Fork started" : "Thread started", { action: { label: "Open", onClick: () => navigate.toThread(threadId) } });
@@ -190,6 +193,10 @@ export function registerOverlay(app: PluginAppBuilder) {
   app.commands.register({ id: "new-thread", title: "Project Picker: quick compose", defaultShortcut: { key: "l", mod: true, shift: true }, run: context => quickCompose.toggle("new-thread", context) });
   app.commands.register({ id: "handoff", title: "Project Picker: hand off this thread", defaultShortcut: { key: "h", mod: true, shift: true }, isAvailable: context => context.threadId !== null, run: context => quickCompose.toggle("handoff", context) });
   app.commands.register({ id: "fork", title: "Project Picker: fork this thread into a named worktree", isAvailable: context => context.threadId !== null, run: context => quickCompose.toggle("fork", context) });
+  app.slots.messageAction({
+    id: "fork-named-worktree", title: "Fork into named worktree", icon: "GitBranch",
+    run: ({ threadId, message }) => quickCompose.open("fork", { projectId: null, threadId, sourceSeqEnd: message.sourceSeqEnd }),
+  });
   app.slots.experimental_threadAction({
     id: "fork-named-worktree", title: "Fork into named worktree", icon: "GitBranch",
     group: "1_open", // experimental_THREAD_ACTION_GROUPS.open

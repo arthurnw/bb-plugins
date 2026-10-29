@@ -71,5 +71,10 @@ test("fork sessions are scoped to their source thread", () => {
   assert.equal(quickCompose.getState().sessions.handoff, null);
   quickCompose.toggle("fork", { projectId: "a", threadId: "t2" });
   assert.equal(quickCompose.getState().sessions.fork?.sourceThreadId, "t2");
+  quickCompose.toggle("fork", { projectId: "a", threadId: "t2", sourceSeqEnd: 40 });
+  assert.equal(quickCompose.getState().sessions.fork?.sourceSeqEnd, 40);
+  assert.equal(quickCompose.getState().active, "fork");
+  quickCompose.toggle("fork", { projectId: "a", threadId: "t2", sourceSeqEnd: 40 });
+  assert.equal(quickCompose.getState().active, null);
   quickCompose.finish("fork");
 });

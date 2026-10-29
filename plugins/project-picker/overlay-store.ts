@@ -10,6 +10,8 @@ export interface QuickComposeSession {
   projectId: string | null;
   /** The thread being handed off or forked, or null for a plain new thread. */
   sourceThreadId: string | null;
+  /** For a fork, the event sequence to fork after (a message's `sourceSeqEnd`); null forks the latest turn. */
+  sourceSeqEnd: number | null;
 }
 
 export interface QuickComposeState {
@@ -23,6 +25,7 @@ export interface QuickComposeState {
 export interface QuickComposeContext {
   projectId: string | null;
   threadId: string | null;
+  sourceSeqEnd?: number | null;
 }
 
 let state: QuickComposeState = {
@@ -52,7 +55,8 @@ function matchesContext(
   session: QuickComposeSession,
   context: QuickComposeContext,
 ): boolean {
-  return kind === "new-thread" || session.sourceThreadId === context.threadId;
+  return kind === "new-thread" || (session.sourceThreadId === context.threadId
+    && (kind !== "fork" || session.sourceSeqEnd === (context.sourceSeqEnd ?? null)));
 }
 
 export const quickCompose = {
@@ -68,6 +72,7 @@ export const quickCompose = {
           id: nextSessionId++,
           projectId: context.projectId,
           sourceThreadId: kind === "new-thread" ? null : context.threadId,
+          sourceSeqEnd: kind === "fork" ? context.sourceSeqEnd ?? null : null,
         };
     update({
       active: kind,

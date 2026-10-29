@@ -12,7 +12,8 @@ export const quickComposeRpcContract = defineRpcContract({
   },
   // A fork keeps the source's provider and model, so only these request fields apply.
   forkThread: {
-    input: z.object({ sourceThreadId: z.string().min(1), request: z.custom<NewThreadRequest>() }),
+    input: z.object({ sourceThreadId: z.string().min(1), sourceSeqEnd: z.number().int().nonnegative().optional(),
+      request: z.custom<NewThreadRequest>() }),
     output: z.object({ threadId: z.string() }),
   },
 });
@@ -25,8 +26,8 @@ export default async function plugin(bb: BbPluginApi) {
       const thread = await bb.sdk.threads.spawn(request);
       return { threadId: thread.id };
     },
-    async forkThread({ sourceThreadId, request }) {
-      const thread = await bb.sdk.threads.fork({ sourceThreadId, input: request.input, environment: request.environment,
+    async forkThread({ sourceThreadId, sourceSeqEnd, request }) {
+      const thread = await bb.sdk.threads.fork({ sourceThreadId, sourceSeqEnd, input: request.input, environment: request.environment,
         permissionMode: request.permissionMode });
       return { threadId: thread.id };
     },

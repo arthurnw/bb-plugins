@@ -143,7 +143,8 @@ for the default branch.
 
 ### Forks
 
-**Fork into named worktree** (thread actions menu, or the command above) opens
+**Fork into named worktree** (thread actions menu, the command above, or the
+button under each message, which forks from that message) opens
 the overlay seeded with Named worktree, an empty name, and the source thread's
 branch as the base on the source's machine. Submitting calls `threads.fork`, so
 the new thread inherits the source conversation, provider, and model; the
