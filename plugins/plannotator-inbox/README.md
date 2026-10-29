@@ -32,3 +32,9 @@ thread is archived or deleted.
 `vendor/` is copied unchanged from `@plannotator/pi-extension/generated/inbox` (0.28.31); recopy
 it when Plannotator changes its Inbox protocol. The tool's parameters are read from the Inbox at
 load, so reload the plugin after a Plannotator update.
+
+## plannotator-bb skill
+
+`skills/plannotator-bb` opens a Plannotator annotate or code review session in the calling
+thread's BB browser pane, on a free port in 19432-19441, and sends the reviewer's decision back
+to the thread as a new message that starts a turn. It works in Pi, Claude Code and Codex threads.
