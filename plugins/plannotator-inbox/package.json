@@ -4,11 +4,11 @@
   "type": "module",
   "engines": {
     "bb": ">=0.46",
-    "bbPluginSdk": ">=0.6.49"
+    "bbPluginSdk": ">=0.6.94"
   },
   "bb": {
     "name": "Plannotator Inbox",
-    "description": "Adds a Plannotator Inbox page to the navigation rail. It starts the Inbox when needed and opens it in BB.",
+    "description": "Adds a Plannotator Inbox page to the navigation rail, and gives Claude Code and Codex threads the Inbox tool, with replies that start a turn in the thread.",
     "branding": {
       "icon": "./assets/icon.svg",
       "experimental_icons": {
@@ -17,14 +17,16 @@
     },
     "server": "./server.ts",
     "app": "./app.tsx",
-    "skills": []
+    "skills": [
+      "skills"
+    ]
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.3.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@get-bb/plugin-sdk": "0.6.49",
+    "@get-bb/plugin-sdk": "0.6.94",
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
@@ -50,7 +52,7 @@
     "tailwind-merge": "^3.4.0",
     "vaul": "^1.1.2"
   },
-  "description": "Adds a Plannotator Inbox page to the navigation rail. It starts the Inbox when needed and opens it in BB.",
+  "description": "Adds a Plannotator Inbox page to the navigation rail, and gives Claude Code and Codex threads the Inbox tool, with replies that start a turn in the thread.",
   "license": "MIT",
   "scripts": {
     "build": "bb plugin build",

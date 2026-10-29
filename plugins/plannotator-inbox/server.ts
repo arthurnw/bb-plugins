@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
+import { registerAgentTool } from "./agent-tool.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -254,5 +255,10 @@ export default async function plugin(bb: BbPluginApi) {
 
   bb.rpc.register(rpcContract, {
     inbox_ensure: () => ensureInbox(),
+  });
+
+  await registerAgentTool(bb, {
+    dataDir: dataDir(),
+    plannotatorCommand: plannotatorPath === "plannotator" ? undefined : plannotatorPath,
   });
 }
