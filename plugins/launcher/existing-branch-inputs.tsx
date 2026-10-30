@@ -11,13 +11,15 @@ type Check = { status: "empty" } | { status: "checking" } | { status: "error"; m
 const RESOLVE_DELAY_MS = 350;
 
 /** The status line under the field, and its dot color. */
-export function describe(resolved: Resolved): { text: string; tone: "good" | "warn" | "bad" | "neutral" } {
+export function describe(resolved: Resolved): { text: string; short: string; tone: "good" | "warn" | "bad" | "neutral" } {
   const { pr } = resolved;
-  if (resolved.busyAt) return { text: `Branch is already checked out at ${resolved.busyAt}`, tone: "bad" };
-  if (!pr) return { text: `No PR · diff against ${resolved.base.replace(/^origin\//, "")}`, tone: "neutral" };
+  if (resolved.busyAt) return { text: `Branch is already checked out at ${resolved.busyAt}`, short: "Checked out elsewhere", tone: "bad" };
+  if (!pr) return { text: `No PR · diff against ${resolved.base.replace(/^origin\//, "")}`, short: "No PR", tone: "neutral" };
   const where = pr.isCrossRepository ? `fork ${pr.headRefName}` : `into ${pr.baseRefName}`;
   const text = `PR #${pr.number} · ${pr.title} · ${where}`;
-  return pr.state === "OPEN" ? { text, tone: "good" } : { text: `${pr.state === "MERGED" ? "Merged" : "Closed"} ${text}`, tone: "warn" };
+  const short = `#${pr.number} ${pr.title}`;
+  return pr.state === "OPEN" ? { text, short, tone: "good" }
+    : { text: `${pr.state === "MERGED" ? "Merged" : "Closed"} ${text}`, short: `${pr.state === "MERGED" ? "Merged" : "Closed"} ${short}`, tone: "warn" };
 }
 
 const TONES = { good: "#16a34a", warn: "#d97706", bad: "#dc2626", neutral: "#a1a1aa" } as const;
@@ -89,8 +91,8 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
   const pick = (next: string) => { reviewTouched.current = false; setText(next); setOpen(false); };
 
   const status = check.status === "ok" ? describe(check.resolved)
-    : check.status === "error" ? { text: check.message, tone: "bad" as const }
-    : check.status === "checking" ? { text: "Checking…", tone: "neutral" as const } : null;
+    : check.status === "error" ? { text: check.message, short: check.message, tone: "bad" as const }
+    : check.status === "checking" ? { text: "Checking…", short: "Checking…", tone: "neutral" as const } : null;
 
   return (
     <div ref={box} style={{ position: "relative", display: "flex", alignItems: "center", gap: 8, minWidth: 0, flexShrink: 1 }}>
@@ -101,7 +103,7 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
           if (event.key === "Enter" || event.key === "Escape") { event.preventDefault(); setOpen(false); }
           if (!event.metaKey && !event.ctrlKey && !event.altKey) event.stopPropagation();
         }}
-        style={{ flex: "0 10 200px", width: 200, minWidth: 100, padding: "4px 8px", border: "1px solid var(--border)", borderRadius: 4,
+        style={{ flex: "0 10 170px", width: 170, minWidth: 90, padding: "4px 8px", border: "1px solid var(--border)", borderRadius: 4,
           background: "transparent", color: "var(--foreground)", fontSize: 13 }} />
       <button type="button" role="switch" aria-checked={review} title="Start with a Plannotator guided review"
         onClick={() => { reviewTouched.current = true; setReview(!review); }}
@@ -116,7 +118,7 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
         <span title={status.text} style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0, overflow: "hidden", fontSize: 12,
           color: "var(--muted-foreground)", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
           <span style={{ width: 8, height: 8, borderRadius: "50%", flex: "none", background: TONES[status.tone] }} />
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{status.text}</span>
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{status.short}</span>
         </span>
       )}
       {open && (

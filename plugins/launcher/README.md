@@ -39,6 +39,19 @@ changing it by hand sticks until the page reloads. A project that is not a Git
 repository keeps bb's default. Handoffs still reuse their thread's environment,
 and bb's own Fork and `bb thread spawn` are unaffected.
 
+## Existing branch / PR
+
+An environment option next to Named worktree. Type or pick a PR number (`482`, `#482`), a PR URL, or a branch name; a status line shows what it resolved to:
+
+- A PR from the same repository checks out its head branch with its upstream.
+- A PR from a fork is checked out with `gh pr checkout` into a branch named `pr-<number>`.
+- A branch that has a PR (found with `gh pr list --head`) is treated as that PR. Without one, the status says `No PR` and the diff base is the default branch.
+- A branch already checked out in another worktree, or one that does not exist, blocks the thread and says why.
+
+The checkout goes under the worktree root like Named worktree, runs `wt setup`, and records the PR's base (or the default branch) as the merge base so the Changes view shows the PR diff. Removing the thread's environment keeps the branch.
+
+**Review** is on by default for a PR and off for a plain branch, and you can flip it either way. When on, the plugin sends the thread a follow-up message as it starts: read the diff against the base, then write a Plannotator guided review with `get_guide_brief` and `submit_guide`. The environment provider cannot change the thread's prompt, so the composer still needs some text; a short prompt such as "review" is enough. The picker needs `gh` signed in for PR lists and PR lookups; branches work without it.
+
 ## Overlay
 
 Open from any page or from the command palette. It is centered over the whole
