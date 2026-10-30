@@ -40,6 +40,7 @@ test("model names replace ids in the spec and in filtering", () => {
   const names = { "claude-code::claude-opus-5": "Opus 5" };
   assert.equal(modelSpec(a, names), "Opus 5 · High");
   assert.equal(modelSpec(a), "claude-opus-5 · High");
+  assert.equal(modelSpec({ ...a, serviceTier: "fast" }, names), "Opus 5 · High · Fast");
   assert.deepEqual(filterPresets([a], "opus 5", names), [a]);
 });
 

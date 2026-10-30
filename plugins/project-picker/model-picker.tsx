@@ -46,6 +46,14 @@ export function ModelList({ presets, names, selection, onChoose, onSavePresets, 
     listRef.current?.querySelector(`[data-index="${active}"]`)?.scrollIntoView({ block: "nearest" });
   }, [active]);
 
+  // The embedded picker re-emits its current value while it reconciles with the
+  // catalog (it omits a service tier that is "default"). Treating those as
+  // choices re-seeds the composer, which makes the picker emit again, in a loop.
+  const onPickerChange = (value: Pick<ModelSelection, "providerId" | "model" | "reasoningLevel"> & { serviceTier?: string }) => {
+    if (selection && sameModel(selection, value)) return;
+    onChoose({ ...value, serviceTier: value.serviceTier ?? "default" }, "custom");
+  };
+
   const activate = (row: Row | undefined) => {
     if (!row) return;
     if (row.kind === "preset") onChoose(row.preset, "preset");
@@ -117,7 +125,7 @@ export function ModelList({ presets, names, selection, onChoose, onSavePresets, 
               <div key="other" role="option" data-index={index} aria-selected={index === active} {...enter} style={base}>
                 <span>Other model…</span>
                 <span data-other-model="" style={{ marginLeft: "auto" }}>
-                  <ProviderModelPicker value={selection ?? FALLBACK} onChange={(value) => onChoose({ ...value, serviceTier: value.serviceTier ?? "default" }, "custom")} align="end" />
+                  <ProviderModelPicker value={selection ?? FALLBACK} onChange={onPickerChange} align="end" />
                 </span>
               </div>
             );

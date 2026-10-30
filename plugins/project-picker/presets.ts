@@ -28,7 +28,8 @@ const EFFORT_LABELS: Record<string, string> = {
 };
 export const effortLabel = (level: string) => EFFORT_LABELS[level] ?? level;
 export const modelSpec = (value: ModelSelection, names: Record<string, string> = {}) =>
-  `${names[modelKey(value)] ?? value.model} · ${effortLabel(value.reasoningLevel)}`;
+  `${names[modelKey(value)] ?? value.model} · ${effortLabel(value.reasoningLevel)}`
+  + (value.serviceTier === "default" ? "" : ` · ${value.serviceTier.charAt(0).toUpperCase()}${value.serviceTier.slice(1)}`);
 
 export function sameModel(a: ModelSelection, b: { providerId: string; model: string; reasoningLevel: string; serviceTier?: string }): boolean {
   return a.providerId === b.providerId && a.model === b.model && a.reasoningLevel === b.reasoningLevel
