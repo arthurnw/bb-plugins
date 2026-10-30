@@ -30,12 +30,6 @@ bb settings keyboard set thread.new mod+shift+o
 The sidebar's New thread button still opens the full page. To undo, run
 `bb settings keyboard reset thread.new`.
 
-## Opening without a keyboard
-
-Every thread header has a **Launcher** button (icon only on phone-width screens)
-that opens the overlay, for devices with no shortcut or command palette. It is
-shown only on thread screens, not on the New thread screen.
-
 ## Default environment
 
 The **Default to Named worktree** setting (on by default; Settings → Plugins →
