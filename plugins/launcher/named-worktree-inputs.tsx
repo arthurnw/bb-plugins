@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { branchNameError, inputsSchema } from "./named-worktree";
 
 import { createFocusRegistry } from "./focus-field";
+import { useHostFontSize } from "./host-font";
 
 const registry = createFocusRegistry();
 
@@ -22,6 +23,9 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
   const [baseBranch, setBaseBranch] = useState<string | null>(parsed.success && parsed.data.baseBranch ? parsed.data.baseBranch : null);
   const hostId = target.kind === "existing-host" ? target.hostId : null;
   const field = useRef<HTMLInputElement>(null);
+  const hostFont = useHostFontSize(field);
+  // iOS zooms the page when a focused field is under 16px, so a phone keeps at least that.
+  const fontSize = `max(${hostFont}, ${typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches ? 16 : 0}px)`;
   const sdk = useSdk();
   const [prefix, setPrefix] = useState("");
   // Start with bb's own branch prefix (Settings → General, `managedBranchPrefix`).
@@ -44,7 +48,7 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
     else onChange({ status: "ready", value: { name: chosen, baseBranch: baseBranch ?? "" } });
   }, [name, prefix, baseBranch, onChange]);
   return (
-    <div style={{ display: "flex", flexWrap: "nowrap", alignItems: "center", gap: 8, whiteSpace: "nowrap", minWidth: 0, flexShrink: 1 }}>
+    <div data-launcher-field="" style={{ display: "flex", flexWrap: "nowrap", alignItems: "center", gap: 8, whiteSpace: "nowrap", minWidth: 0, flexShrink: 1 }}>
       <input ref={field} aria-label="New branch name" placeholder="auto from title" value={name}
         onChange={(event) => setName(event.target.value)}
         onKeyDown={(event) => {
@@ -52,8 +56,8 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
           // Keep typing out of the composer, but let app shortcuts through.
           if (!event.metaKey && !event.ctrlKey && !event.altKey) event.stopPropagation();
         }}
-        style={{ flex: "0 10 140px", width: 140, minWidth: 80, boxSizing: "border-box", height: 32, padding: "0 8px", border: "1px solid var(--border)", borderRadius: 4,
-          background: "transparent", color: "var(--foreground)", fontSize: 13 }} />
+        style={{ flex: "0 10 140px", width: 140, minWidth: 80, boxSizing: "border-box", height: 28, padding: "0 8px", border: "1px solid var(--border)", borderRadius: 4,
+          background: "transparent", color: "var(--foreground)", fontSize }} />
       <div style={{ minWidth: 0, flexShrink: 1, overflow: "hidden" }}>
         <BranchPicker hostId={hostId} projectId={projectId} value={baseBranch} onChange={setBaseBranch}
           label="Branch from:" placeholder="Default branch" />

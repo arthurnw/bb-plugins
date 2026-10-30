@@ -5,6 +5,7 @@ import type { z } from "zod";
 import type { refChoicesSchema } from "./contract";
 import { existingInputsSchema, parseRef, type Resolved } from "./existing-branch";
 import { createFocusRegistry } from "./focus-field";
+import { useHostFontSize } from "./host-font";
 import type { quickComposeRpcContract } from "./server";
 
 type Choices = z.infer<typeof refChoicesSchema>;
@@ -79,6 +80,7 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
   const chip = useRef<HTMLButtonElement>(null);
   const filterField = useRef<HTMLInputElement>(null);
   const sheet = useRef<HTMLDivElement>(null);
+  const hostFont = useHostFontSize(chip);
   const narrow = useNarrow();
   const keyboard = useKeyboard(open && narrow);
   // A command that focuses the chip also opens the picker, whose filter field then takes focus.
@@ -146,14 +148,14 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
     : check.status === "checking" ? { text: "Checking…", short: "Checking…", tone: "neutral" as const } : null;
 
   return (
-    <div ref={box} style={{ position: "relative", display: "flex", alignItems: "center", gap: 8, minWidth: 0, flexShrink: 1 }}>
+    <div ref={box} data-launcher-field="" style={{ position: "relative", display: "flex", alignItems: "center", gap: 8, minWidth: 0, flexShrink: 1 }}>
       <button ref={chip} type="button" aria-haspopup="listbox" aria-expanded={open} title={status?.text ?? "Choose a PR or branch"}
         onClick={() => (open ? close() : setOpen(true))}
         onKeyDown={(event) => { if (!event.metaKey && !event.ctrlKey && !event.altKey && event.key !== "Tab") event.stopPropagation(); }}
         style={{ flex: "0 1 260px", minWidth: 0, display: "inline-flex", alignItems: "center", gap: 6, // On phones, match the host dropdowns beside it: no border, same text size.
-          boxSizing: "border-box", height: narrow ? undefined : 32,
-          padding: narrow ? "6px 4px" : "0 8px", border: narrow ? "1px solid transparent" : "1px solid var(--border)", lineHeight: 1.2,
-          borderRadius: 4, background: "transparent", color: status ? "var(--foreground)" : "var(--muted-foreground)", fontSize: narrow ? 15 : 13,
+          boxSizing: "border-box", height: 28,
+          padding: narrow ? "0 4px" : "0 8px", border: narrow ? "1px solid transparent" : "1px solid var(--border)", lineHeight: 1.2,
+          borderRadius: 4, background: "transparent", color: status ? "var(--foreground)" : "var(--muted-foreground)", fontSize: hostFont,
           cursor: "pointer", whiteSpace: "nowrap", textAlign: "left" }}>
         {status && <span style={{ width: 8, height: 8, borderRadius: "50%", flex: "none", background: TONES[status.tone] }} />}
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", flex: 1 }}>{status ? (check.status === "ok" ? status.short : text.trim()) : "Choose PR or branch…"}</span>
@@ -162,7 +164,7 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
       <button type="button" role="switch" aria-checked={review} title="Start with a Plannotator guided review"
         onClick={() => { reviewTouched.current = true; setReview(!review); }}
         style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 6px", border: 0, borderRadius: 4, background: "transparent",
-          color: "var(--foreground)", fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>
+          color: "var(--foreground)", fontSize: hostFont, cursor: "pointer", whiteSpace: "nowrap" }}>
         <span style={{ width: 26, height: 15, borderRadius: 8, position: "relative", background: review ? "var(--primary, #6d5bd0)" : "var(--muted-foreground, #a1a1aa)", transition: ".15s" }}>
           <span style={{ position: "absolute", top: 2, left: review ? 13 : 2, width: 11, height: 11, borderRadius: "50%", background: "var(--background, #fff)", transition: ".15s" }} />
         </span>
