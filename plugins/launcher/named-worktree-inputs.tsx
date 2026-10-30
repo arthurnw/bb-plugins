@@ -52,7 +52,7 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
           // Keep typing out of the composer, but let app shortcuts through.
           if (!event.metaKey && !event.ctrlKey && !event.altKey) event.stopPropagation();
         }}
-        style={{ flex: "0 10 140px", width: 140, minWidth: 80, padding: "4px 8px", border: "1px solid var(--border)", borderRadius: 4,
+        style={{ flex: "0 10 140px", width: 140, minWidth: 80, boxSizing: "border-box", height: 32, padding: "0 8px", border: "1px solid var(--border)", borderRadius: 4,
           background: "transparent", color: "var(--foreground)", fontSize: 13 }} />
       <div style={{ minWidth: 0, flexShrink: 1, overflow: "hidden" }}>
         <BranchPicker hostId={hostId} projectId={projectId} value={baseBranch} onChange={setBaseBranch}

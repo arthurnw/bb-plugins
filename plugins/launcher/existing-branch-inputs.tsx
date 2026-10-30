@@ -151,7 +151,8 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
         onClick={() => (open ? close() : setOpen(true))}
         onKeyDown={(event) => { if (!event.metaKey && !event.ctrlKey && !event.altKey && event.key !== "Tab") event.stopPropagation(); }}
         style={{ flex: "0 1 260px", minWidth: 0, display: "inline-flex", alignItems: "center", gap: 6, // On phones, match the host dropdowns beside it: no border, same text size.
-          padding: narrow ? "6px 4px" : "4px 8px", border: narrow ? "1px solid transparent" : "1px solid var(--border)", lineHeight: 1.2,
+          boxSizing: "border-box", height: narrow ? undefined : 32,
+          padding: narrow ? "6px 4px" : "0 8px", border: narrow ? "1px solid transparent" : "1px solid var(--border)", lineHeight: 1.2,
           borderRadius: 4, background: "transparent", color: status ? "var(--foreground)" : "var(--muted-foreground)", fontSize: narrow ? 15 : 13,
           cursor: "pointer", whiteSpace: "nowrap", textAlign: "left" }}>
         {status && <span style={{ width: 8, height: 8, borderRadius: "50%", flex: "none", background: TONES[status.tone] }} />}
@@ -162,8 +163,8 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
         onClick={() => { reviewTouched.current = true; setReview(!review); }}
         style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 6px", border: 0, borderRadius: 4, background: "transparent",
           color: "var(--foreground)", fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>
-        <span style={{ width: 26, height: 15, borderRadius: 8, position: "relative", background: review ? "var(--primary, #6d5bd0)" : "#d4d4d8", transition: ".15s" }}>
-          <span style={{ position: "absolute", top: 2, left: review ? 13 : 2, width: 11, height: 11, borderRadius: "50%", background: "#fff", transition: ".15s" }} />
+        <span style={{ width: 26, height: 15, borderRadius: 8, position: "relative", background: review ? "var(--primary, #6d5bd0)" : "var(--muted-foreground, #a1a1aa)", transition: ".15s" }}>
+          <span style={{ position: "absolute", top: 2, left: review ? 13 : 2, width: 11, height: 11, borderRadius: "50%", background: "var(--background, #fff)", transition: ".15s" }} />
         </span>
         Review
       </button>
