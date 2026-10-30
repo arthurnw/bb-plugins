@@ -145,7 +145,9 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
           if (!event.metaKey && !event.ctrlKey && !event.altKey) event.stopPropagation();
         }}
         style={{ flex: "0 10 170px", width: 170, minWidth: 90, padding: "4px 8px", border: "1px solid var(--border)", borderRadius: 4,
-          background: "transparent", color: "var(--foreground)", fontSize: 13 }} />
+          background: "transparent", color: "var(--foreground)",
+          // iOS zooms the page when a focused field is under 16px.
+          fontSize: narrow ? 16 : 13 }} />
       <button type="button" role="switch" aria-checked={review} title="Start with a Plannotator guided review"
         onClick={() => { reviewTouched.current = true; setReview(!review); }}
         style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 6px", border: 0, borderRadius: 4, background: "transparent",
