@@ -4,6 +4,7 @@ import { z } from "zod";
 import { hostContract } from "./contract.ts";
 import type { ModelPreset, ModelSelection } from "./presets.ts";
 import { autoBranchName, inputsSchema, PROVIDER_ID, type NamedWorktreeInputs } from "./named-worktree.ts";
+import { DEFAULT_ROOT, worktreeRootSchema } from "./worktree-root.ts";
 import { resolveDefaultPresets, type Catalog, type CatalogModel } from "./default-presets.ts";
 import { modelKey } from "./presets.ts";
 import { modelStateSchema, presetsSchema, savedModelStateSchema, selectionSchema } from "./presets.schema.ts";
@@ -105,13 +106,24 @@ export default async function plugin(bb: BbPluginApi) {
     },
   });
 
+  const settings = bb.settings.define({
+    worktreeRoot: {
+      type: "string",
+      label: "Worktree root",
+      description: "Where Named worktree checkouts are created, as <root>/<repository>/<branch>. An absolute path or ~/...; applies to new worktrees only. Each machine reads the path on its own filesystem.",
+      default: DEFAULT_ROOT,
+      experimental_schema: worktreeRootSchema,
+    },
+  });
   const host = bb.hosts.experimental_client({ contract: hostContract });
 
   async function provision(context: {
     projectCheckout: { path: string }; host: { id: string }; pathKey: string; signal: AbortSignal;
     experimental_claimPath(path: string): Promise<boolean>; report: { step(message: string): void; log(text: string): void };
   }, inputs: NamedWorktreeInputs, mode: { restore: boolean; autoName: boolean }, step: string) {
-    const input = { sourcePath: context.projectCheckout.path, pathKey: context.pathKey, inputs, ...mode };
+    // Read once so `target` and `create` agree even if the setting changes mid-launch.
+    const { worktreeRoot } = await settings.get();
+    const input = { sourcePath: context.projectCheckout.path, pathKey: context.pathKey, inputs, root: worktreeRoot, ...mode };
     const options = { hostId: context.host.id, signal: context.signal, timeoutMs: TIMEOUT_MS };
     const { path } = await host.call("target", input, options);
     if (!await context.experimental_claimPath(path)) return { status: "failed" as const, message: "Worktree directory is already in use." };
@@ -134,7 +146,8 @@ export default async function plugin(bb: BbPluginApi) {
     inputs: inputsSchema,
     policy: { pathKeys: "per-attempt" },
     async validate(context) {
-      const { error } = await host.call("validate", { sourcePath: context.projectCheckout.path, inputs: context.inputs },
+      const { error } = await host.call("validate", { sourcePath: context.projectCheckout.path, inputs: context.inputs,
+        root: (await settings.get()).worktreeRoot },
         { hostId: context.host.id });
       return error === null ? { action: "accept" } : { action: "refuse", message: error };
     },
@@ -155,8 +168,13 @@ export default async function plugin(bb: BbPluginApi) {
     async remove(context) {
       if (context.hostId === null) return { status: "failed", message: "The worktree machine is unknown." };
       context.report.step("Removing named worktree (keeping its branch)");
-      return host.call("remove", { pathKey: context.pathKey },
-        { hostId: context.hostId, signal: context.signal, timeoutMs: TIMEOUT_MS });
+      try {
+        return await host.call("remove", { pathKey: context.pathKey },
+          { hostId: context.hostId, signal: context.signal, timeoutMs: TIMEOUT_MS });
+      } catch (error) {
+        context.signal.throwIfAborted();
+        return { status: "failed" as const, message: error instanceof Error ? error.message : String(error) };
+      }
     },
   });
 }

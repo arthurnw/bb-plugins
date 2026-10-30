@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { branchNameError, type NamedWorktreeInputs } from "./named-worktree.ts";
+import { DEFAULT_ROOT } from "./worktree-root.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -75,18 +76,105 @@ export async function freeBranchName(source: string, name: string, signal?: Abor
   }
 }
 
-export function attemptRoot(dataDir: string, pathKey: string) {
+const PATH_KEY = /^[A-Za-z0-9._-]+$/;
+function checkPathKey(pathKey: string) {
+  if (!PATH_KEY.test(pathKey) || pathKey === "." || pathKey === "..") throw new Error(`Invalid path key: ${JSON.stringify(pathKey)}.`);
+}
+
+/** Where worktrees were kept before the root became configurable: one directory per attempt. */
+export function legacyAttemptRoot(dataDir: string, pathKey: string) {
+  checkPathKey(pathKey);
   return path.join(dataDir, "worktrees", pathKey);
 }
+const recordFile = (dataDir: string, pathKey: string) => {
+  checkPathKey(pathKey);
+  return path.join(dataDir, "attempts", `${pathKey}.json`);
+};
 
-export function targetPath(dataDir: string, pathKey: string, source: string) {
-  return path.join(attemptRoot(dataDir, pathKey), path.basename(source).replace(/\.git$/, ""));
+/** `p` with symlinks resolved as far as it exists, so containment checks see real locations. */
+async function canonical(p: string): Promise<string> {
+  const rest: string[] = [];
+  let current = path.resolve(p);
+  while (!existsSync(current)) {
+    const parent = path.dirname(current);
+    if (parent === current) return path.resolve(p);
+    rest.unshift(path.basename(current));
+    current = parent;
+  }
+  return path.join(await fs.realpath(current), ...rest);
+}
+const within = (parent: string, child: string) => child !== parent && child.startsWith(parent.endsWith(path.sep) ? parent : parent + path.sep);
+
+/**
+ * Resolves the "Worktree root" setting on this host: an absolute path or `~/...`;
+ * empty means the default. Refuses a root that is, contains, or sits inside the
+ * user's home, the source checkout, or this plugin's data directory.
+ */
+export async function resolveRoot(setting: string, { dataDir, source, home = os.homedir() }: { dataDir: string; source: string; home?: string }) {
+  const text = setting.trim() || DEFAULT_ROOT;
+  if (/[\0\r\n]/.test(text)) throw new Error("Worktree root must be a single-line path.");
+  const expanded = text === "~" ? home : text.startsWith("~/") ? path.join(home, text.slice(2)) : text;
+  if (!path.isAbsolute(expanded)) throw new Error(`Worktree root must be an absolute path or start with "~/": ${JSON.stringify(text)}.`);
+  const root = await canonical(expanded);
+  if (root === path.parse(root).root) throw new Error("Worktree root cannot be the filesystem root.");
+  const [canonicalHome, canonicalData, canonicalSource] = await Promise.all([canonical(home), canonical(dataDir), canonical(source)]);
+  const overlaps = (other: string) => root === other || within(root, other) || within(other, root);
+  const conflict = [canonicalData, canonicalSource].find(overlaps) ?? (root === canonicalHome || within(root, canonicalHome) ? canonicalHome : undefined);
+  if (conflict) throw new Error(`Worktree root ${root} overlaps ${conflict}. Choose a dedicated directory such as ${DEFAULT_ROOT}.`);
+  return root;
 }
 
-async function readState(root: string) {
-  const file = path.join(root, "attempt.json");
+/** The checkout directory for a branch: its name with path separators flattened. */
+export function worktreeDirName(name: string) {
+  const dir = name.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, "-").replace(/^[.-]+/, "").slice(0, 100).replace(/[. ]+$/, "");
+  return dir || "worktree";
+}
+const repoDirName = (source: string) => path.basename(source).replace(/\.git$/, "");
+
+/** `<root>/<repository>/<branch>`, with `-2`, `-3`, ... when that directory is taken. */
+function freeTarget(root: string, source: string, name: string) {
+  const base = path.join(root, repoDirName(source), worktreeDirName(name));
+  for (let n = 1; ; n++) {
+    const candidate = n === 1 ? base : `${base}-${n}`;
+    if (!existsSync(candidate)) return candidate;
+  }
+}
+
+/** What one launch decided, kept on the host so replay, restore and removal never depend on the current setting. */
+export interface Attempt { source: string; root: string; target: string; name: string; baseBranch: string; legacy: boolean }
+
+async function readJson(file: string) {
   if (!existsSync(file)) return null;
-  return JSON.parse(await fs.readFile(file, "utf8")) as { source: string; target: string; name: string; baseBranch: string };
+  return JSON.parse(await fs.readFile(file, "utf8")) as Omit<Attempt, "legacy" | "root"> & { root?: string };
+}
+
+export async function readAttempt(dataDir: string, pathKey: string): Promise<Attempt | null> {
+  const current = await readJson(recordFile(dataDir, pathKey));
+  if (current?.root) return { ...current, root: current.root, legacy: false };
+  const old = await readJson(path.join(legacyAttemptRoot(dataDir, pathKey), "attempt.json"));
+  return old ? { ...old, root: path.join(dataDir, "worktrees"), legacy: true } : null;
+}
+
+async function writeAttempt(dataDir: string, pathKey: string, attempt: Attempt) {
+  const file = recordFile(dataDir, pathKey);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  const { legacy: _legacy, ...record } = attempt;
+  await fs.writeFile(file, JSON.stringify(record));
+}
+
+/**
+ * Chooses and records this launch's location. A replay returns the recorded
+ * choice, so a changed setting never moves a launch that already started.
+ */
+export async function planWorktree(dataDir: string, rootSetting: string, pathKey: string, source: string,
+  inputs: NamedWorktreeInputs, { restore = false, autoName = false, signal }: CreateOptions = {}): Promise<Attempt> {
+  const existing = await readAttempt(dataDir, pathKey);
+  if (existing) return existing;
+  const root = await resolveRoot(rootSetting, { dataDir, source });
+  const name = autoName && !restore ? await freeBranchName(source, inputs.name, signal) : inputs.name;
+  const attempt = { source, root, target: freeTarget(root, source, name), name, baseBranch: inputs.baseBranch, legacy: false };
+  await writeAttempt(dataDir, pathKey, attempt);
+  return attempt;
 }
 
 /** The branch checked out at `target`, "" if detached, or null if `target` is not a worktree of `source`. */
@@ -120,21 +208,21 @@ export interface CreateOptions {
   signal?: AbortSignal;
 }
 
-export async function createWorktree(dataDir: string, pathKey: string, source: string,
-  inputs: NamedWorktreeInputs, { restore = false, autoName = false, signal }: CreateOptions = {}) {
-  const root = attemptRoot(dataDir, pathKey), target = targetPath(dataDir, pathKey, source);
+export async function createWorktree(dataDir: string, rootSetting: string, pathKey: string, source: string,
+  inputs: NamedWorktreeInputs, options: CreateOptions = {}) {
+  const { restore = false, autoName = false, signal } = options;
+  const attempt = await planWorktree(dataDir, rootSetting, pathKey, source, inputs, options), { target } = attempt;
+  let name = autoName && !restore ? attempt.name : inputs.name;
   // A replay of this attempt resumes its own registered worktree, under the name it chose.
-  const state = await readState(root);
-  let name = state !== null && autoName && !restore ? state.name : inputs.name;
-  const resumed = state !== null && await registeredBranch(source, target, signal) === name;
-  const baseBranch = state?.baseBranch || inputs.baseBranch || await defaultBase(source, { fetch: !resumed && !restore, signal });
+  const resumed = await registeredBranch(source, target, signal) === name;
+  const baseBranch = attempt.baseBranch || inputs.baseBranch || await defaultBase(source, { fetch: !resumed && !restore, signal });
   if (!resumed) {
     if (restore && !await branchExists(source, name, signal)) throw new Error(`Cannot restore: branch "${name}" no longer exists.`);
-    if (autoName && !restore) name = await freeBranchName(source, inputs.name, signal);
+    if (autoName && !restore && await branchExists(source, name, signal)) name = await freeBranchName(source, inputs.name, signal);
     const base = restore ? null : await validateNewBranch(source, { name, baseBranch }, signal);
-    await fs.mkdir(root, { recursive: true });
+    await fs.mkdir(path.dirname(target), { recursive: true });
     // Written before git runs so cleanup can find a partially created worktree.
-    await fs.writeFile(path.join(root, "attempt.json"), JSON.stringify({ source, target, name, baseBranch }));
+    if (!attempt.legacy) await writeAttempt(dataDir, pathKey, { ...attempt, name, baseBranch });
     await git(source, base === null ? ["worktree", "add", "--", target, name]
       : ["worktree", "add", "-b", name, "--", target, base], signal);
   }
@@ -172,15 +260,35 @@ export async function runWtSetup(target: string, signal?: AbortSignal, wt = find
   }
 }
 
+/** Deletes what a failed or finished checkout left under its recorded root, and nothing else. */
+async function removeLeftovers({ root, target }: Attempt) {
+  const parent = path.dirname(target);
+  if (path.dirname(parent) !== root || !within(await canonical(root), await canonical(target))) {
+    throw new Error(`Refusing to delete ${target}: it is not directly inside a repository folder of ${root}.`);
+  }
+  if (existsSync(target)) {
+    const entries = await fs.readdir(target);
+    if (entries.length > 0 && !entries.includes(".git")) throw new Error(`Refusing to delete ${target}: it is not a Git worktree.`);
+    await fs.rm(target, { recursive: true, force: true });
+  }
+  await fs.rmdir(parent).catch(() => {});
+}
+
 export async function removeWorktree(dataDir: string, pathKey: string,
   killProcesses: (target: string) => Promise<unknown>, signal?: AbortSignal) {
-  const root = attemptRoot(dataDir, pathKey), state = await readState(root);
-  if (state) {
-    await killProcesses(state.target);
-    if (await registeredBranch(state.source, state.target, signal) !== null) {
-      await git(state.source, ["worktree", "remove", "--force", "--", state.target], signal);
+  const attempt = await readAttempt(dataDir, pathKey);
+  if (attempt) {
+    await killProcesses(attempt.target);
+    if (await registeredBranch(attempt.source, attempt.target, signal) !== null) {
+      await git(attempt.source, ["worktree", "remove", "--force", "--", attempt.target], signal);
     }
   }
   signal?.throwIfAborted();
-  await fs.rm(root, { recursive: true, force: true });
+  if (attempt && !attempt.legacy) {
+    await removeLeftovers(attempt);
+    await fs.rm(recordFile(dataDir, pathKey), { force: true });
+  } else {
+    // Legacy layout: the attempt directory is inside this plugin's own data directory.
+    await fs.rm(legacyAttemptRoot(dataDir, pathKey), { recursive: true, force: true });
+  }
 }

@@ -2,7 +2,8 @@ import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { inputsSchema } from "./named-worktree.ts";
 
-const source = z.object({ sourcePath: z.string().min(1), inputs: inputsSchema });
+// `root` is the raw "Worktree root" setting; each host expands and checks it.
+const source = z.object({ sourcePath: z.string().min(1), inputs: inputsSchema, root: z.string() });
 const launch = source.extend({ pathKey: z.string().min(1), restore: z.boolean(), autoName: z.boolean() });
 const wtSetup = z.discriminatedUnion("status", [
   z.object({ status: z.enum(["done", "failed"]), output: z.string() }),

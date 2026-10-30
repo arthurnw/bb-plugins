@@ -197,10 +197,26 @@ curl -X POST http://127.0.0.1:38886/api/v1/threads/fork -H 'content-type: applic
 bb's own Fork and `bb thread fork --new-environment worktree` still use the
 built-in Worktree provider.
 
-Worktrees live on the selected machine under this plugin's host-data directory:
-`worktrees/<path-key>/<repository-name>`. This matches the built-in layout, but
-uses `launcher/host-data` rather than `environment-git-worktree/host-data`
-to keep ownership separate.
+Worktrees live on the selected machine at `<root>/<repository-name>/<branch>`,
+with `/` in the branch name replaced by `-` (`feature/foo` becomes `feature-foo`,
+and `-2`, `-3`, ... if that directory is taken). The root is the **Worktree
+root** plugin setting (Settings → Plugins → Launcher; `bb plugin config launcher`),
+default `~/.bb/worktrees`, so checkouts are not tied to this plugin's data
+directory.
+
+- Enter an absolute path or one starting with `~/`. Each machine expands and
+  checks the path on its own filesystem. Leave it empty for the default.
+- A root that is, contains, or is inside your home directory, the source
+  checkout, or this plugin's data directory is refused.
+- Changing the root affects new worktrees only. Each launch records its chosen
+  location on the host (`attempts/<path-key>.json` in the plugin data
+  directory), and replay, restore and cleanup use that record, never the
+  current setting.
+- Worktrees created before the setting existed stay under
+  `launcher/host-data/worktrees/<path-key>/<repository-name>` and are still
+  cleaned up from there.
+- Cleanup deletes only a worktree directory recorded for that launch, two levels
+  below its recorded root, and refuses a directory that is not a Git worktree.
 
 The provider returns an owned path, so bb runs `.bb-env-setup.sh` and
 `.bb-env-teardown.sh` with its normal timeout and failure handling. Core retires
