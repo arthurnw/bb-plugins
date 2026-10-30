@@ -1,8 +1,8 @@
 import { definePluginApp, useComposer, useSdk, type PluginComposerApi } from "@get-bb/plugin-sdk/app";
 import { EXISTING_PROVIDER_ID } from "./existing-branch";
-import { ExistingBranchInputs, focusExistingRef } from "./existing-branch-inputs";
+import { ExistingBranchInputs, existingRefShown, focusExistingRef } from "./existing-branch-inputs";
 import { PROVIDER_ID } from "./named-worktree";
-import { focusBranchName, NamedWorktreeInputs } from "./named-worktree-inputs";
+import { branchNameShown, focusBranchName, NamedWorktreeInputs } from "./named-worktree-inputs";
 import { registerOverlay } from "./overlay";
 import { PresetSettings } from "./settings";
 import { DefaultEnvironment } from "./default-environment";
@@ -63,20 +63,23 @@ export default definePluginApp((app) => {
 
   app.composer.experimental_registerCommand({
     id: "branch-name",
-    title: "Launcher: named worktree branch name",
+    title: "Launcher: named worktree / existing branch",
     defaultShortcut: { key: "b", mod: true, shift: true },
     run: async ({ composer }) => {
       if (composer.scope.kind !== "new-thread") return;
       const within = (el: HTMLElement) => !el.closest("section[role=dialog]");
-      if (focusBranchName(within)) return;
+      // Alternate between the two; with neither shown, Named worktree is the common case.
+      const toExisting = branchNameShown(within);
+      const [focus, providerId] = toExisting ? [focusExistingRef, EXISTING_PROVIDER_ID] as const : [focusBranchName, PROVIDER_ID] as const;
+      if (!toExisting && focus(within)) return;
       const current = composer.selection?.environment;
       const hostId = current?.type === "host" ? current.hostId
         : current?.type === "provider" && current.machine?.type === "existing" ? current.machine.hostId : undefined;
       await composer.setSelection({
-        environment: { type: "provider", environmentProviderId: PROVIDER_ID, inputs: null,
+        environment: { type: "provider", environmentProviderId: providerId, inputs: null,
           ...(hostId ? { machine: { type: "existing", hostId } } : {}) },
       });
-      focusBranchName(within, 2000);
+      focus(within, 2000);
     },
   });
 

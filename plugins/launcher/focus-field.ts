@@ -22,6 +22,9 @@ export function createFocusRegistry() {
     return false;
   }
 
+  /** Whether a visible field matching `within` is mounted. */
+  const shown = (within: (el: HTMLElement) => boolean) => [...fields].some((el) => visible(el) && within(el));
+
   /** Registers a mounted field; returns its cleanup. */
   function register(el: HTMLInputElement) {
     fields.add(el);
@@ -32,5 +35,5 @@ export function createFocusRegistry() {
     return () => { cancelAnimationFrame(frame); fields.delete(el); };
   }
 
-  return { focus, register };
+  return { focus, register, shown };
 }
