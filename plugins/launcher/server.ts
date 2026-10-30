@@ -107,6 +107,12 @@ export default async function plugin(bb: BbPluginApi) {
   });
 
   const settings = bb.settings.define({
+    defaultNamedWorktree: {
+      type: "boolean",
+      label: "Default to Named worktree",
+      description: "Preselect the Named worktree environment in New thread and in the Launcher overlay. You can still change it per thread; a project that is not a Git repository keeps bb's default.",
+      default: true,
+    },
     worktreeRoot: {
       type: "string",
       label: "Worktree root",

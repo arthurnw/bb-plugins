@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import {
   experimental_NewThreadComposer as NewThreadComposer,
   experimental_useSidebarThreads as useSidebarThreads,
-  useBbNavigate, useRpc, useSdk,
+  useBbNavigate, useRpc, useSdk, useSettings,
   type PluginAppBuilder,
 } from "@get-bb/plugin-sdk/app";
 import type { quickComposeRpcContract } from "./server";
@@ -74,6 +74,7 @@ function Session({ session, kind, visible, focusRequest }: {
   const [popup, setPopup] = useState<"project" | "model" | null>(null);
   const [focus, setFocus] = useState(0);
   const [namedWorktree, setNamedWorktree] = useState(false);
+  const defaultNamed = useSettings().values?.defaultNamedWorktree === true;
   const projects = useProjectOptions();
   const sdk = useSdk();
   // A fork's worktree defaults to the source's branch on the source's machine.
@@ -197,7 +198,7 @@ function Session({ session, kind, visible, focusRequest }: {
             inputs: { name: "", baseBranch: forkBase.branch ?? "" },
             ...(forkBase.hostId ? { machine: { type: "existing", hostId: forkBase.hostId } } : {}),
           }
-          : namedWorktree ? { type: "provider", environmentProviderId: PROVIDER_ID, inputs: null }
+          : namedWorktree || (defaultNamed && kind === "new-thread") ? { type: "provider", environmentProviderId: PROVIDER_ID, inputs: null }
           : projectId === source.projectId && source.environmentId ? { type: "reuse", environmentId: source.environmentId } : undefined}
         initialPrompt={kind === "handoff" && session.sourceThreadId ? `@thread:${session.sourceThreadId} ` : undefined}
         draftKey={draftKey}

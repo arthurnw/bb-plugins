@@ -3,6 +3,8 @@ import { PROVIDER_ID } from "./named-worktree";
 import { focusBranchName, NamedWorktreeInputs } from "./named-worktree-inputs";
 import { registerOverlay } from "./overlay";
 import { PresetSettings } from "./settings";
+import { DefaultEnvironment } from "./default-environment";
+import { LauncherHeaderButton } from "./header-action";
 import { loadProjectOptions, ProjectList } from "./project-list";
 import { cycle } from "./projects";
 
@@ -25,6 +27,7 @@ function ProjectPopup() {
 export default definePluginApp((app) => {
   app.slots.experimental_environmentProviderInputs({ environmentProviderId: PROVIDER_ID, component: NamedWorktreeInputs });
   registerOverlay(app);
+  app.slots.experimental_threadHeaderAction({ id: "launcher", title: "Launcher", component: LauncherHeaderButton });
   app.slots.settingsSection({ id: "model-presets", title: "Model presets", description: "Presets for the floating composer's model picker.", component: PresetSettings });
   // The browser SDK client is only reachable through a hook, so commands that
   // run outside React use the one captured by the popup component tree.
@@ -38,7 +41,7 @@ export default definePluginApp((app) => {
     id: "launcher",
     scopes: ["new-thread"],
     experimental_popups: [{ id: POPUP_ID, label: "Switch project", component: ProjectPopup }],
-    banners: [{ id: "sdk-capture", chrome: "bare", component: SdkCapture }],
+    banners: [{ id: "sdk-capture", chrome: "bare", component: SdkCapture }, { id: "default-environment", chrome: "bare", component: DefaultEnvironment }],
   });
 
   app.composer.experimental_registerCommand({

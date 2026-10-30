@@ -30,6 +30,21 @@ bb settings keyboard set thread.new mod+shift+o
 The sidebar's New thread button still opens the full page. To undo, run
 `bb settings keyboard reset thread.new`.
 
+## Opening without a keyboard
+
+Every thread header has a **Launcher** button (icon only on phone-width screens)
+that opens the overlay, for devices with no shortcut or command palette. It is
+shown only on thread screens, not on the New thread screen.
+
+## Default environment
+
+The **Default to Named worktree** setting (on by default; Settings → Plugins →
+Launcher) preselects Named worktree in bb's own New thread composer and in the
+overlay. The choice is applied once per composer and project per page load, so
+changing it by hand sticks until the page reloads. A project that is not a Git
+repository keeps bb's default. Handoffs still reuse their thread's environment,
+and bb's own Fork and `bb thread spawn` are unaffected.
+
 ## Overlay
 
 Open from any page or from the command palette. It is centered over the whole
