@@ -1,8 +1,8 @@
 import { definePluginApp, useComposer, useSdk, type PluginComposerApi } from "@get-bb/plugin-sdk/app";
 import { EXISTING_PROVIDER_ID } from "./existing-branch";
-import { ExistingBranchInputs, existingRefShown, focusExistingRef } from "./existing-branch-inputs";
+import { ExistingBranchInputs, focusExistingRef } from "./existing-branch-inputs";
 import { PROVIDER_ID } from "./named-worktree";
-import { branchNameShown, focusBranchName, NamedWorktreeInputs } from "./named-worktree-inputs";
+import { branchNameFocused, focusBranchName, NamedWorktreeInputs } from "./named-worktree-inputs";
 import { registerOverlay } from "./overlay";
 import { PresetSettings } from "./settings";
 import { DefaultEnvironment } from "./default-environment";
@@ -68,8 +68,8 @@ export default definePluginApp((app) => {
     run: async ({ composer }) => {
       if (composer.scope.kind !== "new-thread") return;
       const within = (el: HTMLElement) => !el.closest("section[role=dialog]");
-      // Alternate between the two; with neither shown, Named worktree is the common case.
-      const toExisting = branchNameShown(within);
+      // The first press goes to the Named worktree branch name; pressing again from there switches to Existing branch / PR, and back.
+      const toExisting = branchNameFocused(within);
       const [focus, providerId] = toExisting ? [focusExistingRef, EXISTING_PROVIDER_ID] as const : [focusBranchName, PROVIDER_ID] as const;
       if (!toExisting && focus(within)) return;
       const current = composer.selection?.environment;

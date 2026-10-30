@@ -43,7 +43,7 @@ function useKeyboard(active: boolean) {
 
 /** Focuses a visible PR/branch field matching `within`; returns false when none is mounted yet. */
 export const focusExistingRef = registry.focus;
-export const existingRefShown = registry.shown;
+export const existingRefFocused = registry.focused;
 
 /** The status line under the field, and its dot color. */
 export function describe(resolved: Resolved): { text: string; short: string; tone: "good" | "warn" | "bad" | "neutral" } {
@@ -74,12 +74,18 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
   const [check, setCheck] = useState<Check>({ status: "empty" });
   const [choices, setChoices] = useState<Choices | null>(null);
   const [open, setOpen] = useState(false);
+  const [filter, setFilter] = useState("");
   const box = useRef<HTMLDivElement>(null);
-  const field = useRef<HTMLInputElement>(null);
+  const chip = useRef<HTMLButtonElement>(null);
+  const filterField = useRef<HTMLInputElement>(null);
   const sheet = useRef<HTMLDivElement>(null);
   const narrow = useNarrow();
   const keyboard = useKeyboard(open && narrow);
-  useEffect(() => (field.current ? registry.register(field.current) : undefined), []);
+  // A command that focuses the chip also opens the picker, whose filter field then takes focus.
+  useEffect(() => (chip.current ? registry.register(chip.current, () => setOpen(true)) : undefined), []);
+  useEffect(() => (open && filterField.current ? registry.register(filterField.current) : undefined), [open]);
+  // On a phone the keyboard would cover the list, so only desktop focuses the filter on open.
+  useEffect(() => { if (open && !narrow) filterField.current?.focus(); }, [open, narrow]);
 
   // Load the picker's candidates the first time the field opens.
   useEffect(() => {
@@ -120,16 +126,20 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
 
   useEffect(() => {
     if (!open) return;
-    const close = (event: PointerEvent) => { const target = event.target as Node;
-      if (!box.current?.contains(target) && !sheet.current?.contains(target)) setOpen(false); };
-    document.addEventListener("pointerdown", close);
-    return () => document.removeEventListener("pointerdown", close);
+    const onOutside = (event: PointerEvent) => { const target = event.target as Node;
+      if (!box.current?.contains(target) && !sheet.current?.contains(target)) close(); };
+    document.addEventListener("pointerdown", onOutside);
+    return () => document.removeEventListener("pointerdown", onOutside);
   }, [open]);
 
-  const query = text.trim().toLowerCase();
+  const query = filter.trim().toLowerCase();
   const prs = useMemo(() => (choices?.prs ?? []).filter((pr) => !query || `#${pr.number} ${pr.title} ${pr.headRefName}`.toLowerCase().includes(query)), [choices, query]);
   const branches = useMemo(() => (choices?.branches ?? []).filter((name) => !query || name.toLowerCase().includes(query)).slice(0, 40), [choices, query]);
-  const pick = (next: string) => { reviewTouched.current = false; setText(next); setOpen(false); };
+  const typed = filter.trim();
+  const offerTyped = typed !== "" && parseRef(typed).kind !== "invalid"
+    && !(choices?.branches ?? []).includes(typed) && !prs.some((pr) => `#${pr.number}` === typed);
+  const close = () => { setOpen(false); setFilter(""); };
+  const pick = (next: string) => { reviewTouched.current = false; setText(next); close(); chip.current?.focus(); };
 
   const status = check.status === "ok" ? describe(check.resolved)
     : check.status === "error" ? { text: check.message, short: check.message, tone: "bad" as const }
@@ -137,17 +147,16 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
 
   return (
     <div ref={box} style={{ position: "relative", display: "flex", alignItems: "center", gap: 8, minWidth: 0, flexShrink: 1 }}>
-      <input ref={field} aria-label="PR number, URL, or branch" placeholder="PR number, URL, or branch" value={text}
-        onFocus={() => setOpen(true)}
-        onChange={(event) => { reviewTouched.current = false; setText(event.target.value); setOpen(true); }}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === "Escape") { event.preventDefault(); setOpen(false); }
-          if (!event.metaKey && !event.ctrlKey && !event.altKey) event.stopPropagation();
-        }}
-        style={{ flex: "0 10 170px", width: 170, minWidth: 90, padding: "4px 8px", border: "1px solid var(--border)", borderRadius: 4,
-          background: "transparent", color: "var(--foreground)",
-          // iOS zooms the page when a focused field is under 16px.
-          fontSize: narrow ? 16 : 13 }} />
+      <button ref={chip} type="button" aria-haspopup="listbox" aria-expanded={open} title={status?.text ?? "Choose a PR or branch"}
+        onClick={() => (open ? close() : setOpen(true))}
+        onKeyDown={(event) => { if (!event.metaKey && !event.ctrlKey && !event.altKey && event.key !== "Tab") event.stopPropagation(); }}
+        style={{ flex: "0 1 260px", minWidth: 0, display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 8px", border: "1px solid var(--border)",
+          borderRadius: 4, background: "transparent", color: status ? "var(--foreground)" : "var(--muted-foreground)", fontSize: narrow ? 15 : 13,
+          cursor: "pointer", whiteSpace: "nowrap", textAlign: "left" }}>
+        {status && <span style={{ width: 8, height: 8, borderRadius: "50%", flex: "none", background: TONES[status.tone] }} />}
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", flex: 1 }}>{status ? (check.status === "ok" ? status.short : text.trim()) : "Choose PR or branch…"}</span>
+        <span aria-hidden style={{ flex: "none", opacity: 0.6 }}>⌄</span>
+      </button>
       <button type="button" role="switch" aria-checked={review} title="Start with a Plannotator guided review"
         onClick={() => { reviewTouched.current = true; setReview(!review); }}
         style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 6px", border: 0, borderRadius: 4, background: "transparent",
@@ -157,29 +166,39 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
         </span>
         Review
       </button>
-      {status && (
-        <span title={status.text} style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0, overflow: "hidden", fontSize: 12,
-          color: "var(--muted-foreground)", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
-          <span style={{ width: 8, height: 8, borderRadius: "50%", flex: "none", background: TONES[status.tone] }} />
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{status.short}</span>
-        </span>
-      )}
       {open && (() => {
         const list = (
-          <div ref={sheet} role="listbox" style={narrow
-            ? { position: "fixed", zIndex: 1000, left: 0, right: 0, bottom: keyboard.inset, maxHeight: Math.min(keyboard.height * 0.6, 420), overflowY: "auto",
+          <div ref={sheet} style={narrow
+            ? { position: "fixed", zIndex: 1000, left: 0, right: 0, bottom: keyboard.inset, maxHeight: Math.min(keyboard.height * 0.7, 460), display: "flex", flexDirection: "column",
                 border: "1px solid var(--border)", borderRadius: "12px 12px 0 0", background: "var(--popover, var(--background))", color: "var(--foreground)",
-                padding: 8, fontSize: 15, boxShadow: "0 -8px 24px rgb(0 0 0 / .18)", overscrollBehavior: "contain", touchAction: "pan-y" }
-            : { position: "absolute", zIndex: 60, top: "calc(100% + 4px)", left: 0, width: 420, maxHeight: 320, overflowY: "auto",
+                padding: 8, fontSize: 15, boxShadow: "0 -8px 24px rgb(0 0 0 / .18)" }
+            : { position: "absolute", zIndex: 60, top: "calc(100% + 4px)", left: 0, width: 420, maxHeight: 360, display: "flex", flexDirection: "column",
                 border: "1px solid var(--border)", borderRadius: 8, background: "var(--popover, var(--background))", padding: 4, fontSize: 13 }}>
-          {choices === null && <Row muted>Loading…</Row>}
-          {choices?.prError && <Row muted>PRs unavailable: {choices.prError}</Row>}
-          {prs.length > 0 && <Section>Open pull requests</Section>}
-          {prs.map((pr) => <Row key={pr.number} tall={narrow} onPick={() => pick(`#${pr.number}`)} meta={narrow ? undefined : pr.headRefName}>#{pr.number} {pr.title}</Row>)}
-          {branches.length > 0 && <Section>Remote branches</Section>}
-          {branches.map((name) => <Row key={name} tall={narrow} onPick={() => pick(name)}>{name}</Row>)}
-          {choices !== null && prs.length === 0 && branches.length === 0 && <Row muted>No matches. Enter uses the text as typed.</Row>}
-        </div>
+            <input ref={filterField} aria-label="Filter PRs and branches" placeholder="Filter, or type a PR number, URL, or branch" value={filter}
+              onChange={(event) => setFilter(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") { event.preventDefault(); close(); chip.current?.focus(); }
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  const first = offerTyped ? typed : prs[0] ? `#${prs[0].number}` : branches[0];
+                  if (first) pick(first);
+                }
+                if (!event.metaKey && !event.ctrlKey && !event.altKey) event.stopPropagation();
+              }}
+              // iOS zooms the page when a focused field is under 16px.
+              style={{ margin: narrow ? "0 0 8px" : "0 0 4px", padding: "6px 8px", border: "1px solid var(--border)", borderRadius: 6, background: "transparent",
+                color: "var(--foreground)", fontSize: narrow ? 16 : 13, flex: "none" }} />
+            <div role="listbox" style={{ overflowY: "auto", overscrollBehavior: "contain", touchAction: "pan-y", minHeight: 0 }}>
+              {choices === null && <Row muted>Loading…</Row>}
+              {choices?.prError && <Row muted>PRs unavailable: {choices.prError}</Row>}
+              {offerTyped && <Row tall={narrow} onPick={() => pick(typed)}>Use “{typed}”</Row>}
+              {prs.length > 0 && <Section>Open pull requests</Section>}
+              {prs.map((pr) => <Row key={pr.number} tall={narrow} onPick={() => pick(`#${pr.number}`)} meta={narrow ? undefined : pr.headRefName}>#{pr.number} {pr.title}</Row>)}
+              {branches.length > 0 && <Section>Remote branches</Section>}
+              {branches.map((name) => <Row key={name} tall={narrow} onPick={() => pick(name)}>{name}</Row>)}
+              {choices !== null && !offerTyped && prs.length === 0 && branches.length === 0 && <Row muted>No matches.</Row>}
+            </div>
+          </div>
         );
         // A portal keeps the sheet out of any transformed or clipped ancestor, so `fixed` is relative to the screen.
         return narrow ? createPortal(list, document.body) : list;

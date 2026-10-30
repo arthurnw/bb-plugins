@@ -10,7 +10,7 @@ rename did not carry over its saved state, which lives under the plugin ID.
 | Launcher: switch project | `Mod+Shift+J` | Search projects; arrows or Ctrl+N/P (Ctrl+J/K) to move, Enter to pick, Esc to close. |
 | Launcher: next project | `Alt+J` | Select the next project. |
 | Launcher: previous project | `Alt+Shift+J` | Select the previous project. |
-| Launcher: named worktree / existing branch | `Mod+Shift+B` | Switch the environment to Named worktree and focus its branch name field; when Named worktree is already shown, switch to Existing branch / PR instead, and back. In the overlay this re-seeds selections (like the project shortcuts) unless the target field is already shown. |
+| Launcher: named worktree / existing branch | `Mod+Shift+B` | The first press focuses the Named worktree branch name (switching to Named worktree if needed); pressing again from there switches to Existing branch / PR and opens its picker, and again switches back. In the overlay this re-seeds selections (like the project shortcuts) unless the target field is already shown. |
 | Launcher: existing branch / PR | `Mod+Shift+G` | Switch the environment to Existing branch / PR and focus its field. In the overlay this re-seeds selections unless the field is already shown. |
 | Launcher: quick compose | `Mod+N` | Toggle a floating New thread composer without navigating. See [Replacing New thread](#replacing-new-thread). |
 | Model picker (overlay only) | `Mod+Shift+M` | Presets first, then **Other model…** for every provider, model, effort, and tier. |
@@ -42,7 +42,7 @@ and bb's own Fork and `bb thread spawn` are unaffected.
 
 ## Existing branch / PR
 
-An environment option next to Named worktree. Type or pick a PR number (`482`, `#482`), a PR URL, or a branch name; a status line shows what it resolved to:
+An environment option next to Named worktree. A chip shows the choice and what it resolved to. Click it to open a picker (a bottom sheet on phones) with a filter field, open PRs, and remote branches. Type to filter (for example `conor/`), or type a PR number (`482`, `#482`), a PR URL, or a branch name and choose **Use “…”**:
 
 - A PR from the same repository checks out its head branch with its upstream.
 - A PR from a fork is checked out with `gh pr checkout` into a branch named `pr-<number>`.

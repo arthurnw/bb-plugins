@@ -16,7 +16,7 @@ import { isBackgroundSubmit, projectShortcut } from "./overlay-keys";
 import { ModelList, ModelTrigger, modelLabel } from "./model-picker";
 import type { ModelSelection, ModelState } from "./presets";
 import { PROVIDER_ID } from "./named-worktree";
-import { branchNameShown, focusBranchName } from "./named-worktree-inputs";
+import { branchNameFocused, focusBranchName } from "./named-worktree-inputs";
 import { EXISTING_PROVIDER_ID } from "./existing-branch";
 import { focusExistingRef } from "./existing-branch-inputs";
 
@@ -171,9 +171,9 @@ function Session({ session, kind, visible, focusRequest }: {
         const section = sectionRef.current;
         if (!section) return;
         const within = (el: HTMLElement) => section.contains(el);
-        // Alternate between the two; with neither shown, Named worktree is the common case.
+        // The first press goes to the Named worktree branch name; pressing again from there switches to Existing branch / PR, and back.
         // Re-seeding the environment resets the other selections, so only do it when the target field is not already shown.
-        if (kind !== "fork" && branchNameShown(within)) { setSeeded("existing"); focusExistingRef(within, 2000); }
+        if (kind !== "fork" && branchNameFocused(within)) { setSeeded("existing"); focusExistingRef(within, 2000); }
         else if (!focusBranchName(within)) { setSeeded("named"); focusBranchName(within, 2000); }
         return;
       }

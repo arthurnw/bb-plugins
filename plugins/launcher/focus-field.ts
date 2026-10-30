@@ -6,16 +6,17 @@ function visible(el: HTMLElement) {
 }
 
 export function createFocusRegistry() {
-  const fields = new Set<HTMLInputElement>();
+  const fields = new Map<HTMLElement, (() => void) | undefined>();
   let pending: { within: (el: HTMLElement) => boolean; until: number } | null = null;
 
   /** Focuses a visible field matching `within`; returns false when none is mounted yet. */
   function focus(within: (el: HTMLElement) => boolean, waitMs = 0): boolean {
-    const field = [...fields].reverse().find((el) => visible(el) && within(el));
+    const field = [...fields.keys()].reverse().find((el) => visible(el) && within(el));
     if (field) {
       pending = null;
       field.focus();
-      field.setSelectionRange(field.value.length, field.value.length);
+      if (field instanceof HTMLInputElement) field.setSelectionRange(field.value.length, field.value.length);
+      fields.get(field)?.();
       return true;
     }
     pending = waitMs > 0 ? { within, until: Date.now() + waitMs } : null;
@@ -23,11 +24,14 @@ export function createFocusRegistry() {
   }
 
   /** Whether a visible field matching `within` is mounted. */
-  const shown = (within: (el: HTMLElement) => boolean) => [...fields].some((el) => visible(el) && within(el));
+  const shown = (within: (el: HTMLElement) => boolean) => [...fields.keys()].some((el) => visible(el) && within(el));
 
-  /** Registers a mounted field; returns its cleanup. */
-  function register(el: HTMLInputElement) {
-    fields.add(el);
+  /** Whether the focused element is a registered field matching `within`. */
+  const focused = (within: (el: HTMLElement) => boolean) => [...fields.keys()].some((el) => el === document.activeElement && within(el));
+
+  /** Registers a mounted field, with an optional callback run after a command focuses it; returns its cleanup. */
+  function register(el: HTMLElement, onFocus?: () => void) {
+    fields.set(el, onFocus);
     // Wait a frame so the field is laid out before checking visibility.
     const frame = requestAnimationFrame(() => {
       if (pending && pending.until > Date.now() && visible(el) && pending.within(el)) focus(pending.within);
@@ -35,5 +39,5 @@ export function createFocusRegistry() {
     return () => { cancelAnimationFrame(frame); fields.delete(el); };
   }
 
-  return { focus, register, shown };
+  return { focus, register, shown, focused };
 }
