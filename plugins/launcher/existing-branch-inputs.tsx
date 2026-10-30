@@ -169,7 +169,7 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
           <div ref={sheet} role="listbox" style={narrow
             ? { position: "fixed", zIndex: 1000, left: 0, right: 0, bottom: keyboard.inset, maxHeight: Math.min(keyboard.height * 0.6, 420), overflowY: "auto",
                 border: "1px solid var(--border)", borderRadius: "12px 12px 0 0", background: "var(--popover, var(--background))", color: "var(--foreground)",
-                padding: 8, fontSize: 15, boxShadow: "0 -8px 24px rgb(0 0 0 / .18)", overscrollBehavior: "contain" }
+                padding: 8, fontSize: 15, boxShadow: "0 -8px 24px rgb(0 0 0 / .18)", overscrollBehavior: "contain", touchAction: "pan-y" }
             : { position: "absolute", zIndex: 60, top: "calc(100% + 4px)", left: 0, width: 420, maxHeight: 320, overflowY: "auto",
                 border: "1px solid var(--border)", borderRadius: 8, background: "var(--popover, var(--background))", padding: 4, fontSize: 13 }}>
           {choices === null && <Row muted>Loading…</Row>}
@@ -195,7 +195,8 @@ function Section({ children }: { children: string }) {
 function Row({ children, meta, muted, tall, onPick }: { children: React.ReactNode; meta?: string; muted?: boolean; tall?: boolean; onPick?: () => void }) {
   const [hover, setHover] = useState(false);
   return (
-    <div role={onPick ? "option" : undefined} aria-selected={false} onPointerDown={(event) => { if (onPick) { event.preventDefault(); onPick(); } }}
+    <div role={onPick ? "option" : undefined} aria-selected={false} onMouseDown={(event) => { if (onPick) event.preventDefault(); }}
+      onClick={() => onPick?.()}
       onPointerEnter={() => setHover(true)} onPointerLeave={() => setHover(false)}
       style={{ display: "flex", gap: 8, padding: tall ? "12px 8px" : "6px 8px", borderRadius: 6, cursor: onPick ? "pointer" : "default",
         color: muted ? "var(--muted-foreground)" : "var(--foreground)", background: hover && onPick ? "var(--accent, #f4f4f5)" : "transparent" }}>
