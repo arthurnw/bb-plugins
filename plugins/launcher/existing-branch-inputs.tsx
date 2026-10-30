@@ -150,12 +150,13 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
       <button ref={chip} type="button" aria-haspopup="listbox" aria-expanded={open} title={status?.text ?? "Choose a PR or branch"}
         onClick={() => (open ? close() : setOpen(true))}
         onKeyDown={(event) => { if (!event.metaKey && !event.ctrlKey && !event.altKey && event.key !== "Tab") event.stopPropagation(); }}
-        style={{ flex: "0 1 260px", minWidth: 0, display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 8px", border: "1px solid var(--border)",
+        style={{ flex: "0 1 260px", minWidth: 0, display: "inline-flex", alignItems: "center", gap: 6, // On phones, match the host dropdowns beside it: no border, same text size.
+          padding: narrow ? "6px 4px" : "4px 8px", border: narrow ? "1px solid transparent" : "1px solid var(--border)", lineHeight: 1.2,
           borderRadius: 4, background: "transparent", color: status ? "var(--foreground)" : "var(--muted-foreground)", fontSize: narrow ? 15 : 13,
           cursor: "pointer", whiteSpace: "nowrap", textAlign: "left" }}>
         {status && <span style={{ width: 8, height: 8, borderRadius: "50%", flex: "none", background: TONES[status.tone] }} />}
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", flex: 1 }}>{status ? (check.status === "ok" ? status.short : text.trim()) : "Choose PR or branch…"}</span>
-        <span aria-hidden style={{ flex: "none", opacity: 0.6 }}>⌄</span>
+        <span aria-hidden style={{ flex: "none", opacity: 0.6, lineHeight: 1, alignSelf: "center" }}>⌄</span>
       </button>
       <button type="button" role="switch" aria-checked={review} title="Start with a Plannotator guided review"
         onClick={() => { reviewTouched.current = true; setReview(!review); }}
