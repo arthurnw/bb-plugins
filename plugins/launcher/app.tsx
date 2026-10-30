@@ -1,4 +1,6 @@
 import { definePluginApp, useComposer, useSdk, type PluginComposerApi } from "@get-bb/plugin-sdk/app";
+import { EXISTING_PROVIDER_ID } from "./existing-branch";
+import { ExistingBranchInputs } from "./existing-branch-inputs";
 import { PROVIDER_ID } from "./named-worktree";
 import { focusBranchName, NamedWorktreeInputs } from "./named-worktree-inputs";
 import { registerOverlay } from "./overlay";
@@ -25,6 +27,7 @@ function ProjectPopup() {
 
 export default definePluginApp((app) => {
   app.slots.experimental_environmentProviderInputs({ environmentProviderId: PROVIDER_ID, component: NamedWorktreeInputs });
+  app.slots.experimental_environmentProviderInputs({ environmentProviderId: EXISTING_PROVIDER_ID, component: ExistingBranchInputs });
   registerOverlay(app);
   app.slots.settingsSection({ id: "model-presets", title: "Model presets", description: "Presets for the floating composer's model picker.", component: PresetSettings });
   // The browser SDK client is only reachable through a hook, so commands that
