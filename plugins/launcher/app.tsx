@@ -83,7 +83,7 @@ export default definePluginApp((app) => {
   app.composer.experimental_registerCommand({
     id: "existing-ref",
     title: "Launcher: existing branch / PR",
-    defaultShortcut: { key: "e", mod: true, shift: true },
+    defaultShortcut: { key: "g", mod: true, shift: true },
     run: async ({ composer }) => {
       if (composer.scope.kind !== "new-thread") return;
       const within = (el: HTMLElement) => !el.closest("section[role=dialog]");
