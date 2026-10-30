@@ -31,7 +31,7 @@ export const rpcContract = defineRpcContract({
   },
   setMode: { input: z.object({ mode: modeSchema }), output: z.null() },
   setIcon: {
-    input: z.object({ projectId: z.string(), icon: z.string().max(2048).nullable() }),
+    input: z.object({ projectId: z.string(), icon: z.string().max(65536).nullable() }),
     output: z.null(),
   },
 });

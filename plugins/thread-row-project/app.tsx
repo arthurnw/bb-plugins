@@ -50,6 +50,19 @@ const MODE_LABELS: Record<DisplayMode, string> = {
   both: "Both",
 };
 
+const ICON_PX = 64;
+
+// Shrinks a picked file to a small PNG data URL so it fits in plugin storage.
+async function fileToIcon(file: File): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, ICON_PX / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+  canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/png");
+}
+
 function IconField({ projectId, icon }: { projectId: string; icon: string | null }) {
   const { mutate } = experimental_useRpcMutation({ contract: rpcContract, method: "setIcon" });
   const [draft, setDraft] = useState(icon ?? "");
@@ -57,15 +70,47 @@ function IconField({ projectId, icon }: { projectId: string; icon: string | null
   const save = () => {
     if (draft.trim() !== (icon ?? "")) void mutate({ projectId, icon: draft.trim() || null });
   };
+  const upload = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      await mutate({ projectId, icon: await fileToIcon(file) });
+    } catch {
+      // Unreadable image: leave the current icon unchanged.
+    }
+  };
   return (
+    <span className="flex items-center gap-2">
     <input
-      value={draft}
+      value={draft.startsWith("data:") ? "Uploaded image" : draft}
+      readOnly={draft.startsWith("data:")}
       onChange={(event) => setDraft(event.target.value)}
       onBlur={save}
       onKeyDown={(event) => event.key === "Enter" && event.currentTarget.blur()}
       placeholder="Emoji or image URL"
-      className="h-8 w-64 rounded-md border border-border bg-transparent px-2 text-sm"
+      className="h-8 w-48 rounded-md border border-border bg-transparent px-2 text-sm"
     />
+    <label className="cursor-pointer rounded-md border border-border px-2 py-1 text-sm">
+      Upload
+      <input
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(event) => {
+          void upload(event.target.files?.[0]);
+          event.target.value = "";
+        }}
+      />
+    </label>
+    {icon ? (
+      <button
+        type="button"
+        onClick={() => void mutate({ projectId, icon: null })}
+        className="rounded-md border border-border px-2 py-1 text-sm"
+      >
+        Clear
+      </button>
+    ) : null}
+    </span>
   );
 }
 
