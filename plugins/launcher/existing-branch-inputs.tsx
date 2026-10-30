@@ -1,5 +1,6 @@
 import { useRpc, type PluginEnvironmentProviderInputsProps } from "@get-bb/plugin-sdk/app";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { z } from "zod";
 import type { refChoicesSchema } from "./contract";
 import { existingInputsSchema, parseRef, type Resolved } from "./existing-branch";
@@ -12,6 +13,33 @@ type Check = { status: "empty" } | { status: "checking" } | { status: "error"; m
 const RESOLVE_DELAY_MS = 350;
 
 const registry = createFocusRegistry();
+
+/** True on phone-width screens, where the list becomes a bottom sheet above the keyboard. */
+function useNarrow() {
+  const [narrow, setNarrow] = useState(() => window.matchMedia("(max-width: 640px)").matches);
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 640px)");
+    const update = () => setNarrow(query.matches);
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  return narrow;
+}
+
+/** Space the on-screen keyboard covers at the bottom of the layout viewport, and the visible height. */
+function useKeyboard(active: boolean) {
+  const [state, setState] = useState({ inset: 0, height: window.innerHeight });
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!active || !vv) return;
+    const update = () => setState({ inset: Math.max(0, window.innerHeight - vv.height - vv.offsetTop), height: vv.height });
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => { vv.removeEventListener("resize", update); vv.removeEventListener("scroll", update); };
+  }, [active]);
+  return state;
+}
 
 /** Focuses a visible PR/branch field matching `within`; returns false when none is mounted yet. */
 export const focusExistingRef = registry.focus;
@@ -48,6 +76,9 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   const field = useRef<HTMLInputElement>(null);
+  const sheet = useRef<HTMLDivElement>(null);
+  const narrow = useNarrow();
+  const keyboard = useKeyboard(open && narrow);
   useEffect(() => (field.current ? registry.register(field.current) : undefined), []);
 
   // Load the picker's candidates the first time the field opens.
@@ -89,7 +120,8 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
 
   useEffect(() => {
     if (!open) return;
-    const close = (event: PointerEvent) => { if (!box.current?.contains(event.target as Node)) setOpen(false); };
+    const close = (event: PointerEvent) => { const target = event.target as Node;
+      if (!box.current?.contains(target) && !sheet.current?.contains(target)) setOpen(false); };
     document.addEventListener("pointerdown", close);
     return () => document.removeEventListener("pointerdown", close);
   }, [open]);
@@ -130,18 +162,26 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
           <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{status.short}</span>
         </span>
       )}
-      {open && (
-        <div role="listbox" style={{ position: "absolute", zIndex: 60, top: "calc(100% + 4px)", left: 0, width: 420, maxHeight: 320, overflowY: "auto",
-          border: "1px solid var(--border)", borderRadius: 8, background: "var(--popover, var(--background))", padding: 4, fontSize: 13 }}>
+      {open && (() => {
+        const list = (
+          <div ref={sheet} role="listbox" style={narrow
+            ? { position: "fixed", zIndex: 1000, left: 0, right: 0, bottom: keyboard.inset, maxHeight: Math.min(keyboard.height * 0.6, 420), overflowY: "auto",
+                border: "1px solid var(--border)", borderRadius: "12px 12px 0 0", background: "var(--popover, var(--background))", color: "var(--foreground)",
+                padding: 8, fontSize: 15, boxShadow: "0 -8px 24px rgb(0 0 0 / .18)", overscrollBehavior: "contain" }
+            : { position: "absolute", zIndex: 60, top: "calc(100% + 4px)", left: 0, width: 420, maxHeight: 320, overflowY: "auto",
+                border: "1px solid var(--border)", borderRadius: 8, background: "var(--popover, var(--background))", padding: 4, fontSize: 13 }}>
           {choices === null && <Row muted>Loading…</Row>}
           {choices?.prError && <Row muted>PRs unavailable: {choices.prError}</Row>}
           {prs.length > 0 && <Section>Open pull requests</Section>}
-          {prs.map((pr) => <Row key={pr.number} onPick={() => pick(`#${pr.number}`)} meta={pr.headRefName}>#{pr.number} {pr.title}</Row>)}
+          {prs.map((pr) => <Row key={pr.number} tall={narrow} onPick={() => pick(`#${pr.number}`)} meta={narrow ? undefined : pr.headRefName}>#{pr.number} {pr.title}</Row>)}
           {branches.length > 0 && <Section>Remote branches</Section>}
-          {branches.map((name) => <Row key={name} onPick={() => pick(name)}>{name}</Row>)}
+          {branches.map((name) => <Row key={name} tall={narrow} onPick={() => pick(name)}>{name}</Row>)}
           {choices !== null && prs.length === 0 && branches.length === 0 && <Row muted>No matches. Enter uses the text as typed.</Row>}
         </div>
-      )}
+        );
+        // A portal keeps the sheet out of any transformed or clipped ancestor, so `fixed` is relative to the screen.
+        return narrow ? createPortal(list, document.body) : list;
+      })()}
     </div>
   );
 }
@@ -150,12 +190,12 @@ function Section({ children }: { children: string }) {
   return <div style={{ padding: "6px 8px 2px", fontSize: 11, textTransform: "uppercase", letterSpacing: ".04em", color: "var(--muted-foreground)" }}>{children}</div>;
 }
 
-function Row({ children, meta, muted, onPick }: { children: React.ReactNode; meta?: string; muted?: boolean; onPick?: () => void }) {
+function Row({ children, meta, muted, tall, onPick }: { children: React.ReactNode; meta?: string; muted?: boolean; tall?: boolean; onPick?: () => void }) {
   const [hover, setHover] = useState(false);
   return (
     <div role={onPick ? "option" : undefined} aria-selected={false} onPointerDown={(event) => { if (onPick) { event.preventDefault(); onPick(); } }}
       onPointerEnter={() => setHover(true)} onPointerLeave={() => setHover(false)}
-      style={{ display: "flex", gap: 8, padding: "6px 8px", borderRadius: 6, cursor: onPick ? "pointer" : "default",
+      style={{ display: "flex", gap: 8, padding: tall ? "12px 8px" : "6px 8px", borderRadius: 6, cursor: onPick ? "pointer" : "default",
         color: muted ? "var(--muted-foreground)" : "var(--foreground)", background: hover && onPick ? "var(--accent, #f4f4f5)" : "transparent" }}>
       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{children}</span>
       {meta && <span style={{ marginLeft: "auto", color: "var(--muted-foreground)", fontSize: 12, whiteSpace: "nowrap" }}>{meta}</span>}
