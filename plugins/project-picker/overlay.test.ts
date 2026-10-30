@@ -1,7 +1,7 @@
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { quickCompose } from "./overlay-store.ts";
-import { projectShortcut } from "./overlay-keys.ts";
+import { isBackgroundSubmit, projectShortcut } from "./overlay-keys.ts";
 
 beforeEach(() => { quickCompose.finish("new-thread"); quickCompose.finish("handoff"); quickCompose.finish("fork"); });
 test("a session with a draft survives reopening elsewhere", () => {
@@ -77,4 +77,23 @@ test("fork sessions are scoped to their source thread", () => {
   quickCompose.toggle("fork", { projectId: "a", threadId: "t2", sourceSeqEnd: 40 });
   assert.equal(quickCompose.getState().active, null);
   quickCompose.finish("fork");
+});
+
+test("model picker shortcut matches Mod+Shift+M only", () => {
+  const m = { key: "m", code: "KeyM", ctrlKey: false, metaKey: false, altKey: false, shiftKey: true, isComposing: false };
+  assert.equal(projectShortcut({ ...m, metaKey: true }, true), "model");
+  assert.equal(projectShortcut({ ...m, ctrlKey: true }, false), "model");
+  assert.equal(projectShortcut({ ...m, ctrlKey: true }, true), null);
+  assert.equal(projectShortcut({ ...m, metaKey: true, shiftKey: false }, true), null);
+  assert.equal(projectShortcut({ ...m, metaKey: true, altKey: true }, true), null);
+});
+
+test("Cmd+Enter starts a thread in the background; plain and Shift+Enter do not", () => {
+  const enter = { key: "Enter", ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, isComposing: false };
+  assert.equal(isBackgroundSubmit({ ...enter, metaKey: true }, true), true);
+  assert.equal(isBackgroundSubmit({ ...enter, ctrlKey: true }, false), true);
+  assert.equal(isBackgroundSubmit({ ...enter, ctrlKey: true }, true), false);
+  assert.equal(isBackgroundSubmit(enter, true), false);
+  assert.equal(isBackgroundSubmit({ ...enter, metaKey: true, shiftKey: true }, true), false);
+  assert.equal(isBackgroundSubmit({ ...enter, metaKey: true, isComposing: true }, true), false);
 });

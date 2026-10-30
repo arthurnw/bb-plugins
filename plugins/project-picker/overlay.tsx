@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { TooltipProvider } from "@radix-ui/react-tooltip";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import {
   experimental_NewThreadComposer as NewThreadComposer,
@@ -11,7 +12,9 @@ import type { quickComposeRpcContract } from "./server";
 import { quickCompose, subscribe, type QuickComposeKind, type QuickComposeSession } from "./overlay-store";
 import { cycle } from "./projects";
 import { ProjectList, useProjectOptions } from "./project-list";
-import { projectShortcut } from "./overlay-keys";
+import { isBackgroundSubmit, projectShortcut } from "./overlay-keys";
+import { ModelList, ModelTrigger, modelLabel } from "./model-picker";
+import type { ModelSelection, ModelState } from "./presets";
 import { PROVIDER_ID } from "./named-worktree";
 import { focusBranchName } from "./named-worktree-inputs";
 
@@ -31,33 +34,33 @@ const LABELS: Record<QuickComposeKind, { dialog: string; placeholder: string }> 
   fork: { dialog: "Project Picker fork", placeholder: "Fork this thread into a new worktree" },
 };
 
-interface Bounds { left: number; width: number }
+const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
+const HOST_MODEL_PICKER = "button[aria-label^='Provider, model and reasoning']";
 
-// bb's desktop side panel can hold a native browser view, which draws above
-// any page content. Center the overlay in the conversation area left of the
-// panel instead of the whole window. Falls back to the window when bb's
-// layout attributes are missing.
-function contentBounds(): Bounds {
-  const shell = document.querySelector("[data-app-content-shell]")?.getBoundingClientRect();
-  const left = shell && shell.width > 0 ? shell.left : 0;
-  let right = shell && shell.width > 0 ? shell.right : window.innerWidth;
-  const panel = document.querySelector("[data-panel-id$='secondary-panel']")?.getBoundingClientRect();
-  if (panel && panel.width > 0 && panel.left > left) right = Math.min(right, panel.left);
-  return { left, width: right - left };
-}
-
-function useContentBounds(active: boolean): Bounds | null {
-  const [bounds, setBounds] = useState<Bounds | null>(null);
+// The host's model picker button cannot be reconfigured, so the overlay hides
+// it and puts its own trigger (presets first) where it was.
+function useModelSlot(root: HTMLElement | null, enabled: boolean): HTMLElement | null {
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
   useEffect(() => {
-    if (!active) return;
-    const update = () => setBounds(contentBounds());
-    update();
-    const observer = new ResizeObserver(update);
-    for (const el of document.querySelectorAll("[data-app-content-shell], [data-panel-id$='secondary-panel']")) observer.observe(el);
-    window.addEventListener("resize", update);
-    return () => { observer.disconnect(); window.removeEventListener("resize", update); };
-  }, [active]);
-  return bounds;
+    if (!root || !enabled) return;
+    const span = document.createElement("span");
+    span.style.display = "inline-flex";
+    const sync = () => {
+      const button = root.querySelector(HOST_MODEL_PICKER);
+      if (button?.parentElement) {
+        if (span.nextSibling !== button) button.parentElement.insertBefore(span, button);
+        setSlot(span);
+      } else {
+        span.remove();
+        setSlot(null);
+      }
+    };
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(root, { childList: true, subtree: true });
+    return () => { observer.disconnect(); span.remove(); setSlot(null); };
+  }, [root, enabled]);
+  return slot;
 }
 
 function Session({ session, kind, visible, focusRequest }: {
@@ -68,10 +71,9 @@ function Session({ session, kind, visible, focusRequest }: {
   const sidebar = useSidebarThreads();
   const [source, setSource] = useState<{ projectId: string | null; environmentId: string | null }>();
   const [projectId, setProjectId] = useState(session.projectId);
-  const [popup, setPopup] = useState(false);
+  const [popup, setPopup] = useState<"project" | "model" | null>(null);
   const [focus, setFocus] = useState(0);
   const [namedWorktree, setNamedWorktree] = useState(false);
-  const bounds = useContentBounds(visible);
   const projects = useProjectOptions();
   const sdk = useSdk();
   // A fork's worktree defaults to the source's branch on the source's machine.
@@ -91,7 +93,28 @@ function Session({ session, kind, visible, focusRequest }: {
     setProjectId(resolved.projectId);
   }, [source, kind, sidebar, session]);
 
-  const choose = (id: string) => { setProjectId(id); setPopup(false); setFocus(n => n + 1); };
+  // A fork keeps its source's provider and model, so only the other kinds load presets.
+  const customModel = kind !== "fork";
+  const [modelState, setModelState] = useState<ModelState>();
+  const [model, setModel] = useState<ModelSelection | null>(null);
+  useEffect(() => {
+    if (!customModel) return;
+    rpc.call("getModelState", {}).then(
+      state => { setModelState(state); setModel(state.selection ?? state.presets[0] ?? null); },
+      () => setModelState({ presets: [], selection: null, names: {} }));
+  }, [rpc, customModel]);
+  const chooseModel = (selection: ModelSelection, from: "preset" | "custom") => {
+    setModel(selection);
+    void rpc.call("setSelection", { selection }).then(setModelState, () => {});
+    if (from === "preset") { setPopup(null); setFocus(n => n + 1); }
+  };
+  const [composerRoot, setComposerRoot] = useState<HTMLDivElement | null>(null);
+  const modelSlot = useModelSlot(composerRoot, customModel && modelState !== undefined);
+
+  // Enter opens the new thread; Cmd+Enter (Ctrl+Enter elsewhere) leaves it in the background.
+  const backgroundRef = useRef(false);
+
+  const choose = (id: string) => { setProjectId(id); setPopup(null); setFocus(n => n + 1); };
   const sectionRef = useRef<HTMLElement>(null);
   const draftKey = session.sourceThreadId
     ? `project-picker-${kind}:${session.sourceThreadId}${session.sourceSeqEnd === null ? "" : `@${session.sourceSeqEnd}`}`
@@ -120,7 +143,7 @@ function Session({ session, kind, visible, focusRequest }: {
     return () => window.removeEventListener("keydown", onKey, true);
   }, [visible, popup]);
   useEffect(() => {
-    if (!visible) { setPopup(false); return; }
+    if (!visible) { setPopup(null); return; }
     const onKey = (event: KeyboardEvent) => {
       const action = projectShortcut(event, /Mac|iPhone|iPad/.test(navigator.platform));
       if (!action) return;
@@ -128,7 +151,8 @@ function Session({ session, kind, visible, focusRequest }: {
       event.stopImmediatePropagation();
       // A fork stays in its source's project.
       if (kind === "fork" && action !== "branch-name") return;
-      if (action === "open") { setPopup(value => !value); return; }
+      if (action === "open") { setPopup(value => value === "project" ? null : "project"); return; }
+      if (action === "model") { if (customModel) setPopup(value => value === "model" ? null : "model"); return; }
       if (action === "branch-name") {
         const section = sectionRef.current;
         if (!section) return;
@@ -142,13 +166,27 @@ function Session({ session, kind, visible, focusRequest }: {
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [visible, projects, projectId, kind]);
+  }, [visible, projects, projectId, kind, customModel]);
 
   const close = (e: { target: EventTarget; currentTarget: EventTarget }) => { if (e.target === e.currentTarget) quickCompose.close(); };
   return <div style={{ display: visible ? "block" : "none", position: "fixed", inset: 0, zIndex: 50, background: "rgb(0 0 0 / .3)" }} onPointerDown={close}>
-    <div style={{ position: "absolute", top: 0, bottom: 0, left: bounds?.left ?? 0, width: bounds?.width ?? "100%", display: "flex", justifyContent: "center", alignItems: "flex-start", padding: "15vh 16px 16px", overflowY: "auto", boxSizing: "border-box" }} onPointerDown={close}>
-    <section role="dialog" aria-label={LABELS[kind].dialog} style={{ width: "100%", maxWidth: 720, padding: 16, borderRadius: 12, background: "var(--background)", color: "var(--foreground)" }} ref={sectionRef}>
-      {source && (kind !== "fork" || forkBase) && <NewThreadComposer
+    <div style={{ position: "absolute", inset: 0, display: "flex", justifyContent: "center", alignItems: "flex-start", padding: "15vh 16px 16px", overflowY: "auto", boxSizing: "border-box" }} onPointerDown={close}>
+    <section role="dialog" aria-label={LABELS[kind].dialog} style={{ width: "100%", maxWidth: 720, padding: 16, borderRadius: 12, background: "var(--background)", color: "var(--foreground)" }} ref={sectionRef}
+      onPointerDownCapture={() => { backgroundRef.current = false; }}
+      onKeyDownCapture={(event: ReactKeyboardEvent) => {
+        if (event.key !== "Enter" || !composerRoot?.contains(event.target as Node)) return;
+        backgroundRef.current = isBackgroundSubmit(event.nativeEvent, MAC);
+        if (!backgroundRef.current) return;
+        event.preventDefault();
+        event.stopPropagation();
+        composerRoot.querySelector<HTMLFormElement>("form[data-promptbox]")?.requestSubmit();
+      }}>
+      {customModel && <style>{`[data-project-picker-composer] ${HOST_MODEL_PICKER} { display: none !important; }`}</style>}
+      {source && (kind !== "fork" || forkBase) && (!customModel || modelState) && <div ref={setComposerRoot} data-project-picker-composer=""><NewThreadComposer
+        defaultProviderId={model?.providerId}
+        defaultModel={model?.model}
+        defaultReasoningLevel={model?.reasoningLevel}
+        defaultServiceTier={model?.serviceTier}
         defaultProjectId={projectId ?? undefined}
         defaultEnvironment={kind === "fork" && forkBase ? {
             type: "provider", environmentProviderId: PROVIDER_ID,
@@ -160,20 +198,31 @@ function Session({ session, kind, visible, focusRequest }: {
         initialPrompt={kind === "handoff" && session.sourceThreadId ? `@thread:${session.sourceThreadId} ` : undefined}
         draftKey={draftKey}
         layout="document" focusRequest={visible ? focusRequest + focus : undefined}
-        placeholder={kind === "fork" && session.sourceSeqEnd !== null ? "Fork from this message into a new worktree" : LABELS[kind].placeholder}
+        placeholder={kind === "fork" && session.sourceSeqEnd !== null ? "Fork from this message into a new worktree" : `${LABELS[kind].placeholder}  ·  ↵ open  ·  ${MAC ? "⌘↵" : "Ctrl+↵"} background`}
         onSubmit={async request => {
+          const background = backgroundRef.current;
+          backgroundRef.current = false;
           try {
             const { threadId } = kind === "fork" && session.sourceThreadId
               ? await rpc.call("forkThread", { sourceThreadId: session.sourceThreadId, request,
                 ...(session.sourceSeqEnd === null ? {} : { sourceSeqEnd: session.sourceSeqEnd }) })
               : await rpc.call("createThread", { request });
             quickCompose.finish(kind);
-            toast.success(kind === "fork" ? "Fork started" : "Thread started", { action: { label: "Open", onClick: () => navigate.toThread(threadId) } });
+            if (background) toast.success(kind === "fork" ? "Fork started" : "Thread started", { action: { label: "Open", onClick: () => navigate.toThread(threadId) } });
+            else navigate.toThread(threadId);
           } catch (error) { toast.error(`Could not start thread: ${String(error)}`); throw error; }
         }}
-      />}
+      />
+      {modelSlot && modelState && createPortal(
+        <ModelTrigger label={modelLabel(modelState.presets, model, modelState.names)} onClick={() => setPopup(value => value === "model" ? null : "model")} />,
+        modelSlot)}
+      </div>}
       {popup && <div style={{ marginTop: 8, border: "1px solid var(--border)", borderRadius: 8, background: "var(--popover, var(--background))", overflow: "hidden" }}>
-        <ProjectList selectedLabel="last chosen here" selectedId={projectId} onChoose={option => choose(option.id)} onClose={() => { setPopup(false); setFocus(n => n + 1); }} />
+        {popup === "project"
+          ? <ProjectList selectedLabel="last chosen here" selectedId={projectId} onChoose={option => choose(option.id)} onClose={() => { setPopup(null); setFocus(n => n + 1); }} />
+          : <ModelList presets={modelState?.presets ?? []} names={modelState?.names ?? {}} selection={model} onChoose={chooseModel}
+              onSavePresets={async presets => { setModelState(await rpc.call("savePresets", { presets })); }}
+              onClose={() => { setPopup(null); setFocus(n => n + 1); }} />}
       </div>}
     </section>
     </div>
@@ -190,7 +239,7 @@ function Overlay() {
 
 export function registerOverlay(app: PluginAppBuilder) {
   app.slots.experimental_appOverlay({ id: "quick-compose", component: Overlay });
-  app.commands.register({ id: "new-thread", title: "Project Picker: quick compose", defaultShortcut: { key: "l", mod: true, shift: true }, run: context => quickCompose.toggle("new-thread", context) });
+  app.commands.register({ id: "new-thread", title: "Project Picker: quick compose", defaultShortcut: { key: "n", mod: true }, run: context => quickCompose.toggle("new-thread", context) });
   app.commands.register({ id: "handoff", title: "Project Picker: hand off this thread", defaultShortcut: { key: "h", mod: true, shift: true }, isAvailable: context => context.threadId !== null, run: context => quickCompose.toggle("handoff", context) });
   app.commands.register({ id: "fork", title: "Project Picker: fork this thread into a named worktree", isAvailable: context => context.threadId !== null, run: context => quickCompose.toggle("fork", context) });
   app.slots.messageAction({

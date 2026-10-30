@@ -1,7 +1,8 @@
 # Project Picker
 
 Project shortcuts and named Git worktrees for bb's New thread page, plus a
-floating composer and thread handoff adapted from Sawyer Hood's Quick Compose.
+floating composer with model presets and thread handoff adapted from Sawyer
+Hood's Quick Compose and Dillion Verma's Ultra Launcher.
 
 | Command | Default | What it does |
 | --- | --- | --- |
@@ -9,21 +10,49 @@ floating composer and thread handoff adapted from Sawyer Hood's Quick Compose.
 | Project Picker: next project | `Alt+J` | Select the next project. |
 | Project Picker: previous project | `Alt+Shift+J` | Select the previous project. |
 | Project Picker: named worktree branch name | `Mod+Shift+B` | Switch the environment to Named worktree and focus its branch name field. In the overlay this re-seeds selections (like the project shortcuts) unless the field is already shown. |
-| Project Picker: quick compose | `Mod+Shift+L` | Toggle a floating New thread composer without navigating. |
+| Project Picker: quick compose | `Mod+N` | Toggle a floating New thread composer without navigating. See [Replacing New thread](#replacing-new-thread). |
+| Model picker (overlay only) | `Mod+Shift+M` | Presets first, then **Other model…** for every provider, model, effort, and tier. |
 | Project Picker: hand off this thread | `Mod+Shift+H` | Open a composer mentioning the current thread and initially reusing its environment. |
 | Project Picker: fork this thread into a named worktree | none | Open a composer that forks the current thread into a Named worktree based on the source's branch. Also in every thread actions menu as **Fork into named worktree**. |
 
 `Mod` means Cmd on macOS and Ctrl elsewhere, matching Quick Compose's source
 bindings. Projects follow bb's order; "No project" is last.
 
+## Replacing New thread
+
+`Mod+N` is bb's own New thread shortcut, so move that one away once:
+
+```sh
+bb settings keyboard set thread.new mod+shift+o
+```
+
+The sidebar's New thread button still opens the full page. To undo, run
+`bb settings keyboard reset thread.new`.
+
 ## Overlay
 
-Open from any page or from the command palette. Use the project shortcuts
-inside the overlay. Submit starts the thread in the background;
-the success notification has an **Open** action. Failed submissions retain the
-draft. Close with Escape or a click on the backdrop. Escape first closes an open
+Open from any page or from the command palette. It is centered over the whole
+window. Use the project shortcuts inside the overlay. **Enter** creates the
+thread and opens it; **Cmd+Enter** (Ctrl+Enter elsewhere) creates it in the
+background and shows a notification with an **Open** action. Failed
+submissions retain the draft. Close with Escape or a click on the backdrop. Escape first closes an open
 @-mention menu or project list; with Composer Vim, the first Escape returns to
 Normal mode and the next one closes.
+
+### Model presets
+
+The overlay replaces bb's model button with a picker that lists presets first.
+A preset is a provider, model, reasoning level, and service tier. **Other
+model…** embeds bb's own picker; a model that matches no preset can be saved
+with **Save current as preset…**, and each preset has a delete button. The last
+choice is remembered and seeds the next overlay. On first use the presets are
+the starter set from `default-presets.ts` (from Ultra Launcher) that the
+machine's catalog offers. Presets are stored in plugin storage
+(`model-state.v1`). Reordering and renaming are not supported; delete and
+re-save instead. Forks keep their source thread's model and use bb's own
+button. The overlay hides the host button by its
+`Provider, model and reasoning` label, so a bb release that renames it leaves
+the host button visible and the trigger absent; `Mod+Shift+M` still works.
 
 Dismissed sessions stay mounted to preserve drafts and selections. On reopen, a
 new-thread session with a draft (text, mentions, or attachments) is resumed;
@@ -64,6 +93,8 @@ one resets **all** execution/environment selections. Consequently:
   Choosing the same seed again cannot reset a native-menu change; choose another
   project through our control first. The list marks the last project chosen here,
   not necessarily the current native-menu selection.
+- Changing the model re-seeds the environment and branch the same way.
+  Choose project and model first.
 - The embedded native project menu remains available. Its displayed project is
   the actual submitted project. There is no submit-time project override.
 - Overlay project shortcuts currently use their fixed defaults. Rebinding the
