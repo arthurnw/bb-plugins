@@ -10,6 +10,7 @@ const registry = createFocusRegistry();
 /** Focuses a visible branch name field matching `within`; returns false when none is mounted yet. */
 export const focusBranchName = registry.focus;
 export const branchNameFocused = registry.focused;
+export const branchNameShown = registry.shown;
 
 export function NamedWorktreeInputs(props: PluginEnvironmentProviderInputsProps) {
   const targetKey = props.target.kind === "existing-host" ? props.target.hostId : "new-host";

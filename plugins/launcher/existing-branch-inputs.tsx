@@ -45,6 +45,7 @@ function useKeyboard(active: boolean) {
 /** Focuses a visible PR/branch field matching `within`; returns false when none is mounted yet. */
 export const focusExistingRef = registry.focus;
 export const existingRefFocused = registry.focused;
+export const existingRefShown = registry.shown;
 
 /** The status line under the field, and its dot color. */
 export function describe(resolved: Resolved): { text: string; short: string; tone: "good" | "warn" | "bad" | "neutral" } {

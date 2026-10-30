@@ -10,7 +10,7 @@ rename did not carry over its saved state, which lives under the plugin ID.
 | Launcher: switch project | `Mod+Shift+J` | Search projects; arrows or Ctrl+N/P (Ctrl+J/K) to move, Enter to pick, Esc to close. |
 | Launcher: next project | `Alt+J` | Select the next project. |
 | Launcher: previous project | `Alt+Shift+J` | Select the previous project. |
-| Launcher: named worktree / existing branch | `Mod+Shift+B` | The first press focuses the Named worktree branch name (switching to Named worktree if needed); pressing again from there switches to Existing branch / PR and opens its picker, and again switches back. In the overlay this re-seeds selections (like the project shortcuts) unless the target field is already shown. |
+| Launcher: named worktree / existing branch / project checkout | `Mod+Shift+B` | Cycles Named worktree (focuses the branch name), Existing branch / PR (opens its picker), and Project checkout, then back. From any other environment the first press goes to Named worktree. In the overlay this re-seeds selections (like the project shortcuts) unless the target is already shown. |
 | Launcher: existing branch / PR | `Mod+Shift+G` | Switch the environment to Existing branch / PR and focus its field. In the overlay this re-seeds selections unless the field is already shown. |
 | Launcher: quick compose | `Mod+N` | Toggle a floating New thread composer without navigating. See [Replacing New thread](#replacing-new-thread). |
 | Model picker (overlay only) | `Mod+Shift+M` | Presets first, then **Other model…** for every provider, model, effort, and tier. |

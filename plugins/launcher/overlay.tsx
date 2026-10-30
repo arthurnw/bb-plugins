@@ -18,7 +18,7 @@ import type { ModelSelection, ModelState } from "./presets";
 import { PROVIDER_ID } from "./named-worktree";
 import { branchNameFocused, focusBranchName } from "./named-worktree-inputs";
 import { EXISTING_PROVIDER_ID } from "./existing-branch";
-import { focusExistingRef } from "./existing-branch-inputs";
+import { existingRefShown, focusExistingRef } from "./existing-branch-inputs";
 
 // The SDK exposes no draft state for the embedded composer. Check the editor
 // text, then bb's persisted draft (which also covers attachments). The storage
@@ -75,7 +75,7 @@ function Session({ session, kind, visible, focusRequest }: {
   const [projectId, setProjectId] = useState(session.projectId);
   const [popup, setPopup] = useState<"project" | "model" | null>(null);
   const [focus, setFocus] = useState(0);
-  const [seeded, setSeeded] = useState<"named" | "existing" | null>(null);
+  const [seeded, setSeeded] = useState<"named" | "existing" | "checkout" | null>(null);
   const defaultNamed = useSettings().values?.defaultNamedWorktree === true;
   const projects = useProjectOptions();
   const sdk = useSdk();
@@ -171,9 +171,10 @@ function Session({ session, kind, visible, focusRequest }: {
         const section = sectionRef.current;
         if (!section) return;
         const within = (el: HTMLElement) => section.contains(el);
-        // The first press goes to the Named worktree branch name; pressing again from there switches to Existing branch / PR, and back.
-        // Re-seeding the environment resets the other selections, so only do it when the target field is not already shown.
+        // Cycles Named worktree (branch name field) -> Existing branch / PR -> Project checkout.
+        // Re-seeding the environment resets the other selections, so only do it when the target is not already shown.
         if (kind !== "fork" && branchNameFocused(within)) { setSeeded("existing"); focusExistingRef(within, 2000); }
+        else if (kind !== "fork" && existingRefShown(within)) setSeeded("checkout");
         else if (!focusBranchName(within)) { setSeeded("named"); focusBranchName(within, 2000); }
         return;
       }
@@ -209,6 +210,7 @@ function Session({ session, kind, visible, focusRequest }: {
             inputs: { name: "", baseBranch: forkBase.branch ?? "" },
             ...(forkBase.hostId ? { machine: { type: "existing", hostId: forkBase.hostId } } : {}),
           }
+          : seeded === "checkout" ? undefined
           : seeded === "existing" ? { type: "provider", environmentProviderId: EXISTING_PROVIDER_ID, inputs: null }
           : seeded === "named" || (defaultNamed && kind === "new-thread") ? { type: "provider", environmentProviderId: PROVIDER_ID, inputs: null }
           : projectId === source.projectId && source.environmentId ? { type: "reuse", environmentId: source.environmentId } : undefined}

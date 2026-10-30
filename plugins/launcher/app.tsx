@@ -63,23 +63,28 @@ export default definePluginApp((app) => {
 
   app.composer.experimental_registerCommand({
     id: "branch-name",
-    title: "Launcher: named worktree / existing branch",
+    title: "Launcher: named worktree / existing branch / project checkout",
     defaultShortcut: { key: "b", mod: true, shift: true },
     run: async ({ composer }) => {
       if (composer.scope.kind !== "new-thread") return;
       const within = (el: HTMLElement) => !el.closest("section[role=dialog]");
-      // The first press goes to the Named worktree branch name; pressing again from there switches to Existing branch / PR, and back.
-      const toExisting = branchNameFocused(within);
-      const [focus, providerId] = toExisting ? [focusExistingRef, EXISTING_PROVIDER_ID] as const : [focusBranchName, PROVIDER_ID] as const;
-      if (!toExisting && focus(within)) return;
       const current = composer.selection?.environment;
       const hostId = current?.type === "host" ? current.hostId
         : current?.type === "provider" && current.machine?.type === "existing" ? current.machine.hostId : undefined;
-      await composer.setSelection({
-        environment: { type: "provider", environmentProviderId: providerId, inputs: null,
-          ...(hostId ? { machine: { type: "existing", hostId } } : {}) },
-      });
-      focus(within, 2000);
+      const machine = hostId ? { machine: { type: "existing", hostId } } as const : {};
+      const providerId = current?.type === "provider" ? current.environmentProviderId : null;
+      // Cycles Named worktree (branch name field) -> Existing branch / PR -> Project checkout.
+      // From Named worktree, the first press only focuses the field when it isn't focused yet.
+      if (providerId === PROVIDER_ID && !branchNameFocused(within) && focusBranchName(within)) return;
+      if (providerId === PROVIDER_ID) {
+        await composer.setSelection({ environment: { type: "provider", environmentProviderId: EXISTING_PROVIDER_ID, inputs: null, ...machine } });
+        focusExistingRef(within, 2000);
+      } else if (providerId === EXISTING_PROVIDER_ID) {
+        await composer.setSelection({ environment: { type: "host", workspace: { type: "unmanaged", path: null }, ...(hostId ? { hostId } : {}) } });
+      } else {
+        await composer.setSelection({ environment: { type: "provider", environmentProviderId: PROVIDER_ID, inputs: null, ...machine } });
+        focusBranchName(within, 2000);
+      }
     },
   });
 
