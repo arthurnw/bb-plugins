@@ -1,19 +1,20 @@
-# Project Picker
+# Launcher
 
-Project shortcuts and named Git worktrees for bb's New thread page, plus a
-floating composer with model presets and thread handoff adapted from Sawyer
-Hood's Quick Compose and Dillion Verma's Ultra Launcher.
+A floating new-thread composer with model presets, plus project shortcuts, named
+Git worktrees, and thread handoff. The composer is adapted from Sawyer Hood's
+Quick Compose and Dillion Verma's Ultra Launcher. Formerly `project-picker`; the
+rename did not carry over its saved state, which lives under the plugin ID.
 
 | Command | Default | What it does |
 | --- | --- | --- |
-| Project Picker: switch project | `Mod+Shift+J` | Search projects; arrows or Ctrl+N/P (Ctrl+J/K) to move, Enter to pick, Esc to close. |
-| Project Picker: next project | `Alt+J` | Select the next project. |
-| Project Picker: previous project | `Alt+Shift+J` | Select the previous project. |
-| Project Picker: named worktree branch name | `Mod+Shift+B` | Switch the environment to Named worktree and focus its branch name field. In the overlay this re-seeds selections (like the project shortcuts) unless the field is already shown. |
-| Project Picker: quick compose | `Mod+N` | Toggle a floating New thread composer without navigating. See [Replacing New thread](#replacing-new-thread). |
+| Launcher: switch project | `Mod+Shift+J` | Search projects; arrows or Ctrl+N/P (Ctrl+J/K) to move, Enter to pick, Esc to close. |
+| Launcher: next project | `Alt+J` | Select the next project. |
+| Launcher: previous project | `Alt+Shift+J` | Select the previous project. |
+| Launcher: named worktree branch name | `Mod+Shift+B` | Switch the environment to Named worktree and focus its branch name field. In the overlay this re-seeds selections (like the project shortcuts) unless the field is already shown. |
+| Launcher: quick compose | `Mod+N` | Toggle a floating New thread composer without navigating. See [Replacing New thread](#replacing-new-thread). |
 | Model picker (overlay only) | `Mod+Shift+M` | Presets first, then **Other model…** for every provider, model, effort, and tier. |
-| Project Picker: hand off this thread | `Mod+Shift+H` | Open a composer mentioning the current thread and initially reusing its environment. |
-| Project Picker: fork this thread into a named worktree | none | Open a composer that forks the current thread into a Named worktree based on the source's branch. Also in every thread actions menu as **Fork into named worktree**. |
+| Launcher: hand off this thread | `Mod+Shift+H` | Open a composer mentioning the current thread and initially reusing its environment. |
+| Launcher: fork this thread into a named worktree | none | Open a composer that forks the current thread into a Named worktree based on the source's branch. Also in every thread actions menu as **Fork into named worktree**. |
 
 `Mod` means Cmd on macOS and Ctrl elsewhere, matching Quick Compose's source
 bindings. Projects follow bb's order; "No project" is last.
@@ -48,7 +49,7 @@ with **Save current as preset…**, and each preset has a delete button. The las
 choice is remembered and seeds the next overlay. On first use the presets are
 the starter set from `default-presets.ts` (from Ultra Launcher) that the
 machine's catalog offers. Presets are stored in plugin storage
-(`model-state.v1`). Edit the list in Settings → Project Picker → Model presets: rename, change the
+(`model-state.v1`). Edit the list in Settings → Launcher → Model presets: rename, change the
 model, reorder, add, delete, or restore the defaults. Forks keep their source thread's model and use bb's own
 button. The overlay hides the host button by its
 `Provider, model and reasoning` label, so a bb release that renames it leaves
@@ -74,8 +75,8 @@ or rebind its two commands to avoid collisions. This plugin does not disable or
 uninstall anything. Quick Chat is separate and need not be disabled.
 
 Rebind commands in Settings → Keyboard. Existing New thread commands retain IDs
-`plugin:project-picker/open`, `/next`, `/previous`, and `/branch-name`; overlay commands use
-`plugin:project-picker/new-thread` and `/handoff`.
+`plugin:launcher/open`, `/next`, `/previous`, and `/branch-name`; overlay commands use
+`plugin:launcher/new-thread` and `/handoff`.
 
 ## SDK limits (bb 0.46.1 / SDK 0.6.49)
 
@@ -198,7 +199,7 @@ built-in Worktree provider.
 
 Worktrees live on the selected machine under this plugin's host-data directory:
 `worktrees/<path-key>/<repository-name>`. This matches the built-in layout, but
-uses `project-picker/host-data` rather than `environment-git-worktree/host-data`
+uses `launcher/host-data` rather than `environment-git-worktree/host-data`
 to keep ownership separate.
 
 The provider returns an owned path, so bb runs `.bb-env-setup.sh` and

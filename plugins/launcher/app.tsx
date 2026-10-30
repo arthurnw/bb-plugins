@@ -6,7 +6,7 @@ import { PresetSettings } from "./settings";
 import { loadProjectOptions, ProjectList } from "./project-list";
 import { cycle } from "./projects";
 
-const POPUP_ID = "project-picker";
+const POPUP_ID = "launcher";
 
 type Sdk = ReturnType<typeof useSdk>;
 
@@ -35,7 +35,7 @@ export default definePluginApp((app) => {
   }
 
   app.composer.customize({
-    id: "project-picker",
+    id: "launcher",
     scopes: ["new-thread"],
     experimental_popups: [{ id: POPUP_ID, label: "Switch project", component: ProjectPopup }],
     banners: [{ id: "sdk-capture", chrome: "bare", component: SdkCapture }],
@@ -43,7 +43,7 @@ export default definePluginApp((app) => {
 
   app.composer.experimental_registerCommand({
     id: "open",
-    title: "Project Picker: switch project",
+    title: "Launcher: switch project",
     defaultShortcut: { key: "j", mod: true, shift: true },
     run: ({ composer }) => {
       if (composer.scope.kind !== "new-thread") return;
@@ -59,7 +59,7 @@ export default definePluginApp((app) => {
 
   app.composer.experimental_registerCommand({
     id: "branch-name",
-    title: "Project Picker: named worktree branch name",
+    title: "Launcher: named worktree branch name",
     defaultShortcut: { key: "b", mod: true, shift: true },
     run: async ({ composer }) => {
       if (composer.scope.kind !== "new-thread") return;
@@ -78,14 +78,14 @@ export default definePluginApp((app) => {
 
   app.composer.experimental_registerCommand({
     id: "next",
-    title: "Project Picker: next project",
+    title: "Launcher: next project",
     defaultShortcut: { key: "j", alt: true },
     run: cycleBy(1),
   });
 
   app.composer.experimental_registerCommand({
     id: "previous",
-    title: "Project Picker: previous project",
+    title: "Launcher: previous project",
     defaultShortcut: { key: "j", alt: true, shift: true },
     run: cycleBy(-1),
   });

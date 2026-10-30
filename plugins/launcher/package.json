@@ -1,5 +1,5 @@
 {
-  "name": "bb-plugin-project-picker",
+  "name": "bb-plugin-launcher",
   "version": "0.1.0",
   "type": "module",
   "engines": {
@@ -7,8 +7,8 @@
     "bbPluginSdk": ">=0.6.49"
   },
   "bb": {
-    "name": "Project Picker",
-    "description": "Project shortcuts, named Git worktrees, a floating new-thread composer, and thread handoff.",
+    "name": "Launcher",
+    "description": "A floating new-thread composer with model presets, project shortcuts, named Git worktrees, and thread handoff.",
     "branding": {
       "icon": "FolderOpen"
     },

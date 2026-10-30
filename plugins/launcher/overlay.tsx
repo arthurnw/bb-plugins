@@ -28,10 +28,10 @@ function hasDraft(section: HTMLElement | null, draftKey: string): boolean {
 }
 
 const LABELS: Record<QuickComposeKind, { dialog: string; placeholder: string }> = {
-  "new-thread": { dialog: "Project Picker quick compose", placeholder: "Start a new thread" },
-  handoff: { dialog: "Project Picker handoff", placeholder: "Hand off this thread" },
+  "new-thread": { dialog: "Launcher quick compose", placeholder: "Start a new thread" },
+  handoff: { dialog: "Launcher handoff", placeholder: "Hand off this thread" },
   // Forks keep the source's provider and model; the composer's pickers for those are ignored.
-  fork: { dialog: "Project Picker fork", placeholder: "Fork this thread into a new worktree" },
+  fork: { dialog: "Launcher fork", placeholder: "Fork this thread into a new worktree" },
 };
 
 const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
@@ -121,8 +121,8 @@ function Session({ session, kind, visible, focusRequest }: {
   const choose = (id: string) => { setProjectId(id); setPopup(null); setFocus(n => n + 1); };
   const sectionRef = useRef<HTMLElement>(null);
   const draftKey = session.sourceThreadId
-    ? `project-picker-${kind}:${session.sourceThreadId}${session.sourceSeqEnd === null ? "" : `@${session.sourceSeqEnd}`}`
-    : "project-picker-compose";
+    ? `launcher-${kind}:${session.sourceThreadId}${session.sourceSeqEnd === null ? "" : `@${session.sourceSeqEnd}`}`
+    : "launcher-compose";
   useEffect(() => {
     if (kind === "new-thread") return quickCompose.registerDraftCheck(() => hasDraft(sectionRef.current, draftKey));
   }, [kind, draftKey]);
@@ -185,8 +185,8 @@ function Session({ session, kind, visible, focusRequest }: {
         event.stopPropagation();
         composerRoot.querySelector<HTMLFormElement>("form[data-promptbox]")?.requestSubmit();
       }}>
-      {customModel && <style>{`[data-project-picker-composer] ${HOST_MODEL_PICKER} { display: none !important; }`}</style>}
-      {source && (kind !== "fork" || forkBase) && (!customModel || modelState) && <div ref={setComposerRoot} data-project-picker-composer=""><NewThreadComposer
+      {customModel && <style>{`[data-launcher-composer] ${HOST_MODEL_PICKER} { display: none !important; }`}</style>}
+      {source && (kind !== "fork" || forkBase) && (!customModel || modelState) && <div ref={setComposerRoot} data-launcher-composer=""><NewThreadComposer
         defaultProviderId={model?.providerId}
         defaultModel={model?.model}
         defaultReasoningLevel={model?.reasoningLevel}
@@ -243,9 +243,9 @@ function Overlay() {
 
 export function registerOverlay(app: PluginAppBuilder) {
   app.slots.experimental_appOverlay({ id: "quick-compose", component: Overlay });
-  app.commands.register({ id: "new-thread", title: "Project Picker: quick compose", defaultShortcut: { key: "n", mod: true }, run: context => quickCompose.toggle("new-thread", context) });
-  app.commands.register({ id: "handoff", title: "Project Picker: hand off this thread", defaultShortcut: { key: "h", mod: true, shift: true }, isAvailable: context => context.threadId !== null, run: context => quickCompose.toggle("handoff", context) });
-  app.commands.register({ id: "fork", title: "Project Picker: fork this thread into a named worktree", isAvailable: context => context.threadId !== null, run: context => quickCompose.toggle("fork", context) });
+  app.commands.register({ id: "new-thread", title: "Launcher: quick compose", defaultShortcut: { key: "n", mod: true }, run: context => quickCompose.toggle("new-thread", context) });
+  app.commands.register({ id: "handoff", title: "Launcher: hand off this thread", defaultShortcut: { key: "h", mod: true, shift: true }, isAvailable: context => context.threadId !== null, run: context => quickCompose.toggle("handoff", context) });
+  app.commands.register({ id: "fork", title: "Launcher: fork this thread into a named worktree", isAvailable: context => context.threadId !== null, run: context => quickCompose.toggle("fork", context) });
   app.slots.messageAction({
     id: "fork-named-worktree", title: "Fork into named worktree", icon: "GitBranch",
     run: ({ threadId, message }) => quickCompose.open("fork", { projectId: null, threadId, sourceSeqEnd: message.sourceSeqEnd }),

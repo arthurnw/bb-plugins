@@ -32,8 +32,8 @@
       "source": "./plugins/plannotator-inbox"
     },
     {
-      "name": "project-picker",
-      "source": "./plugins/project-picker"
+      "name": "launcher",
+      "source": "./plugins/launcher"
     },
     {
       "name": "tailnet-preview",
