@@ -48,8 +48,8 @@ with **Save current as preset…**, and each preset has a delete button. The las
 choice is remembered and seeds the next overlay. On first use the presets are
 the starter set from `default-presets.ts` (from Ultra Launcher) that the
 machine's catalog offers. Presets are stored in plugin storage
-(`model-state.v1`). Reordering and renaming are not supported; delete and
-re-save instead. Forks keep their source thread's model and use bb's own
+(`model-state.v1`). Edit the list in Settings → Project Picker → Model presets: rename, change the
+model, reorder, add, delete, or restore the defaults. Forks keep their source thread's model and use bb's own
 button. The overlay hides the host button by its
 `Provider, model and reasoning` label, so a bb release that renames it leaves
 the host button visible and the trigger absent; `Mod+Shift+M` still works.

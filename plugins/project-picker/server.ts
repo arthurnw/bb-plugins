@@ -21,6 +21,7 @@ export const quickComposeRpcContract = defineRpcContract({
     output: z.object({ threadId: z.string() }),
   },
   getModelState: { input: z.object({}), output: modelStateSchema },
+  restoreDefaultPresets: { input: z.object({}), output: modelStateSchema },
   savePresets: { input: z.object({ presets: presetsSchema }), output: modelStateSchema },
   setSelection: { input: z.object({ selection: selectionSchema }), output: modelStateSchema },
 });
@@ -85,6 +86,12 @@ export default async function plugin(bb: BbPluginApi) {
 
   bb.rpc.register(quickComposeRpcContract, {
     getModelState: () => exclusive(async () => withNames(await readModelState())),
+    restoreDefaultPresets: () => exclusive(async () => {
+      catalogCache = null;
+      const presets = resolveDefaultPresets(await catalog());
+      if (presets.length === 0) throw new Error("No default presets are available for this machine's providers.");
+      return writeModelState({ ...await readModelState(), presets });
+    }),
     savePresets: ({ presets }) => exclusive(async () => writeModelState({ ...await readModelState(), presets })),
     setSelection: ({ selection }) => exclusive(async () => writeModelState({ ...await readModelState(), selection })),
     async createThread({ request }) {

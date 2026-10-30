@@ -103,6 +103,10 @@ function Session({ session, kind, visible, focusRequest }: {
       state => { setModelState(state); setModel(state.selection ?? state.presets[0] ?? null); },
       () => setModelState({ presets: [], selection: null, names: {} }));
   }, [rpc, customModel]);
+  // Presets may have been edited in settings since this session mounted.
+  useEffect(() => {
+    if (popup === "model") rpc.call("getModelState", {}).then(setModelState, () => {});
+  }, [popup, rpc]);
   const chooseModel = (selection: ModelSelection, from: "preset" | "custom") => {
     setModel(selection);
     void rpc.call("setSelection", { selection }).then(setModelState, () => {});
