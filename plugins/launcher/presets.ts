@@ -27,6 +27,8 @@ const EFFORT_LABELS: Record<string, string> = {
   none: "None", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max", ultra: "Ultra", ultracode: "Ultra code",
 };
 export const effortLabel = (level: string) => EFFORT_LABELS[level] ?? level;
+const PROVIDER_LABELS: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex", pi: "Pi" };
+export const providerLabel = (providerId: string) => PROVIDER_LABELS[providerId] ?? providerId;
 export const modelSpec = (value: ModelSelection, names: Record<string, string> = {}) =>
   `${names[modelKey(value)] ?? value.model} · ${effortLabel(value.reasoningLevel)}`
   + (value.serviceTier === "default" ? "" : ` · ${value.serviceTier.charAt(0).toUpperCase()}${value.serviceTier.slice(1)}`);

@@ -1,6 +1,6 @@
 import { experimental_ProviderModelPicker as ProviderModelPicker } from "@get-bb/plugin-sdk/app";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
-import { filterPresets, findPreset, MAX_PRESETS, modelSpec, sameModel, type ModelPreset, type ModelSelection } from "./presets.ts";
+import { filterPresets, findPreset, MAX_PRESETS, modelSpec, providerLabel, sameModel, type ModelPreset, type ModelSelection } from "./presets.ts";
 
 type Names = Record<string, string>;
 
@@ -111,6 +111,7 @@ export function ModelList({ presets, names, selection, onChoose, onSavePresets, 
                 onClick={() => onChoose(preset, "preset")} style={base}>
                 <span style={{ display: "flex", gap: 8, minWidth: 0, flex: 1 }}>
                   <span style={ellipsis}>{preset.name}</span>
+                  <span title={preset.providerId} style={providerBadge}>{providerLabel(preset.providerId)}</span>
                   <span style={{ ...ellipsis, color: "var(--muted-foreground)" }}>{modelSpec(preset, names)}</span>
                 </span>
                 {current && <span style={{ color: "var(--muted-foreground)" }}>current</span>}
@@ -166,6 +167,8 @@ const rowStyle: CSSProperties = { display: "flex", alignItems: "center", gap: 8,
 const ellipsis: CSSProperties = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
 const deleteStyle: CSSProperties = { border: "none", background: "transparent", color: "var(--muted-foreground)", cursor: "pointer", fontSize: 16, lineHeight: 1, padding: "0 4px" };
 const emptyStyle: CSSProperties = { padding: "6px 8px", fontSize: 12, color: "var(--muted-foreground)" };
+
+const providerBadge: CSSProperties = { flex: "none", padding: "0 6px", borderRadius: 4, border: "1px solid var(--border)", fontSize: 11, lineHeight: "16px", color: "var(--muted-foreground)" };
 
 /** Trigger that takes the place of the host's model picker button. */
 export function ModelTrigger({ label, onClick, disabled }: { label: string; onClick: () => void; disabled?: boolean }) {
