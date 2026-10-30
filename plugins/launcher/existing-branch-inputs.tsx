@@ -3,12 +3,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { z } from "zod";
 import type { refChoicesSchema } from "./contract";
 import { existingInputsSchema, parseRef, type Resolved } from "./existing-branch";
+import { createFocusRegistry } from "./focus-field";
 import type { quickComposeRpcContract } from "./server";
 
 type Choices = z.infer<typeof refChoicesSchema>;
 type Check = { status: "empty" } | { status: "checking" } | { status: "error"; message: string } | { status: "ok"; resolved: Resolved };
 
 const RESOLVE_DELAY_MS = 350;
+
+const registry = createFocusRegistry();
+
+/** Focuses a visible PR/branch field matching `within`; returns false when none is mounted yet. */
+export const focusExistingRef = registry.focus;
 
 /** The status line under the field, and its dot color. */
 export function describe(resolved: Resolved): { text: string; short: string; tone: "good" | "warn" | "bad" | "neutral" } {
@@ -40,6 +46,8 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
   const [choices, setChoices] = useState<Choices | null>(null);
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
+  const field = useRef<HTMLInputElement>(null);
+  useEffect(() => (field.current ? registry.register(field.current) : undefined), []);
 
   // Load the picker's candidates the first time the field opens.
   useEffect(() => {
@@ -96,7 +104,7 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
 
   return (
     <div ref={box} style={{ position: "relative", display: "flex", alignItems: "center", gap: 8, minWidth: 0, flexShrink: 1 }}>
-      <input aria-label="PR number, URL, or branch" placeholder="PR number, URL, or branch" value={text}
+      <input ref={field} aria-label="PR number, URL, or branch" placeholder="PR number, URL, or branch" value={text}
         onFocus={() => setOpen(true)}
         onChange={(event) => { reviewTouched.current = false; setText(event.target.value); setOpen(true); }}
         onKeyDown={(event) => {

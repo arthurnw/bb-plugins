@@ -11,6 +11,7 @@ rename did not carry over its saved state, which lives under the plugin ID.
 | Launcher: next project | `Alt+J` | Select the next project. |
 | Launcher: previous project | `Alt+Shift+J` | Select the previous project. |
 | Launcher: named worktree branch name | `Mod+Shift+B` | Switch the environment to Named worktree and focus its branch name field. In the overlay this re-seeds selections (like the project shortcuts) unless the field is already shown. |
+| Launcher: existing branch / PR | `Mod+Shift+E` | Switch the environment to Existing branch / PR and focus its field. In the overlay this re-seeds selections unless the field is already shown. |
 | Launcher: quick compose | `Mod+N` | Toggle a floating New thread composer without navigating. See [Replacing New thread](#replacing-new-thread). |
 | Model picker (overlay only) | `Mod+Shift+M` | Presets first, then **Other model…** for every provider, model, effort, and tier. |
 | Launcher: hand off this thread | `Mod+Shift+H` | Open a composer mentioning the current thread and initially reusing its environment. |

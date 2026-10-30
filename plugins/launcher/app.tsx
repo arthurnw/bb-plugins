@@ -1,6 +1,6 @@
 import { definePluginApp, useComposer, useSdk, type PluginComposerApi } from "@get-bb/plugin-sdk/app";
 import { EXISTING_PROVIDER_ID } from "./existing-branch";
-import { ExistingBranchInputs } from "./existing-branch-inputs";
+import { ExistingBranchInputs, focusExistingRef } from "./existing-branch-inputs";
 import { PROVIDER_ID } from "./named-worktree";
 import { focusBranchName, NamedWorktreeInputs } from "./named-worktree-inputs";
 import { registerOverlay } from "./overlay";
@@ -77,6 +77,25 @@ export default definePluginApp((app) => {
           ...(hostId ? { machine: { type: "existing", hostId } } : {}) },
       });
       focusBranchName(within, 2000);
+    },
+  });
+
+  app.composer.experimental_registerCommand({
+    id: "existing-ref",
+    title: "Launcher: existing branch / PR",
+    defaultShortcut: { key: "e", mod: true, shift: true },
+    run: async ({ composer }) => {
+      if (composer.scope.kind !== "new-thread") return;
+      const within = (el: HTMLElement) => !el.closest("section[role=dialog]");
+      if (focusExistingRef(within)) return;
+      const current = composer.selection?.environment;
+      const hostId = current?.type === "host" ? current.hostId
+        : current?.type === "provider" && current.machine?.type === "existing" ? current.machine.hostId : undefined;
+      await composer.setSelection({
+        environment: { type: "provider", environmentProviderId: EXISTING_PROVIDER_ID, inputs: null,
+          ...(hostId ? { machine: { type: "existing", hostId } } : {}) },
+      });
+      focusExistingRef(within, 2000);
     },
   });
 

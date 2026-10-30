@@ -17,6 +17,8 @@ import { ModelList, ModelTrigger, modelLabel } from "./model-picker";
 import type { ModelSelection, ModelState } from "./presets";
 import { PROVIDER_ID } from "./named-worktree";
 import { focusBranchName } from "./named-worktree-inputs";
+import { EXISTING_PROVIDER_ID } from "./existing-branch";
+import { focusExistingRef } from "./existing-branch-inputs";
 
 // The SDK exposes no draft state for the embedded composer. Check the editor
 // text, then bb's persisted draft (which also covers attachments). The storage
@@ -73,7 +75,7 @@ function Session({ session, kind, visible, focusRequest }: {
   const [projectId, setProjectId] = useState(session.projectId);
   const [popup, setPopup] = useState<"project" | "model" | null>(null);
   const [focus, setFocus] = useState(0);
-  const [namedWorktree, setNamedWorktree] = useState(false);
+  const [seeded, setSeeded] = useState<"named" | "existing" | null>(null);
   const defaultNamed = useSettings().values?.defaultNamedWorktree === true;
   const projects = useProjectOptions();
   const sdk = useSdk();
@@ -156,6 +158,13 @@ function Session({ session, kind, visible, focusRequest }: {
       event.stopImmediatePropagation();
       // A fork stays in its source's project.
       if (kind === "fork" && action !== "branch-name") return;
+      if (action === "existing-ref") {
+        const section = sectionRef.current;
+        if (!section) return;
+        const within = (el: HTMLElement) => section.contains(el);
+        if (!focusExistingRef(within)) { setSeeded("existing"); focusExistingRef(within, 2000); }
+        return;
+      }
       if (action === "open") { setPopup(value => value === "project" ? null : "project"); return; }
       if (action === "model") { if (customModel) setPopup(value => value === "model" ? null : "model"); return; }
       if (action === "branch-name") {
@@ -163,7 +172,7 @@ function Session({ session, kind, visible, focusRequest }: {
         if (!section) return;
         const within = (el: HTMLElement) => section.contains(el);
         // Re-seeding the environment resets the other selections, so only do it when the field is not already shown.
-        if (!focusBranchName(within)) { setNamedWorktree(true); focusBranchName(within, 2000); }
+        if (!focusBranchName(within)) { setSeeded("named"); focusBranchName(within, 2000); }
         return;
       }
       const next = projects && cycle(projects, projectId, action === "next" ? 1 : -1);
@@ -198,7 +207,8 @@ function Session({ session, kind, visible, focusRequest }: {
             inputs: { name: "", baseBranch: forkBase.branch ?? "" },
             ...(forkBase.hostId ? { machine: { type: "existing", hostId: forkBase.hostId } } : {}),
           }
-          : namedWorktree || (defaultNamed && kind === "new-thread") ? { type: "provider", environmentProviderId: PROVIDER_ID, inputs: null }
+          : seeded === "existing" ? { type: "provider", environmentProviderId: EXISTING_PROVIDER_ID, inputs: null }
+          : seeded === "named" || (defaultNamed && kind === "new-thread") ? { type: "provider", environmentProviderId: PROVIDER_ID, inputs: null }
           : projectId === source.projectId && source.environmentId ? { type: "reuse", environmentId: source.environmentId } : undefined}
         initialPrompt={kind === "handoff" && session.sourceThreadId ? `@thread:${session.sourceThreadId} ` : undefined}
         draftKey={draftKey}

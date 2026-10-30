@@ -2,28 +2,12 @@ import { experimental_BranchPicker as BranchPicker, useSdk, type PluginEnvironme
 import { useEffect, useRef, useState } from "react";
 import { branchNameError, inputsSchema } from "./named-worktree";
 
-// Branch name fields currently mounted, so a command can focus one. A request
-// made before the field mounts (the environment was just switched) is kept
-// briefly and claimed by the first matching field that mounts.
-const fields = new Set<HTMLInputElement>();
-let pending: { within: (el: HTMLElement) => boolean; until: number } | null = null;
+import { createFocusRegistry } from "./focus-field";
 
-function visible(el: HTMLElement) {
-  return el.isConnected && el.getClientRects().length > 0;
-}
+const registry = createFocusRegistry();
 
 /** Focuses a visible branch name field matching `within`; returns false when none is mounted yet. */
-export function focusBranchName(within: (el: HTMLElement) => boolean, waitMs = 0): boolean {
-  const field = [...fields].reverse().find((el) => visible(el) && within(el));
-  if (field) {
-    pending = null;
-    field.focus();
-    field.setSelectionRange(field.value.length, field.value.length);
-    return true;
-  }
-  pending = waitMs > 0 ? { within, until: Date.now() + waitMs } : null;
-  return false;
-}
+export const focusBranchName = registry.focus;
 
 export function NamedWorktreeInputs(props: PluginEnvironmentProviderInputsProps) {
   const targetKey = props.target.kind === "existing-host" ? props.target.hostId : "new-host";
@@ -50,16 +34,7 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
     }, () => {});
     return () => { cancelled = true; };
   }, [sdk]);
-  useEffect(() => {
-    const el = field.current;
-    if (!el) return;
-    fields.add(el);
-    // Wait a frame so the field is laid out before checking visibility.
-    const frame = requestAnimationFrame(() => {
-      if (pending && pending.until > Date.now() && visible(el) && pending.within(el)) focusBranchName(pending.within);
-    });
-    return () => { cancelAnimationFrame(frame); fields.delete(el); };
-  }, []);
+  useEffect(() => (field.current ? registry.register(field.current) : undefined), []);
   useEffect(() => {
     // An empty name, or only the prefix, lets the provider name the branch from the thread title.
     const chosen = name === prefix ? "" : name;
