@@ -31,7 +31,7 @@ export async function validateBranchName(source: string, name: string, signal?: 
   });
 }
 
-async function branchExists(source: string, name: string, signal?: AbortSignal) {
+export async function branchExists(source: string, name: string, signal?: AbortSignal) {
   return (await git(source, ["for-each-ref", "--format=%(refname)", `refs/heads/${name}`], signal))
     .split("\n").includes(`refs/heads/${name}`);
 }
@@ -178,14 +178,14 @@ export async function planWorktree(dataDir: string, rootSetting: string, pathKey
 }
 
 /** The branch checked out at `target`, "" if detached, or null if `target` is not a worktree of `source`. */
-async function registeredBranch(source: string, target: string, signal?: AbortSignal) {
+export async function registeredBranch(source: string, target: string, signal?: AbortSignal) {
   const list = await git(source, ["worktree", "list", "--porcelain", "-z"], signal);
   const canonical = existsSync(target) ? await fs.realpath(target) : target;
   const entry = list.split("\0\0").find((entry) => entry.split("\0")[0] === `worktree ${canonical}`);
   return entry === undefined ? null : entry.split("\0").find((line) => line.startsWith("branch "))?.slice("branch refs/heads/".length) ?? "";
 }
 
-async function copyIncluded(source: string, target: string, signal?: AbortSignal) {
+export async function copyIncluded(source: string, target: string, signal?: AbortSignal) {
   if (!existsSync(path.join(source, ".worktreeinclude"))) return;
   const files = await git(source, ["ls-files", "--others", "--ignored", "--exclude-from=.worktreeinclude", "-z"], signal);
   for (const file of files.split("\0").filter(Boolean)) {
