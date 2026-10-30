@@ -35,7 +35,7 @@ Open from any page or from the command palette. It is centered over the whole
 window. Use the project shortcuts inside the overlay. **Enter** creates the
 thread and opens it; **Cmd+Enter** (Ctrl+Enter elsewhere) creates it in the
 background and shows a notification with an **Open** action. Failed
-submissions retain the draft. Close with Escape or a click on the backdrop. Escape first closes an open
+submissions retain the draft. Close with Escape or a click on the backdrop. In the desktop app, a native Browser tab in the side panel draws above page content, so it can cover the overlay's right edge. Escape first closes an open
 @-mention menu or project list; with Composer Vim, the first Escape returns to
 Normal mode and the next one closes.
 
