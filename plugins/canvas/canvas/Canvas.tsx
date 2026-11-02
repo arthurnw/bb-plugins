@@ -1306,8 +1306,8 @@ function CanvasInner() {
       select: setSelectedId,
       open: (id, split) => navigate.toThread(id, { split }),
       newThreadIn: (frame) => {
+        if (openLauncher(frame.grouping === "project" ? frame.projectId : null)) return;
         if (frame.grouping === "project" && frame.projectId !== null) {
-          if (openLauncher(frame.projectId)) return;
           navigate.toCompose({ projectId: frame.projectId, focusPrompt: true });
         } else if (frame.grouping === "section") {
           navigate.toCompose({ placement: { sectionId: frame.sectionId, pinned: false }, focusPrompt: true });
