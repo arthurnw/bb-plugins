@@ -632,10 +632,11 @@ function CanvasInner() {
       ...empty.map((section, index) => ({
         group: { key: section.id, name: section.name, projectId: null, sectionId: section.id, hostId: null } satisfies Group,
         members: [] as PluginSidebarThread[],
-        bounds: { ...slot, x: left + index * (slot.width + FRAME_GAP), y: top },
+        // A dragged empty frame's position is stored under `frame:<section id>`.
+        bounds: { ...slot, ...(arrangement.positions[`frame:${section.id}`] ?? { x: left + index * (slot.width + FRAME_GAP), y: top }) },
       })),
     ];
-  }, [topLevel, groups, positions, cardHeight, grouping, sidebar.sections]);
+  }, [topLevel, groups, positions, cardHeight, grouping, sidebar.sections, arrangement.positions]);
 
   /** Files a thread under a section and lets the canvas re-place it there. */
   const moveToSection = useCallback(
@@ -692,7 +693,6 @@ function CanvasInner() {
         width: bounds.width,
         height: bounds.height,
         zIndex: -1,
-        draggable: members.length > 0,
         data: {
           grouping,
           groupKey: group.key,
@@ -892,6 +892,9 @@ function CanvasInner() {
           moved[change.id] = change.position;
           followCard(change.id, dx, dy);
         }
+        if (node.type === "frame" && grouping === "section" && membersOf(node.data.groupKey).length === 0) {
+          changes[`frame:${node.data.groupKey}`] = node.position;
+        }
         if (node.type === "frame") {
           for (const id of membersOf(node.data.groupKey)) {
             const point = moved[id] ?? positionsRef.current[id];
@@ -990,6 +993,9 @@ function CanvasInner() {
             );
             if (target !== undefined) void moveToSection(node.id, target.group.sectionId, true);
           }
+        }
+        if (node.type === "frame" && grouping === "section" && membersOf(node.data.groupKey).length === 0) {
+          changes[`frame:${node.data.groupKey}`] = node.position;
         }
         if (node.type === "frame") {
           for (const id of membersOf(node.data.groupKey)) {
