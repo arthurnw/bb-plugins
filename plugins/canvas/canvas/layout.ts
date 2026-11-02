@@ -30,7 +30,7 @@ const GAP_X = 56;
 const GAP_Y = 20;
 const FRAME_PAD = 24;
 export const FRAME_HEADER = 44;
-const FRAME_GAP = 96;
+export const FRAME_GAP = 96;
 const ROW_MAX_WIDTH = 2600;
 
 /** Parent links within one group, falling back to the fork source. */
