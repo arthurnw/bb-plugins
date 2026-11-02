@@ -258,6 +258,13 @@ function Overlay() {
 
 export function registerOverlay(app: PluginAppBuilder) {
   app.slots.experimental_appOverlay({ id: "quick-compose", component: Overlay });
+  // Other plugins (Canvas) open the composer with this cancelable window event.
+  // Calling preventDefault tells the sender the Launcher handled it.
+  window.addEventListener("bb-launcher:new-thread", event => {
+    const detail = (event as CustomEvent<{ projectId?: string | null } | null>).detail;
+    quickCompose.open("new-thread", { projectId: detail?.projectId ?? null, threadId: null });
+    event.preventDefault();
+  });
   app.commands.register({ id: "new-thread", title: "Launcher: quick compose", defaultShortcut: { key: "n", mod: true }, run: context => quickCompose.toggle("new-thread", context) });
   app.commands.register({ id: "handoff", title: "Launcher: hand off this thread", defaultShortcut: { key: "h", mod: true, shift: true }, isAvailable: context => context.threadId !== null, run: context => quickCompose.toggle("handoff", context) });
   app.commands.register({ id: "fork", title: "Launcher: fork this thread into a named worktree", isAvailable: context => context.threadId !== null, run: context => quickCompose.toggle("fork", context) });

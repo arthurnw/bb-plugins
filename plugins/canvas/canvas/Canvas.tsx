@@ -147,6 +147,12 @@ function matches(thread: PluginSidebarThread, groupName: string, query: string):
 }
 
 /** A host-styled button that keeps the native `title` tooltip. */
+/** Opens the Launcher plugin's composer if it is installed; false means it didn't handle the request. */
+function openLauncher(projectId: string | null): boolean {
+  const event = new CustomEvent("bb-launcher:new-thread", { detail: { projectId }, cancelable: true });
+  return !window.dispatchEvent(event);
+}
+
 function ToolButton({
   variant,
   size,
@@ -1281,6 +1287,7 @@ function CanvasInner() {
       open: (id, split) => navigate.toThread(id, { split }),
       newThreadIn: (frame) => {
         if (frame.grouping === "project" && frame.projectId !== null) {
+          if (openLauncher(frame.projectId)) return;
           navigate.toCompose({ projectId: frame.projectId, focusPrompt: true });
         } else if (frame.grouping === "section") {
           navigate.toCompose({ placement: { sectionId: frame.sectionId, pinned: false }, focusPrompt: true });
@@ -1835,7 +1842,7 @@ function CanvasInner() {
                     <Icon name="ListChecks" className="size-3.5" />
                     {attentionQueue.length > 0 ? <span className="tabular-nums">{attentionQueue.length}</span> : null}
                   </ToolButton>
-                  <ToolButton size="sm" className="ml-1 h-7 gap-1 px-2.5" onClick={() => navigate.toCompose({ focusPrompt: true })}>
+                  <ToolButton size="sm" className="ml-1 h-7 gap-1 px-2.5" onClick={() => { if (!openLauncher(null)) navigate.toCompose({ focusPrompt: true }); }}>
                     <Icon name="Plus" className="size-3.5" />
                     New thread
                   </ToolButton>
