@@ -10,7 +10,6 @@
 | [message-timestamps-lite](plugins/message-timestamps-lite) | Shows when you sent each message. |
 | [nav](plugins/nav) | Ctrl+H/J/K/L focus movement between panes, like vim-tmux-navigator, and Ctrl+N/P in pickers. |
 | [permission-gate](plugins/permission-gate) | Switches a Pi thread's permission-gate mode from the composer footer. |
-| [plannotator-inbox](plugins/plannotator-inbox) | Plannotator Inbox page, plus the Inbox tool for Claude Code and Codex threads with replies that start a turn. |
 | [launcher](plugins/launcher) | A floating new-thread composer with model presets, project shortcuts, named Git worktrees, and thread handoff. |
 | [tailnet-preview](plugins/tailnet-preview) | Publishes dev servers over `tailscale serve` and opens them in the thread's in-app browser. |
 | [thread-cost](plugins/thread-cost) | Estimated API cost of each Pi, Claude Code, and Codex thread, shown in the composer footer. |

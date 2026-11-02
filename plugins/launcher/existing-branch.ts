@@ -3,10 +3,9 @@ import { branchNameError } from "./named-worktree.ts";
 
 export const EXISTING_PROVIDER_ID = "existing-branch";
 
-/** `ref` is what the user typed: a PR number or URL, or a branch name. `review` starts the thread with a guided review. */
+/** `ref` is what the user typed: a PR number or URL, or a branch name. */
 export const existingInputsSchema = z.object({
   ref: z.string().min(1),
-  review: z.boolean(),
 }).strict();
 export type ExistingInputs = z.infer<typeof existingInputsSchema>;
 
@@ -51,14 +50,3 @@ export const resolvedSchema = z.object({
   busyAt: z.string().nullable(),
 });
 export type Resolved = z.infer<typeof resolvedSchema>;
-
-/** Sent as a follow-up message when Review is on. */
-export function reviewPrompt({ branch, base, pr }: { branch: string; base: string; pr: PrInfo | null }): string {
-  const subject = pr ? `PR #${pr.number} "${pr.title}" (${pr.url})` : `branch ${branch}`;
-  return [
-    `Review ${subject}. This worktree has it checked out.`,
-    `Read the changes with \`git diff $(git merge-base HEAD ${base})...HEAD\` and open the files they touch for context.`,
-    "Then write a Plannotator guided review of the change: use the plannotator skill, read the guide brief with the Inbox tool's get_guide_brief action, and send the result with submit_guide.",
-    "Do not edit files or push anything.",
-  ].join("\n");
-}

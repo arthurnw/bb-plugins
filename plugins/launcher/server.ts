@@ -2,7 +2,7 @@
 import { defineRpcContract, type BbPluginApi, type NewThreadRequest } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { hostContract, refChoicesSchema } from "./contract.ts";
-import { EXISTING_PROVIDER_ID, existingInputsSchema, parseRef, resolvedSchema, reviewPrompt, type ExistingInputs, type Resolved } from "./existing-branch.ts";
+import { EXISTING_PROVIDER_ID, existingInputsSchema, parseRef, resolvedSchema, type ExistingInputs, type Resolved } from "./existing-branch.ts";
 import type { ModelPreset, ModelSelection } from "./presets.ts";
 import { autoBranchName, inputsSchema, PROVIDER_ID, type NamedWorktreeInputs } from "./named-worktree.ts";
 import { DEFAULT_ROOT, worktreeRootSchema } from "./worktree-root.ts";
@@ -35,8 +35,6 @@ export const quickComposeRpcContract = defineRpcContract({
 
 const TIMEOUT_MS = 900_000;
 const MODEL_STATE_KEY = "model-state.v1";
-const reviewKey = (threadId: string) => `pending-review.v1:${threadId}`;
-const pendingReviewSchema = z.object({ branch: z.string(), base: z.string(), pr: resolvedSchema.shape.pr });
 
 export default async function plugin(bb: BbPluginApi) {
   // Starter presets come from the live catalog so every row can run on this
@@ -221,10 +219,6 @@ export default async function plugin(bb: BbPluginApi) {
       if (wtSetup.output) context.report.log(wtSetup.output);
       context.report.step(wtSetup.status === "done" ? "wt setup finished" : "wt setup failed; the worktree is kept");
     }
-    if (inputs.review) {
-      const { resolved } = await host.call("resolveRef", { sourcePath: input.sourcePath, ref: inputs.ref }, options);
-      await bb.storage.kv.set(reviewKey(context.thread.id), { branch: name, base: baseBranch, pr: resolved?.pr ?? null });
-    }
     return { status: "created" as const, path, ownsPath: true, mergeBaseBranch: baseBranch };
   }
 
@@ -250,18 +244,5 @@ export default async function plugin(bb: BbPluginApi) {
       return provision(context, { name, baseBranch: "" }, { restore: true, autoName: false }, `Restoring branch ${name}`);
     },
     remove: removeWorktree,
-  });
-
-  // Review is delivered as a message once the thread starts, because a provider cannot change the thread's prompt.
-  bb.events.on("thread.active", async ({ thread }) => {
-    const pending = await bb.storage.kv.get(reviewKey(thread.id));
-    if (pending == null) return;
-    await bb.storage.kv.delete(reviewKey(thread.id));
-    const review = pendingReviewSchema.parse(pending);
-    try {
-      await bb.sdk.threads.send({ threadId: thread.id, mode: "auto", input: [{ type: "text", text: reviewPrompt(review), mentions: [] }] });
-    } catch (error) {
-      bb.log.warn(`could not send the review prompt to ${thread.id}: ${error instanceof Error ? error.message : String(error)}`);
-    }
   });
 }

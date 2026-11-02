@@ -71,8 +71,6 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
   const hostId = target.kind === "existing-host" ? target.hostId : null;
   const saved = existingInputsSchema.safeParse(value);
   const [text, setText] = useState(saved.success ? saved.data.ref : "");
-  const [review, setReview] = useState(saved.success ? saved.data.review : false);
-  const reviewTouched = useRef(saved.success);
   const [check, setCheck] = useState<Check>({ status: "empty" });
   const [choices, setChoices] = useState<Choices | null>(null);
   const [open, setOpen] = useState(false);
@@ -110,10 +108,7 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
       rpc.call("resolveExisting", { projectId, hostId, ref: text.trim() }).then((result) => {
         if (cancelled) return;
         if (result.resolved === null) setCheck({ status: "error", message: result.error ?? "Could not resolve that branch or PR." });
-        else {
-          setCheck({ status: "ok", resolved: result.resolved });
-          if (!reviewTouched.current) setReview(result.resolved.kind === "pr");
-        }
+        else setCheck({ status: "ok", resolved: result.resolved });
       }, (error: unknown) => { if (!cancelled) setCheck({ status: "error", message: error instanceof Error ? error.message : String(error) }); });
     }, RESOLVE_DELAY_MS);
     return () => { cancelled = true; clearTimeout(timer); };
@@ -124,8 +119,8 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
     else if (check.status === "checking") onChange({ status: "blocked", reason: "Checking the branch or PR…" });
     else if (check.status === "error") onChange({ status: "blocked", reason: check.message });
     else if (check.resolved.busyAt) onChange({ status: "blocked", reason: describe(check.resolved).text });
-    else onChange({ status: "ready", value: { ref: text.trim(), review } });
-  }, [check, text, review, onChange]);
+    else onChange({ status: "ready", value: { ref: text.trim() } });
+  }, [check, text, onChange]);
 
   useEffect(() => {
     if (!open) return;
@@ -142,7 +137,7 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
   const offerTyped = typed !== "" && parseRef(typed).kind !== "invalid"
     && !(choices?.branches ?? []).includes(typed) && !prs.some((pr) => `#${pr.number}` === typed);
   const close = () => { setOpen(false); setFilter(""); };
-  const pick = (next: string) => { reviewTouched.current = false; setText(next); close(); chip.current?.focus(); };
+  const pick = (next: string) => { setText(next); close(); chip.current?.focus(); };
 
   const status = check.status === "ok" ? describe(check.resolved)
     : check.status === "error" ? { text: check.message, short: check.message, tone: "bad" as const }
@@ -161,15 +156,6 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
         {status && <span style={{ width: 8, height: 8, borderRadius: "50%", flex: "none", background: TONES[status.tone] }} />}
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", flex: 1 }}>{status ? (check.status === "ok" ? status.short : text.trim()) : "Choose PR or branch…"}</span>
         <span aria-hidden style={{ flex: "none", opacity: 0.6, lineHeight: 1, alignSelf: "center" }}>⌄</span>
-      </button>
-      <button type="button" role="switch" aria-checked={review} title="Start with a Plannotator guided review"
-        onClick={() => { reviewTouched.current = true; setReview(!review); }}
-        style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 6px", border: 0, borderRadius: 4, background: "transparent",
-          color: "var(--foreground)", fontSize: hostFont, cursor: "pointer", whiteSpace: "nowrap" }}>
-        <span style={{ width: 26, height: 15, borderRadius: 8, position: "relative", background: review ? "var(--primary, #6d5bd0)" : "var(--muted-foreground, #a1a1aa)", transition: ".15s" }}>
-          <span style={{ position: "absolute", top: 2, left: review ? 13 : 2, width: 11, height: 11, borderRadius: "50%", background: "var(--background, #fff)", transition: ".15s" }} />
-        </span>
-        Review
       </button>
       {open && (() => {
         const list = (

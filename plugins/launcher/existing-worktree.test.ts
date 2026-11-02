@@ -3,7 +3,7 @@ import { test } from "node:test";
 import * as fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { existingInputsSchema, parseRef, reviewPrompt, type PrInfo } from "./existing-branch.ts";
+import { existingInputsSchema, parseRef, type PrInfo } from "./existing-branch.ts";
 import { checkoutBlocker, createExisting, listRefs, resolveRef, type Gh } from "./existing-worktree.ts";
 import { git } from "./worktree.ts";
 
@@ -41,13 +41,8 @@ test("refs parse as PR numbers, PR URLs, or branch names", () => {
   assert.deepEqual(parseRef("origin/feature/x"), { kind: "branch", name: "feature/x" });
   assert.deepEqual(parseRef("contrib:patch-1"), { kind: "branch", name: "contrib:patch-1" });
   for (const bad of ["", "  ", "-x", "@{-1}"]) assert.equal(parseRef(bad).kind, "invalid");
-  assert.equal(existingInputsSchema.safeParse({ ref: "", review: false }).success, false);
-  assert.equal(existingInputsSchema.safeParse({ ref: "1", review: true, extra: 1 }).success, false);
-});
-
-test("the review prompt names the PR or branch and the base", () => {
-  assert.match(reviewPrompt({ branch: "feature/x", base: "origin/main", pr: pr() }), /PR #7 "Add x".*origin\/main/s);
-  assert.match(reviewPrompt({ branch: "feature/x", base: "origin/main", pr: null }), /branch feature\/x/);
+  assert.equal(existingInputsSchema.safeParse({ ref: "" }).success, false);
+  assert.equal(existingInputsSchema.safeParse({ ref: "1", extra: 1 }).success, false);
 });
 
 test("a remote branch without a PR resolves against the default branch", async (t) => {

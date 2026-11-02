@@ -28,10 +28,6 @@
       "source": "./plugins/permission-gate"
     },
     {
-      "name": "plannotator-inbox",
-      "source": "./plugins/plannotator-inbox"
-    },
-    {
       "name": "launcher",
       "source": "./plugins/launcher"
     },

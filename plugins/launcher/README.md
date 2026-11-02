@@ -51,7 +51,7 @@ An environment option next to Named worktree. A chip shows the choice and what i
 
 The checkout goes under the worktree root like Named worktree, runs `wt setup`, and records the PR's base (or the default branch) as the merge base so the Changes view shows the PR diff. Removing the thread's environment keeps the branch.
 
-**Review** is on by default for a PR and off for a plain branch, and you can flip it either way. When on, the plugin sends the thread a follow-up message as it starts: read the diff against the base, then write a Plannotator guided review with `get_guide_brief` and `submit_guide`. The environment provider cannot change the thread's prompt, so the composer still needs some text; a short prompt such as "review" is enough. The picker needs `gh` signed in for PR lists and PR lookups; branches work without it.
+The picker needs `gh` signed in for PR lists and PR lookups; branches work without it.
 
 ## Overlay
 
