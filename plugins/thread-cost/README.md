@@ -1,8 +1,12 @@
 # Thread Cost
 
-Shows a thread's estimated API cost above the composer for Pi, Claude Code, and
-Codex threads. Click it for a per-model breakdown. Threads with child threads
-also show the combined total.
+Shows a thread's estimated API cost in the composer footer, just left of the
+context donut, for Pi, Claude Code, and Codex threads. Click it for a per-model
+breakdown, including child threads' combined total.
+
+The footer isn't a plugin slot: the plugin inserts into bb's markup, like
+permission-gate does. If a bb update renames the footer, the cost stops
+showing.
 
 ```sh
 bb thread-cost show [thread-id] [--json]
@@ -31,5 +35,6 @@ The cost refreshes when a thread goes idle.
 - List prices only. Enterprise contracted rates, Claude fast mode, and
   regional pricing aren't applied.
 - A model missing from Pi's table shows "no price", and the total gets a `+`.
+- The footer placement relies on bb's internal markup (see above).
 - A forked thread's session can repeat its parent's history, so fork costs
   may overlap.

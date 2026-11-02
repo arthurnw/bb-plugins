@@ -8,7 +8,7 @@
   },
   "bb": {
     "name": "Thread Cost",
-    "description": "Shows each Pi, Claude Code, and Codex thread's estimated API cost above the composer.",
+    "description": "Shows each Pi, Claude Code, and Codex thread's estimated API cost in the composer footer.",
     "branding": {
       "icon": "./assets/icon.svg"
     },
