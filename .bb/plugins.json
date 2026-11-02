@@ -38,6 +38,10 @@
     {
       "name": "tailnet-preview",
       "source": "./plugins/tailnet-preview"
+    },
+    {
+      "name": "thread-cost",
+      "source": "./plugins/thread-cost"
     }
   ]
 }
