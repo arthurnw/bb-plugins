@@ -3,9 +3,10 @@ import { branchNameError } from "./named-worktree.ts";
 
 export const EXISTING_PROVIDER_ID = "existing-branch";
 
-/** `ref` is what the user typed: a PR number or URL, or a branch name. */
+/** `ref` is what the user typed: a PR number or URL, or a branch name. `review` starts the thread with a guided review. */
 export const existingInputsSchema = z.object({
   ref: z.string().min(1),
+  review: z.boolean(),
 }).strict();
 export type ExistingInputs = z.infer<typeof existingInputsSchema>;
 
@@ -50,3 +51,14 @@ export const resolvedSchema = z.object({
   busyAt: z.string().nullable(),
 });
 export type Resolved = z.infer<typeof resolvedSchema>;
+
+/** Sent as a follow-up message when Review is on. The reviewer generates the guided review inside Plannotator's review UI. */
+export function reviewPrompt({ branch, base, pr }: { branch: string; base: string; pr: PrInfo | null }): string {
+  const subject = pr ? `PR #${pr.number} "${pr.title}" (${pr.url})` : `branch ${branch}`;
+  const command = pr ? `plannotator review ${pr.url}` : `plannotator review --base ${base}`;
+  return [
+    `Open a Plannotator code review of ${subject}. This worktree has it checked out.`,
+    `Run \`${command}\` (use the plannotator tool's review action if you have it) and wait for it to close.`,
+    "Do not edit files or push anything. Report any feedback I leave in the review.",
+  ].join("\n");
+}
