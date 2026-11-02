@@ -892,9 +892,6 @@ function CanvasInner() {
           moved[change.id] = change.position;
           followCard(change.id, dx, dy);
         }
-        if (node.type === "frame" && grouping === "section" && membersOf(node.data.groupKey).length === 0) {
-          changes[`frame:${node.data.groupKey}`] = node.position;
-        }
         if (node.type === "frame") {
           for (const id of membersOf(node.data.groupKey)) {
             const point = moved[id] ?? positionsRef.current[id];
