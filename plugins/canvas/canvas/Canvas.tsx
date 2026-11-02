@@ -1560,9 +1560,14 @@ function CanvasInner() {
       else if (key === "m" && selectedId !== null) setOverlay({ kind: "move", threadId: selectedId });
       else if (key === "z" && selectedId !== null) {
         if (forest.rowsOf.has(rootOf(selectedId))) toggleFold(rootOf(selectedId));
-      } else if (key === "a" && selectedId !== null) {
-        const groupKey = groups.get(selectedId)?.key;
-        if (groupKey !== undefined) arrangeFrame(groupKey);
+      } else if (key === "a") {
+        const selectedFrames = nodesRef.current.flatMap((node) =>
+          node.type === "frame" && node.selected ? [node.data.groupKey] : [],
+        );
+        const groupKey = selectedId === null ? undefined : groups.get(selectedId)?.key;
+        const targets = selectedFrames.length > 0 ? selectedFrames : groupKey !== undefined ? [groupKey] : [];
+        if (targets.length === 0) return;
+        for (const target of targets) arrangeFrame(target);
       }
       else if (key === "n" && attentionQueue.length > 0) {
         const index = attentionQueue.findIndex((thread) => thread.id === selectedId);
