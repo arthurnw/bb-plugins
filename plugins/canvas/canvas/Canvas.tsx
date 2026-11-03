@@ -630,24 +630,38 @@ function CanvasInner() {
       );
       return bounds === null ? [] : [{ group, members, bounds }];
     });
-    if (grouping !== "section") return populated;
-    // Sections without threads have no cards to size a frame from, so they
-    // get empty frames in a row below the rest.
-    const empty = sidebar.sections.filter((section) => !byGroup.has(section.id));
+    // Sections and projects without threads have no cards to size a frame
+    // from, so they get empty frames in a row below the rest.
+    const empty: Group[] =
+      grouping === "section"
+        ? sidebar.sections
+            .filter((section) => !byGroup.has(section.id))
+            .map((section) => ({ key: section.id, name: section.name, projectId: null, sectionId: section.id, hostId: null }))
+        : grouping === "project"
+          ? sidebar.projects
+              .filter((project) => !byGroup.has(project.id))
+              .map((project) => ({
+                key: project.id,
+                name: project.isPersonal ? "Personal" : project.name,
+                projectId: project.id,
+                sectionId: null,
+                hostId: null,
+              }))
+          : [];
     if (empty.length === 0) return populated;
     const slot = frameBounds([{ x: 0, y: 0 }])!;
     const left = populated.length === 0 ? 0 : Math.min(...populated.map((frame) => frame.bounds.x));
     const top = populated.length === 0 ? 0 : Math.max(...populated.map((frame) => frame.bounds.y + frame.bounds.height)) + FRAME_GAP;
     return [
       ...populated,
-      ...empty.map((section, index) => ({
-        group: { key: section.id, name: section.name, projectId: null, sectionId: section.id, hostId: null } satisfies Group,
+      ...empty.map((group, index) => ({
+        group,
         members: [] as PluginSidebarThread[],
-        // A dragged empty frame's position is stored under `frame:<section id>`.
-        bounds: { ...slot, ...(arrangement.positions[`frame:${section.id}`] ?? { x: left + index * (slot.width + FRAME_GAP), y: top }) },
+        // A dragged empty frame's position is stored under `frame:<group key>`.
+        bounds: { ...slot, ...(arrangement.positions[`frame:${group.key}`] ?? { x: left + index * (slot.width + FRAME_GAP), y: top }) },
       })),
     ];
-  }, [topLevel, groups, positions, cardHeight, grouping, sidebar.sections, arrangement.positions]);
+  }, [topLevel, groups, positions, cardHeight, grouping, sidebar.sections, sidebar.projects, arrangement.positions]);
 
   /** Files a thread under a section and lets the canvas re-place it there. */
   const moveToSection = useCallback(
@@ -1002,7 +1016,7 @@ function CanvasInner() {
             if (target !== undefined) void moveToSection(node.id, target.group.sectionId, true);
           }
         }
-        if (node.type === "frame" && grouping === "section" && membersOf(node.data.groupKey).length === 0) {
+        if (node.type === "frame" && grouping !== "machine" && membersOf(node.data.groupKey).length === 0) {
           changes[`frame:${node.data.groupKey}`] = node.position;
         }
         if (node.type === "frame") {
