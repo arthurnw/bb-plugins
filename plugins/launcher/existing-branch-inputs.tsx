@@ -72,7 +72,6 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
   const saved = existingInputsSchema.safeParse(value);
   const [text, setText] = useState(saved.success ? saved.data.ref : "");
   const [review, setReview] = useState(saved.success ? saved.data.review : false);
-  const reviewTouched = useRef(saved.success);
   const [check, setCheck] = useState<Check>({ status: "empty" });
   const [choices, setChoices] = useState<Choices | null>(null);
   const [open, setOpen] = useState(false);
@@ -110,10 +109,7 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
       rpc.call("resolveExisting", { projectId, hostId, ref: text.trim() }).then((result) => {
         if (cancelled) return;
         if (result.resolved === null) setCheck({ status: "error", message: result.error ?? "Could not resolve that branch or PR." });
-        else {
-          setCheck({ status: "ok", resolved: result.resolved });
-          if (!reviewTouched.current) setReview(result.resolved.kind === "pr");
-        }
+        else setCheck({ status: "ok", resolved: result.resolved });
       }, (error: unknown) => { if (!cancelled) setCheck({ status: "error", message: error instanceof Error ? error.message : String(error) }); });
     }, RESOLVE_DELAY_MS);
     return () => { cancelled = true; clearTimeout(timer); };
@@ -142,7 +138,7 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
   const offerTyped = typed !== "" && parseRef(typed).kind !== "invalid"
     && !(choices?.branches ?? []).includes(typed) && !prs.some((pr) => `#${pr.number}` === typed);
   const close = () => { setOpen(false); setFilter(""); };
-  const pick = (next: string) => { reviewTouched.current = false; setText(next); close(); chip.current?.focus(); };
+  const pick = (next: string) => { setText(next); close(); chip.current?.focus(); };
 
   const status = check.status === "ok" ? describe(check.resolved)
     : check.status === "error" ? { text: check.message, short: check.message, tone: "bad" as const }
@@ -163,7 +159,7 @@ function Inputs({ projectId, target, value, onChange }: PluginEnvironmentProvide
         <span aria-hidden style={{ flex: "none", opacity: 0.6, lineHeight: 1, alignSelf: "center" }}>⌄</span>
       </button>
       <button type="button" role="switch" aria-checked={review} title="Open a Plannotator code review when the thread starts"
-        onClick={() => { reviewTouched.current = true; setReview(!review); }}
+        onClick={() => setReview(!review)}
         style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 6px", border: 0, borderRadius: 4, background: "transparent",
           color: "var(--foreground)", fontSize: hostFont, cursor: "pointer", whiteSpace: "nowrap" }}>
         <span style={{ width: 26, height: 15, borderRadius: 8, position: "relative", background: review ? "var(--primary, #6d5bd0)" : "var(--muted-foreground, #a1a1aa)", transition: ".15s" }}>
