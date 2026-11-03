@@ -9,7 +9,7 @@ import {
   type PluginAppBuilder,
 } from "@get-bb/plugin-sdk/app";
 import type { quickComposeRpcContract } from "./server";
-import { quickCompose, subscribe, type QuickComposeKind, type QuickComposeSession } from "./overlay-store";
+import { quickCompose, subscribe, type QuickComposeKind, type QuickComposePlacement, type QuickComposeSession } from "./overlay-store";
 import { cycle } from "./projects";
 import { ProjectList, useProjectOptions } from "./project-list";
 import { isBackgroundSubmit, projectShortcut } from "./overlay-keys";
@@ -63,6 +63,11 @@ function useModelSlot(root: HTMLElement | null, enabled: boolean): HTMLElement |
     return () => { observer.disconnect(); span.remove(); setSlot(null); };
   }, [root, enabled]);
   return slot;
+}
+
+/** Seeds the project checkout on a chosen machine; no seed leaves the composer's default. */
+function checkoutOn(hostId: string | null) {
+  return hostId ? { type: "host" as const, hostId, workspace: { type: "unmanaged" as const, path: null } } : undefined;
 }
 
 function Session({ session, kind, visible, focusRequest }: {
@@ -185,6 +190,8 @@ function Session({ session, kind, visible, focusRequest }: {
     return () => window.removeEventListener("keydown", onKey, true);
   }, [visible, projects, projectId, kind, customModel]);
 
+  // Only a new-thread session carries a machine; the others take theirs from the source thread.
+  const machine = session.hostId ? { machine: { type: "existing" as const, hostId: session.hostId } } : {};
   const close = (e: { target: EventTarget; currentTarget: EventTarget }) => { if (e.target === e.currentTarget) quickCompose.close(); };
   return <div style={{ display: visible ? "block" : "none", position: "fixed", inset: 0, zIndex: 50, background: "rgb(0 0 0 / .3)" }} onPointerDown={close}>
     <div style={{ position: "absolute", inset: 0, display: "flex", justifyContent: "center", alignItems: "flex-start", padding: "15vh 16px 16px", overflowY: "auto", boxSizing: "border-box" }} onPointerDown={close}>
@@ -210,10 +217,10 @@ function Session({ session, kind, visible, focusRequest }: {
             inputs: { name: "", baseBranch: forkBase.branch ?? "" },
             ...(forkBase.hostId ? { machine: { type: "existing", hostId: forkBase.hostId } } : {}),
           }
-          : seeded === "checkout" ? undefined
-          : seeded === "existing" ? { type: "provider", environmentProviderId: EXISTING_PROVIDER_ID, inputs: null }
-          : seeded === "named" || (defaultNamed && kind === "new-thread") ? { type: "provider", environmentProviderId: PROVIDER_ID, inputs: null }
-          : projectId === source.projectId && source.environmentId ? { type: "reuse", environmentId: source.environmentId } : undefined}
+          : seeded === "checkout" ? checkoutOn(session.hostId)
+          : seeded === "existing" ? { type: "provider", environmentProviderId: EXISTING_PROVIDER_ID, inputs: null, ...machine }
+          : seeded === "named" || (defaultNamed && kind === "new-thread") ? { type: "provider", environmentProviderId: PROVIDER_ID, inputs: null, ...machine }
+          : projectId === source.projectId && source.environmentId ? { type: "reuse", environmentId: source.environmentId } : checkoutOn(session.hostId)}
         initialPrompt={kind === "handoff" && session.sourceThreadId ? `@thread:${session.sourceThreadId} ` : undefined}
         draftKey={draftKey}
         layout="document" focusRequest={visible ? focusRequest + focus : undefined}
@@ -225,7 +232,7 @@ function Session({ session, kind, visible, focusRequest }: {
             const { threadId } = kind === "fork" && session.sourceThreadId
               ? await rpc.call("forkThread", { sourceThreadId: session.sourceThreadId, request,
                 ...(session.sourceSeqEnd === null ? {} : { sourceSeqEnd: session.sourceSeqEnd }) })
-              : await rpc.call("createThread", { request });
+              : await rpc.call("createThread", { request, ...(session.placement ? { placement: session.placement } : {}) });
             quickCompose.finish(kind);
             if (background) toast.success(kind === "fork" ? "Fork started" : "Thread started", { action: { label: "Open", onClick: () => navigate.toThread(threadId) } });
             else navigate.toThread(threadId);
@@ -261,8 +268,13 @@ export function registerOverlay(app: PluginAppBuilder) {
   // Other plugins (Canvas) open the composer with this cancelable window event.
   // Calling preventDefault tells the sender the Launcher handled it.
   window.addEventListener("bb-launcher:new-thread", event => {
-    const detail = (event as CustomEvent<{ projectId?: string | null } | null>).detail;
-    quickCompose.open("new-thread", { projectId: detail?.projectId ?? null, threadId: null });
+    const detail = (event as CustomEvent<{
+      projectId?: string | null; placement?: QuickComposePlacement | null; hostId?: string | null;
+    } | null>).detail;
+    quickCompose.open("new-thread", {
+      projectId: detail?.projectId ?? null, threadId: null,
+      placement: detail?.placement ?? null, hostId: detail?.hostId ?? null,
+    });
     event.preventDefault();
   });
   app.commands.register({ id: "new-thread", title: "Launcher: quick compose", defaultShortcut: { key: "n", mod: true }, run: context => quickCompose.toggle("new-thread", context) });

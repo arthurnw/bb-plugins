@@ -98,3 +98,18 @@ test("Cmd+Enter starts a thread in the background; plain and Shift+Enter do not"
   assert.equal(isBackgroundSubmit({ ...enter, metaKey: true, shiftKey: true }, true), false);
   assert.equal(isBackgroundSubmit({ ...enter, metaKey: true, isComposing: true }, true), false);
 });
+test("a draft is kept only for the same section and machine", () => {
+  const unregister = quickCompose.registerDraftCheck(() => true);
+  const section = { sectionId: "s1", pinned: false };
+  quickCompose.open("new-thread", { projectId: null, threadId: null, placement: section });
+  const first = quickCompose.getState().sessions["new-thread"];
+  assert.deepEqual(first?.placement, section);
+  quickCompose.open("new-thread", { projectId: null, threadId: null, placement: { ...section } });
+  assert.equal(quickCompose.getState().sessions["new-thread"], first);
+  quickCompose.open("new-thread", { projectId: null, threadId: null, hostId: "h1" });
+  const machine = quickCompose.getState().sessions["new-thread"];
+  assert.notEqual(machine, first);
+  assert.equal(machine?.hostId, "h1");
+  assert.equal(machine?.placement, null);
+  unregister();
+});

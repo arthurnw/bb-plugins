@@ -13,7 +13,8 @@ import { modelStateSchema, presetsSchema, savedModelStateSchema, selectionSchema
 export const quickComposeRpcContract = defineRpcContract({
   // Forwarded unchanged; `threads.spawn` validates the request.
   createThread: {
-    input: z.object({ request: z.custom<NewThreadRequest>() }),
+    input: z.object({ request: z.custom<NewThreadRequest>(),
+      placement: z.object({ sectionId: z.string().nullable(), pinned: z.boolean() }).optional() }),
     output: z.object({ threadId: z.string() }),
   },
   // A fork keeps the source's provider and model, so only these request fields apply.
@@ -109,8 +110,8 @@ export default async function plugin(bb: BbPluginApi) {
       if (parseRef(ref).kind === "invalid") return { resolved: null, error: null };
       return host.call("resolveRef", { sourcePath: await sourcePath(projectId, hostId), ref }, { hostId });
     },
-    async createThread({ request }) {
-      const thread = await bb.sdk.threads.spawn(request);
+    async createThread({ request, placement }) {
+      const thread = await bb.sdk.threads.spawn({ ...request, ...placement });
       return { threadId: thread.id };
     },
     async forkThread({ sourceThreadId, sourceSeqEnd, request }) {

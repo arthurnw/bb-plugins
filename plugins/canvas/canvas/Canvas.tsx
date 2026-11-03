@@ -148,8 +148,12 @@ function matches(thread: PluginSidebarThread, groupName: string, query: string):
 
 /** A host-styled button that keeps the native `title` tooltip. */
 /** Opens the Launcher plugin's composer if it is installed; false means it didn't handle the request. */
-function openLauncher(projectId: string | null): boolean {
-  const event = new CustomEvent("bb-launcher:new-thread", { detail: { projectId }, cancelable: true });
+function openLauncher(detail: {
+  projectId?: string | null;
+  placement?: { sectionId: string | null; pinned: boolean };
+  hostId?: string;
+}): boolean {
+  const event = new CustomEvent("bb-launcher:new-thread", { detail, cancelable: true });
   return !window.dispatchEvent(event);
 }
 
@@ -1306,14 +1310,12 @@ function CanvasInner() {
       select: setSelectedId,
       open: (id, split) => navigate.toThread(id, { split }),
       newThreadIn: (frame) => {
-        if (openLauncher(frame.grouping === "project" ? frame.projectId : null)) return;
-        if (frame.grouping === "project" && frame.projectId !== null) {
-          navigate.toCompose({ projectId: frame.projectId, focusPrompt: true });
-        } else if (frame.grouping === "section") {
-          navigate.toCompose({ placement: { sectionId: frame.sectionId, pinned: false }, focusPrompt: true });
-        } else if (frame.grouping === "machine" && frame.groupKey !== NO_GROUP) {
-          navigate.toCompose({ hostId: frame.groupKey, focusPrompt: true });
-        } else navigate.toCompose({ focusPrompt: true });
+        const project = frame.grouping === "project" && frame.projectId !== null ? { projectId: frame.projectId } : null;
+        const section = frame.grouping === "section" ? { placement: { sectionId: frame.sectionId, pinned: false } } : null;
+        const machine = frame.grouping === "machine" && frame.groupKey !== NO_GROUP ? { hostId: frame.groupKey } : null;
+        const target = project ?? section ?? machine ?? {};
+        if (openLauncher(target)) return;
+        navigate.toCompose({ ...target, focusPrompt: true });
       },
       setFrameColor: (frameKey, color) => {
         record();
@@ -1868,7 +1870,7 @@ function CanvasInner() {
                     <Icon name="ListChecks" className="size-3.5" />
                     {attentionQueue.length > 0 ? <span className="tabular-nums">{attentionQueue.length}</span> : null}
                   </ToolButton>
-                  <ToolButton size="sm" className="ml-1 h-7 gap-1 px-2.5" onClick={() => { if (!openLauncher(null)) navigate.toCompose({ focusPrompt: true }); }}>
+                  <ToolButton size="sm" className="ml-1 h-7 gap-1 px-2.5" onClick={() => { if (!openLauncher({})) navigate.toCompose({ focusPrompt: true }); }}>
                     <Icon name="Plus" className="size-3.5" />
                     New thread
                   </ToolButton>

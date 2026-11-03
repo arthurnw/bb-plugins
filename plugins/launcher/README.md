@@ -28,7 +28,7 @@ bindings. Projects follow bb's order; "No project" is last.
 bb settings keyboard set thread.new mod+shift+o
 ```
 
-The sidebar's New thread button still opens the full page. Canvas's New thread button opens the overlay instead (it sends a cancelable `bb-launcher:new-thread` window event with `detail.projectId`). To undo, run
+The sidebar's New thread button still opens the full page. Canvas's New thread button opens the overlay instead (it sends a cancelable `bb-launcher:new-thread` window event with `detail.projectId`, plus `detail.placement` (`{ sectionId, pinned }`) to file the thread in a section and `detail.hostId` to seed the machine). To undo, run
 `bb settings keyboard reset thread.new`.
 
 ## Default environment

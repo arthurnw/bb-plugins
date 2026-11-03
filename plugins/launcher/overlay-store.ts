@@ -3,6 +3,12 @@
 
 export type QuickComposeKind = "new-thread" | "handoff" | "fork";
 
+/** Files a new thread in a section; `sectionId: null` means outside sections. */
+export interface QuickComposePlacement {
+  sectionId: string | null;
+  pinned: boolean;
+}
+
 export interface QuickComposeSession {
   /** Changes whenever a fresh session starts; keys the composer's mount. */
   id: number;
@@ -12,6 +18,10 @@ export interface QuickComposeSession {
   sourceThreadId: string | null;
   /** For a fork, the event sequence to fork after (a message's `sourceSeqEnd`); null forks the latest turn. */
   sourceSeqEnd: number | null;
+  /** For a new thread, the section to file it in; null leaves bb's default. */
+  placement: QuickComposePlacement | null;
+  /** For a new thread, the machine to seed the environment on; null leaves the default. */
+  hostId: string | null;
 }
 
 export interface QuickComposeState {
@@ -26,6 +36,8 @@ export interface QuickComposeContext {
   projectId: string | null;
   threadId: string | null;
   sourceSeqEnd?: number | null;
+  placement?: QuickComposePlacement | null;
+  hostId?: string | null;
 }
 
 let state: QuickComposeState = {
@@ -55,7 +67,12 @@ function matchesContext(
   session: QuickComposeSession,
   context: QuickComposeContext,
 ): boolean {
-  return kind === "new-thread" || (session.sourceThreadId === context.threadId
+  if (kind === "new-thread") {
+    return (session.placement?.sectionId ?? null) === (context.placement?.sectionId ?? null)
+      && (session.placement?.pinned ?? false) === (context.placement?.pinned ?? false)
+      && session.hostId === (context.hostId ?? null);
+  }
+  return (session.sourceThreadId === context.threadId
     && (kind !== "fork" || session.sourceSeqEnd === (context.sourceSeqEnd ?? null)));
 }
 
@@ -73,6 +90,8 @@ export const quickCompose = {
           projectId: context.projectId,
           sourceThreadId: kind === "new-thread" ? null : context.threadId,
           sourceSeqEnd: kind === "fork" ? context.sourceSeqEnd ?? null : null,
+          placement: kind === "new-thread" ? context.placement ?? null : null,
+          hostId: kind === "new-thread" ? context.hostId ?? null : null,
         };
     update({
       active: kind,
