@@ -169,6 +169,7 @@ function ToolButton({
 function Inspector({
   thread,
   focusRequest,
+  focusOnMount,
   compact,
   onClose,
   onPin,
@@ -176,6 +177,8 @@ function Inspector({
 }: {
   thread: PluginSidebarThread;
   focusRequest: number;
+  /** Opened by `r`: keep the focus the chat takes on mounting. */
+  focusOnMount: boolean;
   /** Phone-sized screens: a drawer from the right that swipes closed. */
   compact: boolean;
   onClose(): void;
@@ -185,7 +188,7 @@ function Inspector({
 }) {
   const navigate = useBbNavigate();
   const asideRef = useRef<HTMLElement>(null);
-  useReleaseChatFocus(asideRef, thread.id, focusRequest, onReleaseFocus);
+  useReleaseChatFocus(asideRef, thread.id, focusRequest, onReleaseFocus, focusOnMount);
   // The drawer portals outside the plugin's page; these attributes keep the
   // plugin's styles applying to it.
   const portalScope = usePortalScopeProps();
@@ -384,6 +387,10 @@ function CanvasInner() {
   const [hidden, setHidden] = useState<ReadonlySet<Bucket>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [inspectorFocusOnOpen, setInspectorFocusOnOpen] = useState(false);
+  useEffect(() => {
+    if (!inspectorOpen) setInspectorFocusOnOpen(false);
+  }, [inspectorOpen]);
   const [chatFocus, setChatFocus] = useState(0);
   const [overlay, setOverlay] = useState<Overlay>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -1543,6 +1550,7 @@ function CanvasInner() {
           showChat(chat);
           setChatFocusRequests((current) => ({ ...current, [selectedId]: (current[selectedId] ?? 0) + 1 }));
         } else {
+          setInspectorFocusOnOpen(!inspectorOpen);
           setInspectorOpen(true);
           setChatFocus((value) => value + 1);
         }
@@ -1979,6 +1987,7 @@ function CanvasInner() {
             thread={selected}
             compact={compact}
             focusRequest={chatFocus}
+            focusOnMount={inspectorFocusOnOpen}
             onClose={() => setInspectorOpen(false)}
             onPin={() => togglePin(selected.id)}
             onReleaseFocus={releaseFocus}
