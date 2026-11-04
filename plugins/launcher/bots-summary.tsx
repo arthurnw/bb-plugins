@@ -48,8 +48,10 @@ export interface SummaryProps {
   over: string | null;
 }
 
-function FeedRow({ thread, bot, sort, active, showRowMetadata, actionTarget, onOpen, startDrag }: {
+function FeedRow({ thread, bot, sort, active, showRowMetadata, actionTarget, onOpen, startDrag, pinned }: {
   thread: PluginSidebarThread; bot: Bot | undefined; sort: FeedSort; active: boolean; showRowMetadata: boolean;
+  /** Pinned rows show only the bot name, not the time since. */
+  pinned?: boolean;
   actionTarget: SummaryProps["actionTarget"]; onOpen: (thread: PluginSidebarThread) => void; startDrag: SummaryProps["startDrag"];
 }) {
   const split = useSidebarThreadSplit(thread.id);
@@ -69,7 +71,9 @@ function FeedRow({ thread, bot, sort, active, showRowMetadata, actionTarget, onO
           <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: thread.isUnread ? 600 : 400 }}>
             <ThreadTitle threadId={thread.id} />
           </span>
-          <span style={{ display: "block", fontSize: 12, color: "var(--muted-foreground)" }}>{bot ? `${bot.name} · ${ago(at)}` : ago(at)}</span>
+          {pinned
+            ? bot && <span style={{ display: "block", fontSize: 12, color: "var(--muted-foreground)" }}>{bot.name}</span>
+            : <span style={{ display: "block", fontSize: 12, color: "var(--muted-foreground)" }}>{bot ? `${bot.name} · ${ago(at)}` : ago(at)}</span>}
           {showRowMetadata && <span style={{ display: "block", fontSize: 12, color: "var(--muted-foreground)", overflow: "hidden" }}><ThreadRowMetadata thread={thread} /></span>}
         </span>
         <span style={{ flex: "none", marginTop: 2 }}><ThreadStatusGlyph indicator={thread.indicator} size="compact" /></span>
@@ -147,7 +151,7 @@ export function BotsSummary(props: SummaryProps) {
           <div style={{ ...header, padding: "8px 8px 2px" }}>Pinned</div>
           <div style={{ padding: "0 4px" }}>
             {pinned.map((thread) => (
-              <FeedRow key={thread.id} thread={thread} bot={botOf(thread)} active={thread.id === props.activeThreadId} {...rowProps} />
+              <FeedRow key={thread.id} thread={thread} bot={botOf(thread)} active={thread.id === props.activeThreadId} {...rowProps} pinned />
             ))}
           </div>
         </section>

@@ -445,8 +445,7 @@ export function BotThreadList({ activeThreadId, activeProjectId, onNavigate }: {
       <div style={{ display: "flex", flexDirection: "column", padding: "4px 4px 16px", userSelect: dragged ? "none" : undefined }}>
         {toggle}
         <BotsSummary bots={bots} threads={sidebar.threads.filter(visible)} threadBots={threadBots} activeThreadId={activeThreadId}
-          activeProjectId={activeProjectId} builtInSort={preferences.chronologicalSort} showRowMetadata={preferences.showRowMetadata}
-          actionTarget={actionTarget} onOpen={open} onShowBot={showBot} startDrag={context.startDrag} over={dragState.over} />
+          activeProjectId={activeProjectId} builtInSort={preferences.chronologicalSort} showRowMetadata={preferences.showRowMetadata} actionTarget={actionTarget} onOpen={open} onShowBot={showBot} startDrag={context.startDrag} over={dragState.over} />
         {ghost}
       </div>
     );
