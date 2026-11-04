@@ -1,9 +1,12 @@
-// The Bots view of the Launcher list: fixed-position bot tiles, then recent bot threads.
+// The Bots view of the Launcher list: fixed-position bot tiles, then pinned
+// threads (with or without a bot), then recent bot threads.
 import {
   experimental_Icon as Icon,
+  experimental_ProviderIcon as ProviderIcon,
   experimental_ThreadActionsContextMenu as ThreadActionsContextMenu,
   experimental_ThreadRowMetadata as ThreadRowMetadata,
   experimental_ThreadStatusGlyph as ThreadStatusGlyph,
+  experimental_useProviders as useProviders,
   experimental_useSidebarThreadSplit as useSidebarThreadSplit,
   ThreadTitle, useRpc, type PluginSidebarThread, type PluginThreadActionTarget,
 } from "@get-bb/plugin-sdk/app";
@@ -46,10 +49,12 @@ export interface SummaryProps {
 }
 
 function FeedRow({ thread, bot, sort, active, showRowMetadata, actionTarget, onOpen, startDrag }: {
-  thread: PluginSidebarThread; bot: Bot; sort: FeedSort; active: boolean; showRowMetadata: boolean;
+  thread: PluginSidebarThread; bot: Bot | undefined; sort: FeedSort; active: boolean; showRowMetadata: boolean;
   actionTarget: SummaryProps["actionTarget"]; onOpen: (thread: PluginSidebarThread) => void; startDrag: SummaryProps["startDrag"];
 }) {
   const split = useSidebarThreadSplit(thread.id);
+  const { providers } = useProviders();
+  const provider = providers.find((item) => item.id === thread.providerId) ?? { id: thread.providerId };
   const at = sort === "created" ? thread.createdAt : sort === "attention" ? thread.latestAttentionAt : thread.updatedAt;
   return (
     <ThreadActionsContextMenu thread={actionTarget(thread)}>
@@ -57,12 +62,14 @@ function FeedRow({ thread, bot, sort, active, showRowMetadata, actionTarget, onO
         onPointerDown={(event) => { split.splitProps.onPointerDown?.(event); startDrag(thread)(event); }}
         onClick={(event) => { if (event.metaKey || event.ctrlKey || event.shiftKey) return; event.preventDefault(); onOpen(thread); }}
         style={{ ...feedRow, background: active ? "var(--accent)" : "transparent" }}>
-        <span style={{ marginTop: 1 }}><BotAvatar bot={bot} size={16} /></span>
+        <span style={{ marginTop: 1, width: 16, height: 16, flex: "none", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+          {bot ? <BotAvatar bot={bot} size={16} /> : <ProviderIcon providerKind="agent" provider={provider} aria-hidden className="size-3.5" />}
+        </span>
         <span style={{ flex: 1, minWidth: 0 }}>
           <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: thread.isUnread ? 600 : 400 }}>
             <ThreadTitle threadId={thread.id} />
           </span>
-          <span style={{ display: "block", fontSize: 12, color: "var(--muted-foreground)" }}>{bot.name} · {ago(at)}</span>
+          <span style={{ display: "block", fontSize: 12, color: "var(--muted-foreground)" }}>{bot ? `${bot.name} · ${ago(at)}` : ago(at)}</span>
           {showRowMetadata && <span style={{ display: "block", fontSize: 12, color: "var(--muted-foreground)", overflow: "hidden" }}><ThreadRowMetadata thread={thread} /></span>}
         </span>
         <span style={{ flex: "none", marginTop: 2 }}><ThreadStatusGlyph indicator={thread.indicator} size="compact" /></span>
@@ -89,8 +96,12 @@ export function BotsSummary(props: SummaryProps) {
     }
     return result;
   }, [bots, threads, threadBots]);
-  const feed = useMemo(() => sortFeed([...byBot.values()].flat(), sort), [byBot, sort]);
-  const botOf = (thread: PluginSidebarThread) => bots.find((bot) => bot.id === threadBots[thread.id])!;
+  // Pinned threads show only under Pinned, as in the Threads view, and are the
+  // one place threads without a bot appear in this view.
+  const pinned = useMemo(() => threads.filter((thread) => thread.isPinned).sort((a, b) => b.updatedAt - a.updatedAt), [threads]);
+  const feed = useMemo(() => sortFeed([...byBot.values()].flat().filter((thread) => !thread.isPinned), sort), [byBot, sort]);
+  const botOf = (thread: PluginSidebarThread) => bots.find((bot) => bot.id === threadBots[thread.id]);
+  const rowProps = { sort, showRowMetadata: props.showRowMetadata, actionTarget: props.actionTarget, onOpen: props.onOpen, startDrag: props.startDrag };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -131,19 +142,28 @@ export function BotsSummary(props: SummaryProps) {
           );
         })}
       </div>
+      {pinned.length > 0 && (
+        <section data-drop="pinned" style={{ borderRadius: 8, outline: props.over === "pinned" ? "2px solid var(--ring, var(--primary))" : "none", outlineOffset: -2 }}>
+          <div style={{ ...header, padding: "8px 8px 2px" }}>Pinned</div>
+          <div style={{ padding: "0 4px" }}>
+            {pinned.map((thread) => (
+              <FeedRow key={thread.id} thread={thread} bot={botOf(thread)} active={thread.id === props.activeThreadId} {...rowProps} />
+            ))}
+          </div>
+        </section>
+      )}
       <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 8px 2px" }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--muted-foreground)", flex: 1 }}>Recent across bots</span>
+        <span style={{ ...header, flex: 1 }}>Recent across bots</span>
         <select value={sort} aria-label="Sort recent threads" title="Sort"
           onChange={(e) => { localStorage.setItem(SORT_KEY, e.target.value); setStored(e.target.value); }}
           style={{ border: "none", background: "transparent", color: "var(--muted-foreground)", fontSize: 12, cursor: "pointer" }}>
           {(Object.keys(SORT_LABELS) as FeedSort[]).map((key) => <option key={key} value={key}>{SORT_LABELS[key]}</option>)}
         </select>
       </div>
-      {feed.length === 0 && <div style={{ padding: "2px 12px", fontSize: 12, color: "var(--muted-foreground)" }}>No bot threads yet. Use + on a bot to start one.</div>}
+      {byBot.size === 0 && <div style={{ padding: "2px 12px", fontSize: 12, color: "var(--muted-foreground)" }}>No bot threads yet. Use + on a bot to start one.</div>}
       <div style={{ padding: "0 4px" }}>
         {feed.slice(0, shown).map((thread) => (
-          <FeedRow key={thread.id} thread={thread} bot={botOf(thread)} sort={sort} active={thread.id === props.activeThreadId}
-            showRowMetadata={props.showRowMetadata} actionTarget={props.actionTarget} onOpen={props.onOpen} startDrag={props.startDrag} />
+          <FeedRow key={thread.id} thread={thread} bot={botOf(thread)} active={thread.id === props.activeThreadId} {...rowProps} />
         ))}
       </div>
       {feed.length > shown && (
@@ -156,6 +176,7 @@ export function BotsSummary(props: SummaryProps) {
   );
 }
 
+const header: CSSProperties = { fontSize: 12, fontWeight: 600, color: "var(--muted-foreground)" };
 const muted: CSSProperties = { fontSize: 11.5, color: "var(--muted-foreground)" };
 const strong: CSSProperties = { color: "var(--foreground)", fontWeight: 600 };
 const tile: CSSProperties = { position: "relative", border: "1px solid var(--border)", borderRadius: 10, padding: 10, background: "var(--background)", cursor: "pointer", fontSize: 13, minWidth: 0 };

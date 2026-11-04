@@ -164,8 +164,10 @@ Choose **Launcher bots** in Settings → Appearance → Sidebar thread list. A
 
 **Bots** shows one tile per bot in your bot order (tiles never move): model,
 thread count, running and needs-you counts, memory size, and **+** for a new
-thread. A tile opens the Threads view at that bot. Below the tiles, **Recent
-across bots** lists bot threads newest first, 10 at a time, sorted by Last
+thread. A tile opens the Threads view at that bot. Below the tiles, **Pinned**
+lists pinned threads, including ones without a bot (the only non-bot threads in
+this view); drag a recent thread onto it to pin it. **Recent across bots** then
+lists the other bot threads newest first, 10 at a time, sorted by Last
 activity (`updatedAt`), Last response (`latestAttentionAt`, when the thread last
 finished a turn or asked for input), or Created. Until you choose, it follows
 the built-in list's sort. Drag a recent thread onto a tile to hand it off to
