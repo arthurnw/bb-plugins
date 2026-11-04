@@ -290,11 +290,12 @@ export function registerOverlay(app: PluginAppBuilder) {
   // Calling preventDefault tells the sender the Launcher handled it.
   window.addEventListener("bb-launcher:new-thread", event => {
     const detail = (event as CustomEvent<{
-      projectId?: string | null; placement?: QuickComposePlacement | null; hostId?: string | null;
+      projectId?: string | null; placement?: QuickComposePlacement | null; hostId?: string | null; botId?: string | null;
     } | null>).detail;
     quickCompose.open("new-thread", {
       projectId: detail?.projectId ?? null, threadId: null,
       placement: detail?.placement ?? null, hostId: detail?.hostId ?? null,
+      ...(detail?.botId !== undefined ? { botId: detail.botId } : {}),
     });
     event.preventDefault();
   });

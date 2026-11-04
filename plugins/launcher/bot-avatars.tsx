@@ -43,7 +43,11 @@ export function BotIconSync() {
   const rpc = useRpc<typeof botsContract>();
   const load = () => { rpc.call("listBots", {}).then(({ bots }) => setBots(bots), () => {}); };
   useEffect(load, [rpc]);
-  useRealtime("bots", load);
+  useRealtime("bots", () => {
+    load();
+    // Canvas listens for this to reread bots and thread bindings.
+    window.dispatchEvent(new Event("bb-launcher:bots-changed"));
+  });
   return null;
 }
 
