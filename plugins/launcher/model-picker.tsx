@@ -1,5 +1,7 @@
-import { experimental_ProviderModelPicker as ProviderModelPicker } from "@get-bb/plugin-sdk/app";
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
+import {
+  experimental_ProviderIcon as ProviderIcon, experimental_ProviderModelPicker as ProviderModelPicker, experimental_useProviders as useProviders,
+} from "@get-bb/plugin-sdk/app";
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { BotAvatar } from "./bot-avatars.tsx";
 import { filterPresets, findPreset, MAX_PRESETS, modelSpec, providerLabel, sameModel, type ModelPreset, type ModelSelection } from "./presets.ts";
 import { botLabel, filterBots, type Bot } from "./bots.ts";
@@ -33,6 +35,7 @@ export function ModelList({ bots = [], bot = null, onChooseBot, presets, names, 
   onSavePresets: (presets: ModelPreset[]) => Promise<void>;
   onClose: () => void;
 }) {
+  const { providers } = useProviders();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const [naming, setNaming] = useState<string | null>(null);
@@ -103,20 +106,8 @@ export function ModelList({ bots = [], bot = null, onChooseBot, presets, names, 
     }
   };
 
-  return (
-    <div style={{ display: "flex", flexDirection: "column", minWidth: 280, maxHeight: 360 }}>
-      <input
-        autoFocus
-        value={query}
-        placeholder={onChooseBot && bots.length > 0 ? "Choose a bot, preset, or model…" : "Choose a preset or model…"}
-        aria-label="Search bots and model presets"
-        onChange={(e) => { setQuery(e.target.value); setActive(0); }}
-        onKeyDown={onKeyDown}
-        style={{ padding: "8px 12px", border: "none", borderBottom: "1px solid var(--border)", background: "transparent", color: "var(--foreground)", fontSize: 13, outline: "none" }}
-      />
-      <div ref={listRef} role="listbox" aria-label="Model presets" style={{ overflowY: "auto", padding: 4 }}>
-        {rows.map((row, index) => {
-          const base: CSSProperties = { ...rowStyle, background: index === active ? "var(--accent)" : "transparent" };
+  function renderRow(row: Row, index: number, indented: boolean) {
+          const base: CSSProperties = { ...rowStyle, paddingLeft: indented ? 20 : 8, background: index === active ? "var(--accent)" : "transparent" };
           const enter = { onMouseEnter: () => setActive(index) };
           const hover = { ...enter, onMouseDown: (e: { preventDefault(): void }) => e.preventDefault() };
           if (row.kind === "bot") {
@@ -127,7 +118,6 @@ export function ModelList({ bots = [], bot = null, onChooseBot, presets, names, 
                 <span style={{ display: "flex", gap: 8, minWidth: 0, flex: 1, alignItems: "center" }}>
                   <BotAvatar bot={item} size={18} />
                   <span style={ellipsis}>{item.name}</span>
-                  <span style={providerBadge}>Bot</span>
                   <span style={{ ...ellipsis, color: "var(--muted-foreground)" }}>{item.model ? modelSpec(item.model, names) : "Any model"}</span>
                 </span>
                 {bot?.id === item.id && <span style={{ color: "var(--muted-foreground)" }}>current</span>}
@@ -149,9 +139,12 @@ export function ModelList({ bots = [], bot = null, onChooseBot, presets, names, 
             return (
               <div key={preset.id} role="option" data-index={index} aria-selected={index === active} {...hover}
                 onClick={() => onChoose(preset, "preset")} style={base}>
-                <span style={{ display: "flex", gap: 8, minWidth: 0, flex: 1 }}>
+                <span style={{ display: "flex", gap: 8, minWidth: 0, flex: 1, alignItems: "center" }}>
+                  <span title={providerLabel(preset.providerId)} style={{ width: 18, height: 18, flex: "none", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                    <ProviderIcon providerKind="agent" provider={providers.find((item) => item.id === preset.providerId) ?? { id: preset.providerId }}
+                      aria-label={providerLabel(preset.providerId)} className="size-4" />
+                  </span>
                   <span style={ellipsis}>{preset.name}</span>
-                  <span title={preset.providerId} style={providerBadge}>{providerLabel(preset.providerId)}</span>
                   <span style={{ ...ellipsis, color: "var(--muted-foreground)" }}>{modelSpec(preset, names)}</span>
                 </span>
                 {current && <span style={{ color: "var(--muted-foreground)" }}>current</span>}
@@ -194,6 +187,30 @@ export function ModelList({ bots = [], bot = null, onChooseBot, presets, names, 
               />
             </div>
           );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", minWidth: 280, maxHeight: 360 }}>
+      <input
+        autoFocus
+        value={query}
+        placeholder={onChooseBot && bots.length > 0 ? "Choose a bot, preset, or model…" : "Choose a preset or model…"}
+        aria-label="Search bots and model presets"
+        onChange={(e) => { setQuery(e.target.value); setActive(0); }}
+        onKeyDown={onKeyDown}
+        style={{ padding: "8px 12px", border: "none", borderBottom: "1px solid var(--border)", background: "transparent", color: "var(--foreground)", fontSize: 13, outline: "none" }}
+      />
+      <div ref={listRef} role="listbox" aria-label="Model presets" style={{ overflowY: "auto", padding: 4 }}>
+        {rows.map((row, index) => {
+          // Bots and presets sit under headers, indented alike; Other model… follows a divider.
+          const previous = rows[index - 1]?.kind;
+          const section = row.kind === "bot" || row.kind === "no-bot" ? "bots" : row.kind === "preset" ? "presets" : "other";
+          const previousSection = previous === undefined ? null : previous === "bot" || previous === "no-bot" ? "bots" : previous === "preset" ? "presets" : "other";
+          const lead = section === previousSection ? null
+            : section === "bots" ? <div style={sectionHeader}>Bots</div>
+            : section === "presets" ? <div style={sectionHeader}>Presets</div>
+            : index > 0 ? <div style={divider} /> : null;
+          return <Fragment key={`${row.kind}:${row.kind === "bot" ? row.bot.id : row.kind === "preset" ? row.preset.id : index}`}>{lead}{renderRow(row, index, section !== "other")}</Fragment>;
         })}
         {matches.length === 0 && botMatches.length === 0 && (presets.length > 0 || bots.length > 0) && query !== "" && <div style={emptyStyle}>No matching bots or presets</div>}
         {presets.length === 0 && <div style={emptyStyle}>No presets yet. Pick a model below, then save it.</div>}
@@ -208,7 +225,8 @@ const ellipsis: CSSProperties = { overflow: "hidden", textOverflow: "ellipsis", 
 const deleteStyle: CSSProperties = { border: "none", background: "transparent", color: "var(--muted-foreground)", cursor: "pointer", fontSize: 16, lineHeight: 1, padding: "0 4px" };
 const emptyStyle: CSSProperties = { padding: "6px 8px", fontSize: 12, color: "var(--muted-foreground)" };
 
-const providerBadge: CSSProperties = { flex: "none", padding: "0 6px", borderRadius: 4, border: "1px solid var(--border)", fontSize: 11, lineHeight: "16px", color: "var(--muted-foreground)" };
+const sectionHeader: CSSProperties = { padding: "8px 8px 2px", fontSize: 11, fontWeight: 600, letterSpacing: ".02em", textTransform: "uppercase", color: "var(--muted-foreground)" };
+const divider: CSSProperties = { height: 1, background: "var(--border)", margin: "4px 8px" };
 
 /** Trigger that takes the place of the host's model picker button. */
 export function ModelTrigger({ label, icon, onClick, disabled }: { label: string; icon?: ReactNode; onClick: () => void; disabled?: boolean }) {
