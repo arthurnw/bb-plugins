@@ -216,7 +216,7 @@ function ThreadRow({ thread, depth, childrenOf, groupBot, context }: {
   return (
     <>
       <ThreadActionsContextMenu thread={actionTarget(thread)}>
-        <a href={thread.href} draggable={false} data-drop={`thread:${thread.id}`} aria-current={active ? "page" : undefined}
+        <a href={thread.href} draggable={false} data-sidebar-thread-shortcut-target="" data-sidebar-thread-id={thread.id} data-drop={`thread:${thread.id}`} aria-current={active ? "page" : undefined}
           onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} onFocus={() => setHover(true)} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setHover(false); }}
           onPointerDown={(event) => { split.splitProps.onPointerDown?.(event); ours(event); }}
           onClick={(event) => { if (event.metaKey || event.ctrlKey || event.shiftKey) return; event.preventDefault(); context.onOpen(thread); }}

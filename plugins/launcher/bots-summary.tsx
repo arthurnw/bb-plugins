@@ -60,7 +60,7 @@ function FeedRow({ thread, bot, sort, active, showRowMetadata, actionTarget, onO
   const at = sort === "created" ? thread.createdAt : sort === "attention" ? thread.latestAttentionAt : thread.updatedAt;
   return (
     <ThreadActionsContextMenu thread={actionTarget(thread)}>
-      <a href={thread.href} draggable={false} aria-current={active ? "page" : undefined}
+      <a href={thread.href} draggable={false} data-sidebar-thread-shortcut-target="" data-sidebar-thread-id={thread.id} aria-current={active ? "page" : undefined}
         onPointerDown={(event) => { split.splitProps.onPointerDown?.(event); startDrag(thread)(event); }}
         onClick={(event) => { if (event.metaKey || event.ctrlKey || event.shiftKey) return; event.preventDefault(); onOpen(thread); }}
         style={{ ...feedRow, background: active ? "var(--accent)" : "transparent" }}>
