@@ -1036,7 +1036,15 @@ function CanvasInner() {
   const onNodeDragStart = useCallback(() => {
     dragging.current = true;
     framesAtDragStart.current = frames;
-  }, [frames]);
+    // An unsaved empty frame's spot is computed from the populated frames, so
+    // it would follow them as they move; save where it is before they do.
+    const pinned: Record<string, Point> = {};
+    for (const { group, members, bounds } of frames) {
+      const key = `frame:${group.key}`;
+      if (members.length === 0 && arrangement.positions[key] === undefined) pinned[key] = { x: bounds.x, y: bounds.y };
+    }
+    if (Object.keys(pinned).length > 0) save(pinned);
+  }, [frames, arrangement.positions, save]);
   const onNodeDragStop = useCallback(
     (_event: unknown, _node: CanvasNode, dragged: CanvasNode[]) => {
       dragging.current = false;
@@ -1089,19 +1097,9 @@ function CanvasInner() {
         if (node.type === "note") updateNote({ ...node.data.note, x: node.position.x, y: node.position.y });
         if (node.type === "chat") updateChat({ ...node.data.chat, x: node.position.x, y: node.position.y });
       }
-      // An unsaved empty frame is placed below the populated ones, so moving
-      // those would carry it along; pin it where it was.
-      if (Object.keys(changes).length > 0 && grouping !== "machine") {
-        for (const { group, members, bounds } of framesAtDragStart.current) {
-          const key = `frame:${group.key}`;
-          if (members.length === 0 && !(key in changes) && arrangement.positions[key] === undefined) {
-            changes[key] = { x: bounds.x, y: bounds.y };
-          }
-        }
-      }
       if (Object.keys(changes).length > 0) save(changes);
     },
-    [membersOf, save, updateNote, updateChat, record, grouping, groups, moveToSection, linkedChat, arrangement.positions],
+    [membersOf, save, updateNote, updateChat, record, grouping, groups, moveToSection, linkedChat],
   );
 
   const edges = useMemo<Edge[]>(() => {
