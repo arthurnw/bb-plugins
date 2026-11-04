@@ -1089,9 +1089,19 @@ function CanvasInner() {
         if (node.type === "note") updateNote({ ...node.data.note, x: node.position.x, y: node.position.y });
         if (node.type === "chat") updateChat({ ...node.data.chat, x: node.position.x, y: node.position.y });
       }
+      // An unsaved empty frame is placed below the populated ones, so moving
+      // those would carry it along; pin it where it was.
+      if (Object.keys(changes).length > 0 && grouping !== "machine") {
+        for (const { group, members, bounds } of framesAtDragStart.current) {
+          const key = `frame:${group.key}`;
+          if (members.length === 0 && !(key in changes) && arrangement.positions[key] === undefined) {
+            changes[key] = { x: bounds.x, y: bounds.y };
+          }
+        }
+      }
       if (Object.keys(changes).length > 0) save(changes);
     },
-    [membersOf, save, updateNote, updateChat, record, grouping, groups, moveToSection, linkedChat],
+    [membersOf, save, updateNote, updateChat, record, grouping, groups, moveToSection, linkedChat, arrangement.positions],
   );
 
   const edges = useMemo<Edge[]>(() => {
