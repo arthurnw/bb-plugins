@@ -54,12 +54,14 @@ import { edgeTypes } from "./TetherEdge.tsx";
 import { Triage, needsAttention } from "./Triage.tsx";
 import { GROUPINGS, LAYOUT_CHANGED, emptyLayout, type ArrangeStyle, type Grouping } from "./shared.ts";
 import { BUCKETS, BUCKET_LABEL, age, bucketOf, type Bucket } from "./status.ts";
+import { availableGroupings, effectiveGrouping, rebound } from "./bots.ts";
+import { useLauncherBots } from "./launcher.ts";
 
 const CLIENT_ID = Math.random().toString(36).slice(2, 10);
 const UNDO_LIMIT = 50;
 const NO_GROUP = "none";
 const EMPTY_ARRANGEMENT: Arrangement = emptyLayout().arrangements.project;
-const GROUPING_LABEL: Record<Grouping, string> = { project: "Project", section: "Section", machine: "Machine" };
+const GROUPING_LABEL: Record<Grouping, string> = { project: "Project", section: "Section", machine: "Machine", bot: "Bot" };
 
 /** A promise rejection handler that reports "Could not <what>: <error>". */
 const failed = (what: string) => (error: unknown) =>
@@ -152,6 +154,7 @@ function openLauncher(detail: {
   projectId?: string | null;
   placement?: { sectionId: string | null; pinned: boolean };
   hostId?: string;
+  botId?: string;
 }): boolean {
   const event = new CustomEvent("bb-launcher:new-thread", { detail, cancelable: true });
   return !window.dispatchEvent(event);
@@ -265,7 +268,7 @@ const SHORTCUTS: [string, string][] = [
   ["m", "Move the thread to a section"],
   ["a", "Rearrange the selected thread's frame"],
   ["z", "Fold or unfold a card's child threads"],
-  ["1 2 3", "Group by project, section, machine"],
+  ["1 2 3 4", "Group by project, section, machine, bot (with the Launcher plugin)"],
   ["c / f", "Center the selection / fit everything"],
   ["/", "Filter"],
   ["⌘Z / ⇧⌘Z", "Undo / redo a layout change"],
@@ -303,6 +306,8 @@ interface Group {
   projectId: string | null;
   sectionId: string | null;
   hostId: string | null;
+  /** The Launcher bot, in the bot grouping. */
+  botId: string | null;
 }
 
 type Overlay = null | { kind: "goto" } | { kind: "move"; threadId: string } | { kind: "new-section" } | { kind: "help" };
@@ -382,7 +387,7 @@ function CanvasInner() {
   );
   const { rpc, layout, setLayout } = useStoredLayout();
   const now = useNow(30_000);
-  const [grouping, setGrouping] = useStoredPreference<Grouping>(`${pluginId}:grouping`, "project");
+  const [storedGrouping, setGrouping] = useStoredPreference<Grouping>(`${pluginId}:grouping`, "project");
   const [query, setQuery] = useState("");
   const [hidden, setHidden] = useState<ReadonlySet<Bucket>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -429,6 +434,15 @@ function CanvasInner() {
     [sidebar.threads, showArchived],
   );
   const threadsById = useMemo(() => new Map(threads.map((thread) => [thread.id, thread])), [threads]);
+  const threadIdKey = useMemo(() => threads.map((thread) => thread.id).sort().join(","), [threads]);
+  // The bot grouping needs the Launcher plugin; without it the canvas offers the other three.
+  const launcher = useLauncherBots(threadIdKey);
+  const groupings = useMemo(() => availableGroupings(GROUPINGS, launcher.status), [launcher.status]);
+  const grouping = effectiveGrouping(storedGrouping, launcher.status);
+  const botsReady = launcher.status === "ready";
+  const bots = launcher.status === "ready" ? launcher.bots : null;
+  const threadBots = launcher.status === "ready" ? launcher.threadBots : null;
+  const botsById = useMemo(() => new Map((bots ?? []).map((bot) => [bot.id, bot])), [bots]);
   const projectNames = useMemo(
     () => new Map(sidebar.projects.map((project) => [project.id, project.isPersonal ? "Personal" : project.name])),
     [sidebar.projects],
@@ -447,6 +461,7 @@ function CanvasInner() {
           projectId: null,
           sectionId,
           hostId: null,
+          botId: null,
         };
       }
       if (grouping === "machine") {
@@ -456,6 +471,19 @@ function CanvasInner() {
           projectId: null,
           sectionId: null,
           hostId: thread.host?.id ?? null,
+          botId: null,
+        };
+      }
+      if (grouping === "bot") {
+        const botId = threadBots?.[thread.id];
+        const bot = botId === undefined ? undefined : botsById.get(botId);
+        return {
+          key: bot?.id ?? NO_GROUP,
+          name: bot?.name ?? "No bot",
+          projectId: null,
+          sectionId: null,
+          hostId: null,
+          botId: bot?.id ?? null,
         };
       }
       return {
@@ -464,9 +492,10 @@ function CanvasInner() {
         projectId: thread.projectId,
         sectionId: null,
         hostId: null,
+        botId: null,
       };
     },
-    [grouping, projectNames, sectionNames],
+    [grouping, projectNames, sectionNames, threadBots, botsById],
   );
   const groups = useMemo(() => new Map(threads.map((thread) => [thread.id, groupOf(thread)])), [threads, groupOf]);
   const buckets = useMemo(() => new Map(threads.map((thread) => [thread.id, bucketOf(thread)])), [threads]);
@@ -599,7 +628,7 @@ function CanvasInner() {
   );
 
   useEffect(() => {
-    if (layout === null || dragging.current) return;
+    if (layout === null || dragging.current || (grouping === "bot" && !botsReady)) return;
     const ids = new Set(layoutThreads.map((thread) => thread.id));
     const stored = new Map(Object.entries(arrangement.positions).filter(([id]) => ids.has(id)));
     const noteRects = arrangement.notes.map((note) => ({ x: note.x, y: note.y, width: note.width, height: note.height }));
@@ -610,7 +639,27 @@ function CanvasInner() {
     setPositions(Object.fromEntries(placed));
     const fresh = [...placed].filter(([id]) => !stored.has(id));
     if (fresh.length > 0 && sidebar.status === "ready") save(Object.fromEntries(fresh));
-  }, [layout, arrangement, layoutThreads, sidebar.status, save]);
+  }, [layout, arrangement, layoutThreads, sidebar.status, save, grouping, botsReady]);
+
+  // A thread placed before the Launcher recorded its bot sits in the wrong
+  // frame; drop its spot in the bot grouping so it is placed again.
+  const previousThreadBots = useRef(threadBots);
+  useEffect(() => {
+    const previous = previousThreadBots.current;
+    previousThreadBots.current = threadBots;
+    if (previous === null || threadBots === null || previous === threadBots) return;
+    const stored = layoutRef.current?.arrangements.bot.positions ?? {};
+    const moved = rebound(previous, threadBots, threadsById.keys()).filter((id) => id in stored);
+    if (moved.length === 0) return;
+    const changes = Object.fromEntries(moved.map((id) => [id, null]));
+    setLayout((current) => {
+      if (current === null) return current;
+      const positions = { ...current.arrangements.bot.positions };
+      for (const id of moved) delete positions[id];
+      return { ...current, arrangements: { ...current.arrangements, bot: { ...current.arrangements.bot, positions } } };
+    });
+    rpc.call("positions_set", { origin: CLIENT_ID, grouping: "bot", positions: changes }).catch(failed("save the layout"));
+  }, [threadBots, threadsById, setLayout, rpc]);
 
   // Frames with their members and bounds; also what Shift+HJKL moves between.
   const frames = useMemo(() => {
@@ -636,7 +685,7 @@ function CanvasInner() {
       grouping === "section"
         ? sidebar.sections
             .filter((section) => !byGroup.has(section.id))
-            .map((section) => ({ key: section.id, name: section.name, projectId: null, sectionId: section.id, hostId: null }))
+            .map((section) => ({ key: section.id, name: section.name, projectId: null, sectionId: section.id, hostId: null, botId: null }))
         : grouping === "project"
           ? sidebar.projects
               .filter((project) => !byGroup.has(project.id))
@@ -646,8 +695,13 @@ function CanvasInner() {
                 projectId: project.id,
                 sectionId: null,
                 hostId: null,
+                botId: null,
               }))
-          : [];
+          : grouping === "bot"
+            ? (bots ?? [])
+                .filter((bot) => !byGroup.has(bot.id))
+                .map((bot) => ({ key: bot.id, name: bot.name, projectId: null, sectionId: null, hostId: null, botId: bot.id }))
+            : [];
     if (empty.length === 0) return populated;
     const slot = frameBounds([{ x: 0, y: 0 }])!;
     const left = populated.length === 0 ? 0 : Math.min(...populated.map((frame) => frame.bounds.x));
@@ -661,7 +715,7 @@ function CanvasInner() {
         bounds: { ...slot, ...(arrangement.positions[`frame:${group.key}`] ?? { x: left + index * (slot.width + FRAME_GAP), y: top }) },
       })),
     ];
-  }, [topLevel, groups, positions, cardHeight, grouping, sidebar.sections, sidebar.projects, arrangement.positions]);
+  }, [topLevel, groups, positions, cardHeight, grouping, sidebar.sections, sidebar.projects, bots, arrangement.positions]);
 
   /** Files a thread under a section and lets the canvas re-place it there. */
   const moveToSection = useCallback(
@@ -724,6 +778,8 @@ function CanvasInner() {
           frameKey,
           projectId: group.projectId,
           sectionId: group.sectionId,
+          botId: group.botId,
+          bot: group.botId === null ? null : (botsById.get(group.botId) ?? null),
           name: group.name,
           count: members.length,
           attention: members
@@ -817,7 +873,7 @@ function CanvasInner() {
       });
     }
     return result;
-  }, [compact, threadsById, topLevel, forest, folded, cardHeight, rootOf, frames, positions, notes, chats, focusedChat, chatFocusRequests, settledZoom, selectedId, groups, buckets, hidden, query, now, grouping, layout?.frameColors]);
+  }, [compact, threadsById, topLevel, forest, folded, cardHeight, rootOf, frames, positions, notes, chats, focusedChat, chatFocusRequests, settledZoom, selectedId, groups, buckets, hidden, query, now, grouping, layout?.frameColors, botsById]);
 
   // React Flow owns transient state (measured size, selection, drag); merge
   // it into each rebuild.
@@ -1334,6 +1390,10 @@ function CanvasInner() {
         const project = frame.grouping === "project" && frame.projectId !== null ? { projectId: frame.projectId } : null;
         const section = frame.grouping === "section" ? { placement: { sectionId: frame.sectionId, pinned: false } } : null;
         const machine = frame.grouping === "machine" && frame.groupKey !== NO_GROUP ? { hostId: frame.groupKey } : null;
+        if (frame.grouping === "bot") {
+          if (!openLauncher(frame.botId === null ? {} : { botId: frame.botId })) navigate.toCompose({ focusPrompt: true });
+          return;
+        }
         const target = project ?? section ?? machine ?? {};
         if (openLauncher(target)) return;
         navigate.toCompose({ ...target, focusPrompt: true });
@@ -1600,7 +1660,7 @@ function CanvasInner() {
         focusThread(attentionQueue[(next + attentionQueue.length) % attentionQueue.length]!.id);
       } else if (key === "c" && selectedId !== null) reveal(selectedId, true);
       else if (key === "f") fitAll();
-      else if (event.key === "1" || event.key === "2" || event.key === "3") changeGrouping(GROUPINGS[Number(event.key) - 1]!);
+      else if (/^[1-9]$/.test(event.key) && Number(event.key) <= groupings.length) changeGrouping(groupings[Number(event.key) - 1]!);
       else return;
       event.preventDefault();
     };
@@ -1618,6 +1678,7 @@ function CanvasInner() {
     reveal,
     fitAll,
     changeGrouping,
+    groupings,
     releaseFocus,
     archiveShortcut,
     groups,
@@ -1638,7 +1699,8 @@ function CanvasInner() {
   ]);
 
   // Only when there is nothing to draw yet; a refresh with cached data stays quiet.
-  const loading = layout === null || (sidebar.status === "loading" && threads.length === 0);
+  const loading =
+    layout === null || (sidebar.status === "loading" && threads.length === 0) || (grouping === "bot" && !botsReady);
   const moving = overlay?.kind === "move" ? threads.find((thread) => thread.id === overlay.threadId) : undefined;
 
   return (
@@ -1777,7 +1839,7 @@ function CanvasInner() {
                   />
                 </div>
                 <div className="flex items-center rounded-md border border-border p-0.5" role="radiogroup" aria-label="Group by">
-                  {GROUPINGS.map((option, index) => (
+                  {groupings.map((option, index) => (
                     <button
                       key={option}
                       type="button"

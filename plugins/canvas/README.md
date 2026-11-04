@@ -12,7 +12,8 @@ Then open **Canvas** in bb's navigation rail. bb builds the plugin when it insta
 
 ## What it shows
 
-- **Frames.** Threads sit inside frames, grouped by **project**, by bb **section**, or by **machine** (the Group by switch, or `1` `2` `3`). Each frame shows its name, thread count, and how many need you. Drag a frame's header to move it with its threads. The palette button tints it, and `+` starts a new thread in that project, section, or machine. The toolbar's New thread button and every frame's `+` open the Launcher plugin's composer when it's installed, and bb's New thread page otherwise.
+- **Frames.** Threads sit inside frames, grouped by **project**, by bb **section**, by **machine**, or by **bot** (the Group by switch, or `1` `2` `3` `4`). Each frame shows its name, thread count, and how many need you. Drag a frame's header to move it with its threads. The palette button tints it, and `+` starts a new thread in that project, section, or machine. The toolbar's New thread button and every frame's `+` open the Launcher plugin's composer when it's installed, and bb's New thread page otherwise.
+- **Bots** are the [Launcher](../launcher) plugin's bots: one frame per bot, headed by its avatar, plus No bot. A thread's frame is the bot it was started with. The grouping appears only when the Launcher is installed and running, and a frame's `+` opens the Launcher composer with that bot chosen.
 - **Sections** are bb's own thread sections, the same ones the sidebar shows, so one section can hold threads from several repos. In the section grouping you can create a section from the toolbar, rename one (pencil, or double-click its name), delete one (trash, click twice; its threads move to No section), and file a thread by dragging its card onto another section or pressing `m`.
 - **Thread cards.** Each card shows bb's status glyph, the title, time since the last update, the agent provider, the branch or folder, a worktree tag, the PR with its check state, and background activity (subagents, commands, workflows, goals, plan mode, queued messages). The whole card is tinted by status, as in herdr-map: amber needs you (and pulses), blue working, red error, green finished and unread, gray idle.
 - **Child threads** don't get cards of their own. They're listed inside their parent's card, one row each with a status dot, title, and age, grandchildren indented under their parent. Click a row to open that child's chat as a pinned chat beside the parent, labeled with whose child it is. Fold a card's rows to a summary chip with its fold line or `z`; the chip has a dot per child and turns amber when one needs you. A child whose parent isn't on the canvas (archived, say) gets its own card.
@@ -48,7 +49,7 @@ On screens narrower than 768px the toolbar and the Needs you list give way to a 
 | `m` | Move the selected thread to a section (or a new one) |
 | `a` | Rearrange the selected thread's frame |
 | `z` | Fold or unfold the selected card's child threads |
-| `1` `2` `3` | Group by project, section, machine |
+| `1` `2` `3` `4` | Group by project, section, machine, bot (bot needs the Launcher plugin) |
 | `c` / `f` | Center the selection / fit everything |
 | `/` | Filter (dims threads that don't match) |
 | `⌘Z` / `⇧⌘Z` | Undo / redo a layout change (`Ctrl+Z` / `Ctrl+Y` elsewhere) |

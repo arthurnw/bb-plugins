@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { Icon, type IconName } from "./icons.tsx";
 import type { Note } from "../server";
 import { FRAME_COLORS, NOTE_COLORS, type FrameColor, type Grouping } from "./shared.ts";
+import type { LauncherBot } from "./bots.ts";
 import { ChatNode, type ChatFlowNode } from "./ChatNode.tsx";
 import { threadTarget, useArchive } from "./archive.ts";
 import { useCanvasActions, useIsFar } from "./context";
@@ -56,6 +57,9 @@ export type FrameNodeData = {
   projectId: string | null;
   /** The bb section, in the section grouping; null for threads outside every section. */
   sectionId: string | null;
+  /** The Launcher bot, in the bot grouping; null for threads without one. */
+  botId: string | null;
+  bot: LauncherBot | null;
   name: string;
   count: number;
   attention: number;
@@ -367,7 +371,16 @@ const GROUP_ICON: Record<Grouping, IconName> = {
   project: "FolderGit2",
   section: "Rows3",
   machine: "Monitor",
+  bot: "Bot",
 };
+
+/** The bot's image, else its emoji, else the grouping icon. */
+function BotFace({ bot, far }: { bot: LauncherBot; far: boolean }) {
+  const size = far ? "size-8" : "size-5";
+  if (bot.avatar) return <img src={bot.avatar} alt="" aria-hidden className={cn("shrink-0 rounded-full object-cover", size)} />;
+  if (bot.emoji) return <span aria-hidden className={cn("flex shrink-0 items-center justify-center leading-none", size, far ? "text-3xl" : "text-base")}>{bot.emoji}</span>;
+  return <Icon name="Bot" className={cn("shrink-0 text-muted-foreground", far ? "size-8" : "size-4")} />;
+}
 
 const headerButton =
   "flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-state-hover hover:text-foreground";
@@ -395,7 +408,11 @@ export const FrameNode = memo(function FrameNode({ data, selected }: NodeProps<F
         style={{ height: FRAME_HEADER }}
         className="flex cursor-grab items-center gap-2 px-4 active:cursor-grabbing"
       >
-        <Icon name={GROUP_ICON[data.grouping]} className={cn("shrink-0 text-muted-foreground", far ? "size-8" : "size-4")} />
+        {data.bot ? (
+          <BotFace bot={data.bot} far={far} />
+        ) : (
+          <Icon name={GROUP_ICON[data.grouping]} className={cn("shrink-0 text-muted-foreground", far ? "size-8" : "size-4")} />
+        )}
         {renaming ? (
           <input
             autoFocus
@@ -488,8 +505,8 @@ export const FrameNode = memo(function FrameNode({ data, selected }: NodeProps<F
               {canCreate ? (
                 <button
                   type="button"
-                  aria-label={`New thread in ${data.name}`}
-                  title={`New thread in ${data.name}`}
+                  aria-label={data.bot ? `New thread with ${data.name}` : `New thread in ${data.name}`}
+                  title={data.bot ? `New thread with ${data.name}` : `New thread in ${data.name}`}
                   className={headerButton}
                   onClick={() => actions.newThreadIn(data)}
                 >

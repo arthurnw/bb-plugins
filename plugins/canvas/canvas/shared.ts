@@ -11,8 +11,8 @@ export type FrameColor = (typeof FRAME_COLORS)[number];
 export const ARRANGE_STYLES = ["tree", "column", "row", "gridColumns", "gridRows"] as const;
 export type ArrangeStyle = (typeof ARRANGE_STYLES)[number];
 
-/** What the canvas draws frames around. */
-export const GROUPINGS = ["project", "section", "machine"] as const;
+/** What the canvas draws frames around. "bot" needs the Launcher plugin. */
+export const GROUPINGS = ["project", "section", "machine", "bot"] as const;
 export type Grouping = (typeof GROUPINGS)[number];
 
 /** Realtime channel for `bb canvas open-url`; the Canvas page opens each URL in its browser panel. */
@@ -23,5 +23,5 @@ export const LAYOUT_CHANGED = "layout-changed";
 
 export function emptyLayout(): Layout {
   const empty = () => ({ positions: {}, notes: [], chats: [] });
-  return { version: 2, arrangements: { project: empty(), section: empty(), machine: empty() }, frameColors: {} };
+  return { version: 2, arrangements: { project: empty(), section: empty(), machine: empty(), bot: empty() }, frameColors: {} };
 }

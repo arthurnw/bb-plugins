@@ -47,6 +47,8 @@ const layoutSchema = z.object({
     project: arrangementSchema,
     section: arrangementSchema,
     machine: arrangementSchema,
+    // Added later; layouts saved before it have none.
+    bot: arrangementSchema.default({ positions: {}, notes: [], chats: [] }),
   }),
   /** Keyed by `<grouping>:<group key>`. */
   frameColors: z.record(z.string(), z.enum(FRAME_COLORS)),
