@@ -1,14 +1,20 @@
-// Bot chip and picker for bb's own New thread composer. The overlay has its
-// own picker, so both stay out of composers the overlay embeds.
-import { experimental_usePluginId as usePluginId, useComposer, type ComposerSelection, type PluginComposerApi } from "@get-bb/plugin-sdk/app";
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+// The Launcher's bot-and-model picker on bb's own New thread composer. The
+// overlay has its own, so this stays out of composers the overlay embeds.
+import { experimental_usePluginId as usePluginId, useComposer, useRpc, type ComposerSelection, type PluginComposerApi } from "@get-bb/plugin-sdk/app";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import type { quickComposeRpcContract } from "./server";
 import { BotAvatar, useBots } from "./bot-avatars";
-import { draftBotId, draftWithBot, filterBots, type Bot } from "./bots";
+import { draftBotId, draftWithBot, type Bot } from "./bots";
+import { ModelList, ModelTrigger, modelLabel } from "./model-picker";
+import { HOST_MODEL_PICKER, useModelSlot } from "./model-slot";
+import type { ModelSelection, ModelState } from "./presets";
 import { markEnvironmentApplied } from "./default-environment";
 import { EXISTING_PROVIDER_ID } from "./existing-branch";
 import { PROVIDER_ID } from "./named-worktree";
 
 export const BOT_POPUP_ID = "bot";
+const NATIVE_ATTR = "data-launcher-native-picker";
 
 const isOverlay = (composer: PluginComposerApi) => composer.key.includes("launcher-");
 
@@ -71,16 +77,38 @@ async function chooseBot(composer: PluginComposerApi, pluginId: string, bot: Bot
   await composer.setSelection(next).catch(() => {});
 }
 
-export function BotChip() {
+function currentSelection(selection: ComposerSelection | null): ModelSelection | null {
+  if (!selection?.providerId || !selection.model || !selection.reasoningLevel) return null;
+  return { providerId: selection.providerId, model: selection.model, reasoningLevel: selection.reasoningLevel, serviceTier: selection.serviceTier ?? "default" };
+}
+
+function useModelState() {
+  const rpc = useRpc<typeof quickComposeRpcContract>();
+  const [state, setState] = useState<ModelState | null>(null);
+  const load = () => { rpc.call("getModelState", {}).then(setState, () => {}); };
+  useEffect(load, [rpc]);
+  return { state, setState, rpc, reload: load };
+}
+
+/**
+ * Replaces bb's model button on the New thread page with the Launcher's
+ * trigger (bot and model), the same picker the overlay uses. Also finishes the
+ * settings restore after a bot thread is sent.
+ */
+export function NativeModelTrigger() {
   const composer = useComposer();
   const pluginId = usePluginId();
   const bots = useBots();
+  const { state } = useModelState();
+  const anchor = useRef<HTMLSpanElement>(null);
+  const [root, setRoot] = useState<HTMLElement | null>(null);
   const key = composer.key;
+  const own = !isOverlay(composer) && composer.scope.kind === "new-thread";
   const botId = draftBotId(composer.draft, pluginId);
   const bot = botId ? bots?.find((item) => item.id === botId) ?? null : null;
 
   useEffect(() => {
-    if (isOverlay(composer)) return;
+    if (!own) return;
     const pending = pendingRestore.get(key);
     if (pending && !draftBotId(composer.draft, pluginId)) {
       pendingRestore.delete(key);
@@ -93,79 +121,49 @@ export function BotChip() {
       pendingRestore.set(key, previous);
       void restore(composer, previous).then(() => pendingRestore.delete(key), () => {});
     });
-  }, [composer, key, pluginId]);
+  }, [composer, key, pluginId, own]);
 
-  if (isOverlay(composer) || composer.scope.kind !== "new-thread" || !bots || bots.length === 0) return null;
+  // Mark this composer so the stylesheet hides only its own host model button.
+  useEffect(() => {
+    if (!own) return;
+    const form = anchor.current?.closest<HTMLElement>("form[data-promptbox]") ?? null;
+    form?.setAttribute(NATIVE_ATTR, "");
+    setRoot(form);
+    return () => { form?.removeAttribute(NATIVE_ATTR); setRoot(null); };
+  }, [own]);
+  const slot = useModelSlot(root, own && state !== null);
+
+  if (!own) return null;
+  const selection = currentSelection(composer.selection);
+  const label = state ? modelLabel(state.presets, selection, state.names, bot && { ...bot, emoji: "" }) : "";
   return (
-    <button type="button" aria-label={bot ? `Bot: ${bot.name}` : "Choose a bot"} title="Start as a bot"
-      onMouseDown={(e) => e.preventDefault()} onClick={() => composer.experimental_openPopup(BOT_POPUP_ID)}
-      style={{ display: "inline-flex", alignItems: "center", gap: 6, maxWidth: 200, padding: "4px 8px", border: "none", borderRadius: 8,
-        background: "transparent", color: bot ? "var(--foreground)" : "var(--muted-foreground)", cursor: "pointer", fontSize: 13 }}>
-      {bot ? <BotAvatar bot={bot} size={16} /> : <span aria-hidden style={{ fontSize: 14, lineHeight: 1 }}>☺</span>}
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bot ? bot.name : "Bot"}</span>
-      <span aria-hidden style={{ fontSize: 10, opacity: 0.6 }}>▾</span>
-    </button>
+    <span ref={anchor} style={{ display: "contents" }}>
+      {slot && state && <style>{`[${NATIVE_ATTR}] ${HOST_MODEL_PICKER} { display: none !important; }`}</style>}
+      {slot && state && createPortal(
+        <ModelTrigger icon={bot ? <BotAvatar bot={bot} size={16} /> : undefined} label={label} onClick={() => composer.experimental_openPopup(BOT_POPUP_ID)} />,
+        slot)}
+    </span>
   );
 }
 
-type Row = { bot: Bot } | { bot: null };
-
-export function BotPopup() {
+/** Bots, then presets, then Other model…, applied through bb's own pickers. */
+export function NativeModelPopup() {
   const composer = useComposer();
   const pluginId = usePluginId();
   const bots = useBots();
-  const current = draftBotId(composer.draft, pluginId);
-  const [query, setQuery] = useState("");
-  const [active, setActive] = useState(0);
-  const listRef = useRef<HTMLDivElement>(null);
-  const rows = useMemo<Row[]>(() => [
-    ...filterBots(bots ?? [], query).map((bot) => ({ bot })),
-    ...(current && (query === "" || "no bot".includes(query.trim().toLowerCase())) ? [{ bot: null }] : []),
-  ], [bots, query, current]);
-
-  useEffect(() => { setActive(Math.max(0, rows.findIndex((row) => row.bot?.id === current))); }, [bots]);
-  useEffect(() => { listRef.current?.querySelector(`[data-index="${active}"]`)?.scrollIntoView({ block: "nearest" }); }, [active]);
-
+  const { state, setState, rpc } = useModelState();
+  const botId = draftBotId(composer.draft, pluginId);
+  const bot = botId ? bots?.find((item) => item.id === botId) ?? null : null;
   const close = () => { composer.experimental_closePopup(); composer.focus(); };
-  const choose = (row: Row | undefined) => {
-    if (!row) return;
-    composer.experimental_closePopup();
-    void chooseBot(composer, pluginId, row.bot).then(() => composer.focus());
-  };
-  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    const down = event.key === "ArrowDown" || (event.ctrlKey && (event.key === "n" || event.key === "j"));
-    const up = event.key === "ArrowUp" || (event.ctrlKey && (event.key === "p" || event.key === "k"));
-    if (down || up) {
-      event.preventDefault();
-      if (rows.length > 0) setActive((i) => (i + (down ? 1 : -1) + rows.length) % rows.length);
-    } else if (event.key === "Enter") {
-      event.preventDefault();
-      choose(rows[active]);
-    } else if (event.key === "Escape") {
-      event.preventDefault();
-      close();
-    }
-  };
-
+  if (!state || bots === null) return <div style={{ padding: "8px 12px", fontSize: 12, color: "var(--muted-foreground)" }}>Loading…</div>;
   return (
-    <div style={{ display: "flex", flexDirection: "column", minWidth: 280, maxHeight: 320 }}>
-      <input autoFocus value={query} placeholder="Start as a bot…" aria-label="Search bots"
-        onChange={(e) => { setQuery(e.target.value); setActive(0); }} onKeyDown={onKeyDown}
-        style={{ padding: "8px 12px", border: "none", borderBottom: "1px solid var(--border)", background: "transparent", color: "var(--foreground)", fontSize: 13, outline: "none" }} />
-      <div ref={listRef} role="listbox" aria-label="Bots" style={{ overflowY: "auto", padding: 4 }}>
-        {rows.length === 0 && <div style={{ padding: "6px 8px", fontSize: 12, color: "var(--muted-foreground)" }}>{bots === null ? "Loading…" : "No matching bots"}</div>}
-        {rows.map((row, index) => (
-          <div key={row.bot?.id ?? "none"} role="option" data-index={index} aria-selected={index === active}
-            onMouseEnter={() => setActive(index)} onMouseDown={(e) => e.preventDefault()} onClick={() => choose(row)}
-            style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 4, cursor: "pointer", fontSize: 13,
-              color: "var(--foreground)", background: index === active ? "var(--accent)" : "transparent" }}>
-            {row.bot ? <BotAvatar bot={row.bot} size={18} /> : null}
-            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.bot ? row.bot.name : "No bot"}</span>
-            {row.bot && row.bot.id === current && <span style={{ color: "var(--muted-foreground)" }}>current</span>}
-            {!row.bot && <span style={{ color: "var(--muted-foreground)" }}>restore the earlier settings</span>}
-          </div>
-        ))}
-      </div>
-    </div>
+    <ModelList bots={[...bots]} bot={bot} names={state.names} presets={state.presets} selection={currentSelection(composer.selection)}
+      onChooseBot={(next) => { composer.experimental_closePopup(); void chooseBot(composer, pluginId, next).then(() => composer.focus()); }}
+      onChoose={(selection, source) => {
+        void composer.setSelection({ providerId: selection.providerId, model: selection.model, reasoningLevel: selection.reasoningLevel, serviceTier: selection.serviceTier }).catch(() => {});
+        if (source === "preset") close();
+      }}
+      onSavePresets={async (presets) => { setState(await rpc.call("savePresets", { presets })); }}
+      onClose={close} />
   );
 }

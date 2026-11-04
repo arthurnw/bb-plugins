@@ -17,6 +17,7 @@ import { cycle } from "./projects";
 import { ProjectList, useProjectOptions } from "./project-list";
 import { isBackgroundSubmit, projectShortcut } from "./overlay-keys";
 import { ModelList, ModelTrigger, modelLabel } from "./model-picker";
+import { HOST_MODEL_PICKER, useModelSlot } from "./model-slot";
 import type { ModelSelection, ModelState } from "./presets";
 import { PROVIDER_ID } from "./named-worktree";
 import { branchNameFocused, focusBranchName } from "./named-worktree-inputs";
@@ -40,34 +41,6 @@ const LABELS: Record<QuickComposeKind, { dialog: string; placeholder: string }> 
 };
 
 const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
-const HOST_MODEL_PICKER = "button[aria-label^='Provider, model and reasoning']";
-
-// The host's model picker button cannot be reconfigured, so the overlay hides
-// it and puts its own trigger (presets first) where it was.
-function useModelSlot(root: HTMLElement | null, enabled: boolean): HTMLElement | null {
-  const [slot, setSlot] = useState<HTMLElement | null>(null);
-  useEffect(() => {
-    if (!root || !enabled) return;
-    const span = document.createElement("span");
-    span.style.display = "inline-flex";
-    const sync = () => {
-      const button = root.querySelector(HOST_MODEL_PICKER);
-      if (button?.parentElement) {
-        if (span.nextSibling !== button) button.parentElement.insertBefore(span, button);
-        setSlot(span);
-      } else {
-        span.remove();
-        setSlot(null);
-      }
-    };
-    sync();
-    const observer = new MutationObserver(sync);
-    observer.observe(root, { childList: true, subtree: true });
-    return () => { observer.disconnect(); span.remove(); setSlot(null); };
-  }, [root, enabled]);
-  return slot;
-}
-
 const SEED_FOR: Record<BotEnvironment, "named" | "existing" | "checkout"> = { "named-worktree": "named", "existing-branch": "existing", checkout: "checkout" };
 
 /** Seeds the project checkout on a chosen machine; no seed leaves the composer's default. */

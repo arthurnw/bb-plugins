@@ -7,7 +7,7 @@ import { registerOverlay } from "./overlay";
 import { PresetSettings } from "./settings";
 import { BotSettings } from "./bot-settings";
 import { registerBotIcons } from "./bot-avatars";
-import { BOT_POPUP_ID, BotChip, BotPopup } from "./native-bot";
+import { BOT_POPUP_ID, NativeModelPopup, NativeModelTrigger } from "./native-bot";
 import { registerBotThreadAction } from "./bot-thread-action";
 import { registerBotThreadInfo } from "./bot-thread-info";
 import { BotThreadList } from "./bots-view";
@@ -56,8 +56,8 @@ export default definePluginApp((app) => {
   app.composer.customize({
     id: "launcher",
     scopes: ["new-thread"],
-    experimental_popups: [{ id: POPUP_ID, label: "Switch project", component: ProjectPopup }, { id: BOT_POPUP_ID, label: "Choose bot", component: BotPopup }],
-    actions: [{ id: "bot", component: BotChip }],
+    experimental_popups: [{ id: POPUP_ID, label: "Switch project", component: ProjectPopup }, { id: BOT_POPUP_ID, label: "Choose bot or model", component: NativeModelPopup }],
+    actions: [{ id: "bot", component: NativeModelTrigger }],
     banners: [{ id: "sdk-capture", chrome: "bare", component: SdkCapture }, { id: "default-environment", chrome: "bare", component: DefaultEnvironment }],
   });
 
@@ -126,7 +126,7 @@ export default definePluginApp((app) => {
   // No default shortcut: Mod+Shift+K belongs to Quick Chat. Bind one in Settings → Keyboard.
   app.composer.experimental_registerCommand({
     id: "bot",
-    title: "Launcher: choose bot",
+    title: "Launcher: bot and model picker",
     run: ({ composer }) => {
       if (composer.scope.kind !== "new-thread" || composer.key.includes("launcher-")) return;
       composer.experimental_openPopup(BOT_POPUP_ID);

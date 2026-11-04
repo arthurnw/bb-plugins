@@ -14,7 +14,7 @@ rename did not carry over its saved state, which lives under the plugin ID.
 | Launcher: existing branch / PR | `Mod+Shift+G` | Switch the environment to Existing branch / PR and focus its field. In the overlay this re-seeds selections unless the field is already shown. |
 | Launcher: quick compose | `Mod+N` | Toggle a floating New thread composer without navigating. See [Replacing New thread](#replacing-new-thread). |
 | Model picker (overlay only) | `Mod+Shift+M` | Bots first, then presets, then **Other model…** for every provider, model, effort, and tier. |
-| Launcher: choose bot | none | Open the bot picker in bb's New thread composer. Quick Chat owns `Mod+Shift+K`; bind another key in Settings → Keyboard. |
+| Launcher: bot and model picker | none | Open the bot and model picker in bb's New thread composer. Bind a key in Settings → Keyboard. |
 | Launcher: hand off this thread | `Mod+Shift+H` | Open a composer mentioning the current thread and initially reusing its environment. |
 | Launcher: fork this thread into a named worktree | none | Open a composer that forks the current thread into a Named worktree based on the source's branch. Also in every thread actions menu as **Fork into named worktree**. |
 
@@ -120,10 +120,13 @@ point produces that mention:
   re-seed and the starter prompt fills an empty draft. Picking a model
   afterwards keeps the bot; **No bot** drops it. The server adds the mention
   when the thread is created.
-- **New thread page**: the **Bot** chip in the composer does the same through
-  bb's pickers and puts the pill first in the draft. bb saves picker changes as
-  the next thread's defaults, so the chip puts the earlier values back after
-  the send (or when you choose **No bot**).
+- **New thread page**: the Launcher's picker replaces bb's model button there
+  too (bots, then presets, then **Other model…**; a bottom sheet on phones).
+  Presets and other models go through bb's own pickers. A bot's fields do too,
+  and its pill goes first in the draft; bb saves picker changes as the next
+  thread's defaults, so the earlier values come back after the send (or when
+  you choose **No bot**). bb's button is hidden by its label, as in the
+  overlay; if bb renames it, both buttons show.
 - **Typing** `@` and the bot's name anywhere in a new thread's first message.
 
 The bot's instructions and the `bot_memory` tool are attached when the thread's
