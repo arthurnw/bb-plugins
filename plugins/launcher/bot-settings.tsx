@@ -20,8 +20,8 @@ const PERMISSION_LABELS: Record<PermissionMode, string> = { "accept-edits": "Acc
 const KEEP = "";
 
 const errorText = (e: unknown) => e instanceof Error ? e.message : String(e);
-const toDraft = ({ name, emoji, instructions, starterPrompt, model, permissionMode, environment, projectId }: Bot): BotDraft =>
-  ({ name, emoji, instructions, starterPrompt, model, permissionMode, environment, projectId });
+const toDraft = ({ name, emoji, instructions, starterPrompt, model, permissionMode, environment, projectId, memoryWrites }: Bot): BotDraft =>
+  ({ name, emoji, instructions, starterPrompt, model, permissionMode, environment, projectId, memoryWrites });
 const sameDraft = (a: BotDraft, b: BotDraft) => JSON.stringify(a) === JSON.stringify(b);
 
 export function BotSettings() {
@@ -54,7 +54,7 @@ export function BotSettings() {
     let n = 1;
     while (taken.has(n === 1 ? "new bot" : `new bot ${n}`)) n++;
     const { bot } = await rpc.call("saveBot", { bot: { name: n === 1 ? "New bot" : `New bot ${n}`, emoji: "", instructions: "", starterPrompt: "",
-      model: null, permissionMode: null, environment: null, projectId: null } });
+      model: null, permissionMode: null, environment: null, projectId: null, memoryWrites: true } });
     setEditing(bot.id);
   });
 
@@ -184,6 +184,11 @@ function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<unknown>
           </select>
         </Field>
       </div>
+      <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+        <input type="checkbox" checked={draft.memoryWrites} onChange={(e) => set("memoryWrites", e.target.checked)} />
+        Agents can update memory
+        <span style={{ ...muted, fontSize: 12 }}>Off keeps the saved memory and still shows it to agents; only new changes are refused.</span>
+      </label>
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <button type="button" style={button} disabled={!dirty || busy || !draft.name.trim()} onClick={() => void save()}>Save</button>
         <button type="button" style={button} disabled={!dirty || busy} onClick={() => setDraft(saved)}>Revert</button>

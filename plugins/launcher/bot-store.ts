@@ -197,7 +197,8 @@ export class BotStore implements OwnerLookup {
 }
 
 function fromRow(row: BotRow, avatarSlot: number): Bot {
-  const draft = JSON.parse(row.draft_json) as BotDraft;
+  // Drafts saved before a field existed get its default.
+  const draft = { memoryWrites: true, ...(JSON.parse(row.draft_json) as Partial<BotDraft>) } as BotDraft;
   return { ...draft, id: row.id, position: row.position, memory: row.memory, avatar: row.avatar, avatarSlot,
     createdAt: row.created_at, updatedAt: row.updated_at };
 }

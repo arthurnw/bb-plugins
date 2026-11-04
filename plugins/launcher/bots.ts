@@ -38,6 +38,8 @@ export interface BotDraft {
   permissionMode: PermissionMode | null;
   environment: BotEnvironment | null;
   projectId: string | null;
+  /** Off: agents can still read memory, but `bot_memory` refuses changes. */
+  memoryWrites: boolean;
 }
 export interface Bot extends BotDraft {
   id: string;
@@ -65,13 +67,13 @@ export const NO_BOT_TEXT = "The user started this thread without a Launcher bot.
 /** How a thread got its bot: picked with a mention, inherited, or assigned before its first turn. */
 export type BindingSource = "mention" | "inherit" | "assign";
 
-export function renderInstructions(bot: Pick<Bot, "name" | "instructions" | "memory">): string {
+export function renderInstructions(bot: Pick<Bot, "name" | "instructions" | "memory"> & { memoryWrites?: boolean }): string {
   const parts = [
     `# Launcher bot: ${oneLine(bot.name)}`,
     `This thread runs as the "${oneLine(bot.name)}" bot. Its instructions add to the user's and the project's instructions and do not override them.`,
   ];
   if (bot.instructions.trim()) parts.push(`## Bot instructions\n${bot.instructions.trim()}`);
-  parts.push(`## Bot memory\n${bot.memory.trim() || "(empty)"}`);
+  parts.push(`## Bot memory${bot.memoryWrites === false ? " (read-only)" : ""}\n${bot.memory.trim() || "(empty)"}`);
   return parts.join("\n\n");
 }
 

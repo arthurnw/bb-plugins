@@ -94,7 +94,6 @@ export function BotsSummary(props: SummaryProps) {
           const own = byBot.get(bot.id) ?? [];
           const busy = own.filter((thread) => BUSY.has(thread.status)).length;
           const waiting = own.filter((thread) => thread.hasPendingInteraction).length;
-          const facts = bot.memory.split("\n").filter((line) => line.trim()).length;
           // Needs-you outranks running; the glyph is bb's own, as on thread rows.
           const urgent = own.find((thread) => thread.hasPendingInteraction) ?? own.find((thread) => BUSY.has(thread.status));
           const indicator = !urgent ? null : urgent.hasPendingInteraction ? "waiting-for-input" as const
@@ -122,7 +121,6 @@ export function BotsSummary(props: SummaryProps) {
                 {busy > 0 && <span style={{ color: "var(--primary, #2563eb)" }}><b>{busy}</b> running</span>}
                 {waiting > 0 && <span style={{ color: "var(--warning, #d97706)" }}><b>{waiting}</b> need you</span>}
               </div>
-              <div style={muted}>{facts} memory {facts === 1 ? "fact" : "facts"}</div>
             </div>
           );
         })}

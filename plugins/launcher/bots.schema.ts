@@ -13,6 +13,7 @@ export const botDraftSchema: z.ZodType<BotDraft, unknown> = z.object({
   permissionMode: permissionModeSchema.nullable().default(null),
   environment: z.enum(BOT_ENVIRONMENTS).nullable().default(null),
   projectId: z.string().min(1).nullable().default(null),
+  memoryWrites: z.boolean().default(true),
 });
 
 export const botSchema: z.ZodType<Bot, unknown> = z.object({
@@ -26,6 +27,7 @@ export const botSchema: z.ZodType<Bot, unknown> = z.object({
   permissionMode: permissionModeSchema.nullable(),
   environment: z.enum(BOT_ENVIRONMENTS).nullable(),
   projectId: z.string().nullable(),
+  memoryWrites: z.boolean(),
   memory: z.string(),
   avatar: z.string().nullable(),
   avatarSlot: z.number().int().min(0).max(MAX_BOTS - 1),

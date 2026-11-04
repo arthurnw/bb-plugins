@@ -230,3 +230,12 @@ test("feed sort: stored choice, else the built-in list's sort; newest first", ()
   assert.deepEqual(sortFeed(rows, "attention").map((r) => r.id), ["b", "a"]);
   assert.deepEqual(sortFeed(rows, "created").map((r) => r.id), ["b", "a"]);
 });
+
+test("read-only memory is marked in the instructions, and old drafts default to writable", () => {
+  assert.match(renderInstructions({ name: "W", instructions: "", memory: "- a", memoryWrites: false }), /## Bot memory \(read-only\)/);
+  const { db, store } = openStore();
+  const bot = store.save(undefined, draft("Old"));
+  const { memoryWrites: _, ...legacy } = bot;
+  db.prepare("UPDATE bots SET draft_json = ? WHERE id = ?").run(JSON.stringify({ ...legacy, memory: undefined }), bot.id);
+  assert.equal(new BotStore(db as unknown as SqlDb).get(bot.id)!.memoryWrites, true);
+});

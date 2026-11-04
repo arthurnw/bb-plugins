@@ -12,6 +12,7 @@ const LIST_ORDER_KEY = "list-order.v1";
 const MEMORY_GUIDANCE = `${MEMORY_TOOL} keeps durable facts for this thread's Launcher bot, shared by every thread that uses the bot. The memory in the thread instructions is a snapshot from session start; call action "read" for the current text and its sha256.
 - Append only facts that will matter in later threads: stable user preferences, recurring corrections, conventions the user stated. Not task progress, and nothing that belongs in the repository.
 - Never store credentials or secrets.
+- When the bot's memory is read-only, only "read" works; do not retry changes.
 - One fact per append, on one line. To remove one, call "forget" with the line as read.
 - Memory is limited to ${MEMORY_MAX} characters. When an append is refused, read, condense, and call "overwrite" with the complete text and the sha256 from that read. On a conflict, read again and merge; do not overwrite with stale text.`;
 
@@ -76,6 +77,7 @@ export function registerBots(bb: BbPluginApi) {
       const view = (memory: { content: string; sha256: string }, changed?: boolean) =>
         JSON.stringify({ ...(changed === undefined ? {} : { changed }), content: memory.content, sha256: memory.sha256, chars: memory.content.length, limit: MEMORY_MAX });
       if (params.action === "read") return view(current);
+      if (!store.require(botId).memoryWrites) return fail("This bot's memory is read-only. The user turned off memory updates; do not retry.");
       try {
         let next: string;
         if (params.action === "overwrite") {
