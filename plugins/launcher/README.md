@@ -168,7 +168,8 @@ thread. A tile opens the Threads view at that bot. Below the tiles, **Recent
 across bots** lists bot threads newest first, 10 at a time, sorted by Last
 activity (`updatedAt`), Last response (`latestAttentionAt`, when the thread last
 finished a turn or asked for input), or Created. Until you choose, it follows
-the built-in list's sort.
+the built-in list's sort. Drag a recent thread onto a tile to hand it off to
+that bot (or reassign it if it has not started).
 
 **Threads** is the full list. The Launcher list replaces bb's whole list (bb
 does not let a plugin add a mode to the built-in one): Pinned, then bots and bb's custom sections in one order you set by

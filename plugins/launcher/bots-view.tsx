@@ -434,13 +434,20 @@ export function BotThreadList({ activeThreadId, activeProjectId, onNavigate }: {
       ))}
     </div>
   );
+  const ghost = dragged && createPortal(
+    <div aria-hidden style={{ position: "fixed", left: dragged.x + 12, top: dragged.y + 8, zIndex: 60, pointerEvents: "none", maxWidth: 240,
+      padding: "4px 8px", borderRadius: 6, background: "var(--popover, var(--background))", border: "1px solid var(--border)", fontSize: 12,
+      boxShadow: "0 4px 12px rgb(0 0 0 / .15)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+      {dragged.payload.kind === "thread" ? dragged.payload.thread.displayTitle : "Move group"}
+    </div>, document.body);
   if (view === "bots") {
     return (
-      <div style={{ display: "flex", flexDirection: "column", padding: "4px 4px 16px" }}>
+      <div style={{ display: "flex", flexDirection: "column", padding: "4px 4px 16px", userSelect: dragged ? "none" : undefined }}>
         {toggle}
         <BotsSummary bots={bots} threads={sidebar.threads.filter(visible)} threadBots={threadBots} activeThreadId={activeThreadId}
           activeProjectId={activeProjectId} builtInSort={preferences.chronologicalSort} showRowMetadata={preferences.showRowMetadata}
-          actionTarget={actionTarget} onOpen={open} onShowBot={showBot} />
+          actionTarget={actionTarget} onOpen={open} onShowBot={showBot} startDrag={context.startDrag} over={dragState.over} />
+        {ghost}
       </div>
     );
   }
@@ -471,12 +478,7 @@ export function BotThreadList({ activeThreadId, activeProjectId, onNavigate }: {
       })}
       <Group {...groupProps("threads")} title={<span style={groupTitle}>Threads</span>} threads={placed.get("threads") ?? []} limit={PAGE} />
       <NewSection onCreated={(id) => saveOrder([...keys, `section:${id}`])} />
-      {dragged && createPortal(
-        <div aria-hidden style={{ position: "fixed", left: dragged.x + 12, top: dragged.y + 8, zIndex: 60, pointerEvents: "none", maxWidth: 240,
-          padding: "4px 8px", borderRadius: 6, background: "var(--popover, var(--background))", border: "1px solid var(--border)", fontSize: 12,
-          boxShadow: "0 4px 12px rgb(0 0 0 / .15)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {dragged.payload.kind === "thread" ? dragged.payload.thread.displayTitle : "Move group"}
-        </div>, document.body)}
+      {ghost}
     </div>
   );
 }

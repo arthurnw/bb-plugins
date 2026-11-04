@@ -7,7 +7,7 @@ import {
   experimental_useSidebarThreadSplit as useSidebarThreadSplit,
   ThreadTitle, useRpc, type PluginSidebarThread, type PluginThreadActionTarget,
 } from "@get-bb/plugin-sdk/app";
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import type { quickComposeRpcContract } from "./server";
 import type { Bot } from "./bots";
 import { modelSpec } from "./presets";
@@ -39,17 +39,22 @@ export interface SummaryProps {
   actionTarget: (thread: PluginSidebarThread) => PluginThreadActionTarget;
   onOpen: (thread: PluginSidebarThread) => void;
   onShowBot: (botId: string) => void;
+  /** Starts a pointer drag of a feed row; tiles are `bot:<id>` drop targets. */
+  startDrag: (thread: PluginSidebarThread) => (event: ReactPointerEvent) => void;
+  /** The drop target under the pointer during a drag. */
+  over: string | null;
 }
 
-function FeedRow({ thread, bot, sort, active, showRowMetadata, actionTarget, onOpen }: {
+function FeedRow({ thread, bot, sort, active, showRowMetadata, actionTarget, onOpen, startDrag }: {
   thread: PluginSidebarThread; bot: Bot; sort: FeedSort; active: boolean; showRowMetadata: boolean;
-  actionTarget: SummaryProps["actionTarget"]; onOpen: (thread: PluginSidebarThread) => void;
+  actionTarget: SummaryProps["actionTarget"]; onOpen: (thread: PluginSidebarThread) => void; startDrag: SummaryProps["startDrag"];
 }) {
   const split = useSidebarThreadSplit(thread.id);
   const at = sort === "created" ? thread.createdAt : sort === "attention" ? thread.latestAttentionAt : thread.updatedAt;
   return (
     <ThreadActionsContextMenu thread={actionTarget(thread)}>
-      <a href={thread.href} draggable={false} aria-current={active ? "page" : undefined} {...split.splitProps}
+      <a href={thread.href} draggable={false} aria-current={active ? "page" : undefined}
+        onPointerDown={(event) => { split.splitProps.onPointerDown?.(event); startDrag(thread)(event); }}
         onClick={(event) => { if (event.metaKey || event.ctrlKey || event.shiftKey) return; event.preventDefault(); onOpen(thread); }}
         style={{ ...feedRow, background: active ? "var(--accent)" : "transparent" }}>
         <span style={{ marginTop: 1 }}><BotAvatar bot={bot} size={16} /></span>
@@ -98,10 +103,11 @@ export function BotsSummary(props: SummaryProps) {
           const urgent = own.find((thread) => thread.hasPendingInteraction) ?? own.find((thread) => BUSY.has(thread.status));
           const indicator = !urgent ? null : urgent.hasPendingInteraction ? "waiting-for-input" as const
             : urgent.indicator === "none" ? "runtime" as const : urgent.indicator;
+          const dropping = props.over === `bot:${bot.id}`;
           return (
-            <div key={bot.id} role="button" tabIndex={0} aria-label={`Show ${bot.name}'s threads`}
+            <div key={bot.id} role="button" tabIndex={0} aria-label={`Show ${bot.name}'s threads`} data-drop={`bot:${bot.id}`}
               onClick={() => props.onShowBot(bot.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); props.onShowBot(bot.id); } }}
-              style={tile}>
+              style={{ ...tile, ...(dropping ? { background: "var(--accent)", outline: "2px solid var(--ring, var(--primary))", outlineOffset: -2 } : {}) }}>
               {/* One column so the status glyph centers under the +. */}
               <span style={{ position: "absolute", top: 6, right: 6, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
                 <button type="button" aria-label={`New thread with ${bot.name}`} title={`New thread with ${bot.name}`}
@@ -137,7 +143,7 @@ export function BotsSummary(props: SummaryProps) {
       <div style={{ padding: "0 4px" }}>
         {feed.slice(0, shown).map((thread) => (
           <FeedRow key={thread.id} thread={thread} bot={botOf(thread)} sort={sort} active={thread.id === props.activeThreadId}
-            showRowMetadata={props.showRowMetadata} actionTarget={props.actionTarget} onOpen={props.onOpen} />
+            showRowMetadata={props.showRowMetadata} actionTarget={props.actionTarget} onOpen={props.onOpen} startDrag={props.startDrag} />
         ))}
       </div>
       {feed.length > shown && (
