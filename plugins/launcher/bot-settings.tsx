@@ -184,11 +184,13 @@ function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<unknown>
           </select>
         </Field>
       </div>
-      <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
-        <input type="checkbox" checked={draft.memoryWrites} onChange={(e) => set("memoryWrites", e.target.checked)} />
-        Agents can update memory
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <span style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13 }}>
+          <Switch checked={draft.memoryWrites} onChange={(value) => set("memoryWrites", value)} labelledBy={`memory-writes-${bot.id}`} />
+          <span id={`memory-writes-${bot.id}`}>Agents can update memory</span>
+        </span>
         <span style={{ ...muted, fontSize: 12 }}>Off keeps the saved memory and still shows it to agents; only new changes are refused.</span>
-      </label>
+      </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <button type="button" style={button} disabled={!dirty || busy || !draft.name.trim()} onClick={() => void save()}>Save</button>
         <button type="button" style={button} disabled={!dirty || busy} onClick={() => setDraft(saved)}>Revert</button>
@@ -276,6 +278,17 @@ function MemoryEditor({ botId, memory }: { botId: string; memory: string }) {
         {error && <span role="alert" style={alert}>{error}</span>}
       </span>
     </div>
+  );
+}
+
+function Switch({ checked, onChange, labelledBy }: { checked: boolean; onChange: (value: boolean) => void; labelledBy: string }) {
+  return (
+    <button type="button" role="switch" aria-checked={checked} aria-labelledby={labelledBy} onClick={() => onChange(!checked)}
+      style={{ position: "relative", width: 32, height: 18, flex: "none", padding: 0, border: "none", borderRadius: 9, cursor: "pointer",
+        background: checked ? "var(--primary, #2563eb)" : "var(--muted, #d4d4d8)", transition: "background .15s" }}>
+      <span aria-hidden style={{ position: "absolute", top: 2, left: checked ? 16 : 2, width: 14, height: 14, borderRadius: "50%",
+        background: "var(--background, #fff)", boxShadow: "0 1px 2px rgb(0 0 0 / .25)", transition: "left .15s" }} />
+    </button>
   );
 }
 
