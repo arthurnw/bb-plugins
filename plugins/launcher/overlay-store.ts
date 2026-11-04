@@ -22,6 +22,8 @@ export interface QuickComposeSession {
   placement: QuickComposePlacement | null;
   /** For a new thread, the machine to seed the environment on; null leaves the default. */
   hostId: string | null;
+  /** The bot to start with; null starts without one; undefined keeps the default (a handoff's source bot, else none). */
+  botId?: string | null;
 }
 
 export interface QuickComposeState {
@@ -38,6 +40,7 @@ export interface QuickComposeContext {
   sourceSeqEnd?: number | null;
   placement?: QuickComposePlacement | null;
   hostId?: string | null;
+  botId?: string | null;
 }
 
 let state: QuickComposeState = {
@@ -68,12 +71,14 @@ function matchesContext(
   context: QuickComposeContext,
 ): boolean {
   if (kind === "new-thread") {
-    return (session.placement?.sectionId ?? null) === (context.placement?.sectionId ?? null)
+    return session.botId === context.botId
+      && (session.placement?.sectionId ?? null) === (context.placement?.sectionId ?? null)
       && (session.placement?.pinned ?? false) === (context.placement?.pinned ?? false)
       && session.hostId === (context.hostId ?? null);
   }
   return (session.sourceThreadId === context.threadId
-    && (kind !== "fork" || session.sourceSeqEnd === (context.sourceSeqEnd ?? null)));
+    && (kind !== "fork" || session.sourceSeqEnd === (context.sourceSeqEnd ?? null))
+    && session.botId === context.botId);
 }
 
 export const quickCompose = {
@@ -92,6 +97,7 @@ export const quickCompose = {
           sourceSeqEnd: kind === "fork" ? context.sourceSeqEnd ?? null : null,
           placement: kind === "new-thread" ? context.placement ?? null : null,
           hostId: kind === "new-thread" ? context.hostId ?? null : null,
+          ...(kind !== "fork" && context.botId !== undefined ? { botId: context.botId } : {}),
         };
     update({
       active: kind,

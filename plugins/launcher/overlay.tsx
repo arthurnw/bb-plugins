@@ -9,6 +9,9 @@ import {
   type PluginAppBuilder,
 } from "@get-bb/plugin-sdk/app";
 import type { quickComposeRpcContract } from "./server";
+import type { botsContract } from "./bots-server";
+import type { Bot, BotEnvironment, PermissionMode } from "./bots";
+import { BotAvatar, BotIconSync } from "./bot-avatars";
 import { quickCompose, subscribe, type QuickComposeKind, type QuickComposePlacement, type QuickComposeSession } from "./overlay-store";
 import { cycle } from "./projects";
 import { ProjectList, useProjectOptions } from "./project-list";
@@ -65,6 +68,8 @@ function useModelSlot(root: HTMLElement | null, enabled: boolean): HTMLElement |
   return slot;
 }
 
+const SEED_FOR: Record<BotEnvironment, "named" | "existing" | "checkout"> = { "named-worktree": "named", "existing-branch": "existing", checkout: "checkout" };
+
 /** Seeds the project checkout on a chosen machine; no seed leaves the composer's default. */
 function checkoutOn(hostId: string | null) {
   return hostId ? { type: "host" as const, hostId, workspace: { type: "unmanaged" as const, path: null } } : undefined;
@@ -74,6 +79,7 @@ function Session({ session, kind, visible, focusRequest }: {
   session: QuickComposeSession; kind: QuickComposeKind; visible: boolean; focusRequest: number;
 }) {
   const rpc = useRpc<typeof quickComposeRpcContract>();
+  const botsRpc = useRpc<typeof botsContract>();
   const navigate = useBbNavigate();
   const sidebar = useSidebarThreads();
   const [source, setSource] = useState<{ projectId: string | null; environmentId: string | null }>();
@@ -108,13 +114,53 @@ function Session({ session, kind, visible, focusRequest }: {
   useEffect(() => {
     if (!customModel) return;
     rpc.call("getModelState", {}).then(
-      state => { setModelState(state); setModel(state.selection ?? state.presets[0] ?? null); },
+      // A bot chosen before this resolves keeps its model.
+      state => { setModelState(state); setModel(current => current ?? state.selection ?? state.presets[0] ?? null); },
       () => setModelState({ presets: [], selection: null, names: {} }));
   }, [rpc, customModel]);
   // Presets may have been edited in settings since this session mounted.
   useEffect(() => {
     if (popup === "model") rpc.call("getModelState", {}).then(setModelState, () => {});
   }, [popup, rpc]);
+  // Bots share the model picker. A handoff starts on its source thread's bot,
+  // which the new thread would inherit anyway.
+  const [bots, setBots] = useState<Bot[]>();
+  const [bot, setBot] = useState<Bot | null>(null);
+  const [inheritedBot, setInheritedBot] = useState<string | null>(null);
+  const [permissionMode, setPermissionMode] = useState<PermissionMode>();
+  const [starter, setStarter] = useState("");
+  useEffect(() => {
+    if (!customModel) { setBots([]); return; }
+    Promise.all([botsRpc.call("listBots", {}), kind === "handoff" ? botsRpc.call("threadBots", {}) : Promise.resolve({ threads: {} as Record<string, string> })]).then(
+      ([{ bots: list }, { threads }]) => {
+        const inherited = session.sourceThreadId ? threads[session.sourceThreadId] ?? null : null;
+        setInheritedBot(inherited);
+        const requested = session.botId === undefined ? undefined : list.find((item) => item.id === session.botId) ?? null;
+        if (requested) applyBot(requested, true);
+        else setBot(requested === null ? null : list.find((item) => item.id === inherited) ?? null);
+        setBots(list);
+      },
+      () => setBots([]));
+  }, [botsRpc, customModel, kind, session.sourceThreadId, session.botId]);
+  useEffect(() => {
+    if (popup === "model") botsRpc.call("listBots", {}).then(({ bots: list }) => setBots(list), () => {});
+  }, [popup, botsRpc]);
+  // Applies the bot's saved fields in one re-seed; fields it leaves unset keep
+  // their value. Before the composer mounts its draft is empty by definition.
+  function applyBot(next: Bot, beforeMount = false) {
+    setBot(next);
+    if (next.model) setModel(next.model);
+    if (next.permissionMode) setPermissionMode(next.permissionMode);
+    if (next.environment) setSeeded(SEED_FOR[next.environment]);
+    if (next.projectId) setProjectId(next.projectId);
+    if (next.starterPrompt && (beforeMount || !hasDraft(sectionRef.current, draftKey))) setStarter(next.starterPrompt);
+  }
+  const chooseBot = (next: Bot | null) => {
+    if (next) applyBot(next);
+    else setBot(null);
+    setPopup(null);
+    setFocus(n => n + 1);
+  };
   const chooseModel = (selection: ModelSelection, from: "preset" | "custom") => {
     setModel(selection);
     void rpc.call("setSelection", { selection }).then(setModelState, () => {});
@@ -206,11 +252,12 @@ function Session({ session, kind, visible, focusRequest }: {
         composerRoot.querySelector<HTMLFormElement>("form[data-promptbox]")?.requestSubmit();
       }}>
       {customModel && <style>{`[data-launcher-composer] ${HOST_MODEL_PICKER} { display: none !important; }`}</style>}
-      {source && (kind !== "fork" || forkBase) && (!customModel || modelState) && <div ref={setComposerRoot} data-launcher-composer=""><NewThreadComposer
+      {source && (kind !== "fork" || forkBase) && (!customModel || modelState) && bots && <div ref={setComposerRoot} data-launcher-composer=""><NewThreadComposer
         defaultProviderId={model?.providerId}
         defaultModel={model?.model}
         defaultReasoningLevel={model?.reasoningLevel}
         defaultServiceTier={model?.serviceTier}
+        defaultPermissionMode={permissionMode}
         defaultProjectId={projectId ?? undefined}
         defaultEnvironment={kind === "fork" && forkBase ? {
             type: "provider", environmentProviderId: PROVIDER_ID,
@@ -221,7 +268,7 @@ function Session({ session, kind, visible, focusRequest }: {
           : seeded === "existing" ? { type: "provider", environmentProviderId: EXISTING_PROVIDER_ID, inputs: null, ...machine }
           : seeded === "named" || (defaultNamed && kind === "new-thread") ? { type: "provider", environmentProviderId: PROVIDER_ID, inputs: null, ...machine }
           : projectId === source.projectId && source.environmentId ? { type: "reuse", environmentId: source.environmentId } : checkoutOn(session.hostId)}
-        initialPrompt={kind === "handoff" && session.sourceThreadId ? `@thread:${session.sourceThreadId} ` : undefined}
+        initialPrompt={(kind === "handoff" && session.sourceThreadId ? `@thread:${session.sourceThreadId} ` : "") + starter || undefined}
         draftKey={draftKey}
         layout="document" focusRequest={visible ? focusRequest + focus : undefined}
         placeholder={kind === "fork" && session.sourceSeqEnd !== null ? "Fork from this message into a new worktree" : `${LABELS[kind].placeholder}  ·  ↵ open  ·  ${MAC ? "⌘↵" : "Ctrl+↵"} background`}
@@ -232,7 +279,8 @@ function Session({ session, kind, visible, focusRequest }: {
             const { threadId } = kind === "fork" && session.sourceThreadId
               ? await rpc.call("forkThread", { sourceThreadId: session.sourceThreadId, request,
                 ...(session.sourceSeqEnd === null ? {} : { sourceSeqEnd: session.sourceSeqEnd }) })
-              : await rpc.call("createThread", { request, ...(session.placement ? { placement: session.placement } : {}) });
+              : await rpc.call("createThread", { request, ...(session.placement ? { placement: session.placement } : {}),
+                ...(bot ? { botId: bot.id } : inheritedBot !== null ? { botId: null } : {}) });
             quickCompose.finish(kind);
             if (background) toast.success(kind === "fork" ? "Fork started" : "Thread started", { action: { label: "Open", onClick: () => navigate.toThread(threadId) } });
             else navigate.toThread(threadId);
@@ -240,13 +288,13 @@ function Session({ session, kind, visible, focusRequest }: {
         }}
       />
       {modelSlot && modelState && createPortal(
-        <ModelTrigger label={modelLabel(modelState.presets, model, modelState.names)} onClick={() => setPopup(value => value === "model" ? null : "model")} />,
+        <ModelTrigger icon={bot ? <BotAvatar bot={bot} size={16} /> : undefined} label={modelLabel(modelState.presets, model, modelState.names, bot && { ...bot, emoji: "" })} onClick={() => setPopup(value => value === "model" ? null : "model")} />,
         modelSlot)}
       </div>}
       {popup && <div style={{ marginTop: 8, border: "1px solid var(--border)", borderRadius: 8, background: "var(--popover, var(--background))", overflow: "hidden" }}>
         {popup === "project"
           ? <ProjectList selectedLabel="last chosen here" selectedId={projectId} onChoose={option => choose(option.id)} onClose={() => { setPopup(null); setFocus(n => n + 1); }} />
-          : <ModelList presets={modelState?.presets ?? []} names={modelState?.names ?? {}} selection={model} onChoose={chooseModel}
+          : <ModelList bots={bots ?? []} bot={bot} onChooseBot={chooseBot} presets={modelState?.presets ?? []} names={modelState?.names ?? {}} selection={model} onChoose={chooseModel}
               onSavePresets={async presets => { setModelState(await rpc.call("savePresets", { presets })); }}
               onClose={() => { setPopup(null); setFocus(n => n + 1); }} />}
       </div>}
@@ -257,7 +305,7 @@ function Session({ session, kind, visible, focusRequest }: {
 
 function Overlay() {
   const state = useSyncExternalStore(subscribe, quickCompose.getState, quickCompose.getState);
-  return <TooltipProvider delayDuration={300}>{(["new-thread", "handoff", "fork"] as const).map(kind => {
+  return <TooltipProvider delayDuration={300}><BotIconSync />{(["new-thread", "handoff", "fork"] as const).map(kind => {
     const session = state.sessions[kind];
     return session && <Session key={session.id} session={session} kind={kind} visible={state.active === kind} focusRequest={state.focusRequest} />;
   })}</TooltipProvider>;

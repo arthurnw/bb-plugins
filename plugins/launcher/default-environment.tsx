@@ -4,6 +4,8 @@ import { PROVIDER_ID } from "./named-worktree";
 
 // Composers already defaulted in this page session, so a later manual choice sticks.
 const applied = new Set<string>();
+/** Stops the default from replacing an environment another feature chose for this project. */
+export const markEnvironmentApplied = (key: string, projectId: string) => { applied.add(`${key}:${projectId}`); };
 
 /** Seeds Named worktree as the environment of bb's own New thread composers. */
 export function DefaultEnvironment() {

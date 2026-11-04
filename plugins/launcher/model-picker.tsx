@@ -1,24 +1,30 @@
 import { experimental_ProviderModelPicker as ProviderModelPicker } from "@get-bb/plugin-sdk/app";
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
+import { BotAvatar } from "./bot-avatars.tsx";
 import { filterPresets, findPreset, MAX_PRESETS, modelSpec, providerLabel, sameModel, type ModelPreset, type ModelSelection } from "./presets.ts";
+import { botLabel, filterBots, type Bot } from "./bots.ts";
 
 type Names = Record<string, string>;
 
-type Row = { kind: "preset"; preset: ModelPreset } | { kind: "other" } | { kind: "save" };
+type Row = { kind: "bot"; bot: Bot } | { kind: "no-bot" } | { kind: "preset"; preset: ModelPreset } | { kind: "other" } | { kind: "save" };
 
 const FALLBACK: ModelSelection = { providerId: "", model: "", reasoningLevel: "medium", serviceTier: "default" };
 
 /** What the trigger in the composer's action row says. */
-export function modelLabel(presets: readonly ModelPreset[], selection: ModelSelection | null, names: Names): string {
-  if (!selection) return "Default model";
-  return findPreset(presets, selection)?.name ?? modelSpec(selection, names);
+export function modelLabel(presets: readonly ModelPreset[], selection: ModelSelection | null, names: Names, bot: Pick<Bot, "emoji" | "name"> | null = null): string {
+  const model = !selection ? "Default model" : findPreset(presets, selection)?.name ?? modelSpec(selection, names);
+  return bot ? `${botLabel(bot)} · ${model}` : model;
 }
 
 /**
- * Presets first, then "Other model…", which embeds bb's own provider/model
- * picker for every specific. A selection that matches no preset can be saved.
+ * Bots first, then presets, then "Other model…", which embeds bb's own
+ * provider/model picker for every specific. A selection that matches no preset
+ * can be saved. Picking a model after a bot keeps the bot.
  */
-export function ModelList({ presets, names, selection, onChoose, onSavePresets, onClose }: {
+export function ModelList({ bots = [], bot = null, onChooseBot, presets, names, selection, onChoose, onSavePresets, onClose }: {
+  bots?: Bot[];
+  bot?: Bot | null;
+  onChooseBot?: (bot: Bot | null) => void;
   presets: ModelPreset[];
   names: Names;
   selection: ModelSelection | null;
@@ -34,13 +40,21 @@ export function ModelList({ presets, names, selection, onChoose, onSavePresets, 
   const listRef = useRef<HTMLDivElement>(null);
 
   const matches = useMemo(() => filterPresets(presets, query, names), [presets, query, names]);
+  const botMatches = useMemo(() => onChooseBot ? filterBots(bots, query) : [], [bots, query, onChooseBot]);
+  const showNoBot = bot !== null && onChooseBot !== undefined && (query === "" || "no bot".includes(query.trim().toLowerCase()));
   const unsaved = selection !== null && findPreset(presets, selection) === undefined && presets.length < MAX_PRESETS;
-  const rows: Row[] = [...matches.map((preset): Row => ({ kind: "preset", preset })), { kind: "other" }, ...(unsaved ? [{ kind: "save" } as Row] : [])];
+  const rows: Row[] = [
+    ...botMatches.map((item): Row => ({ kind: "bot", bot: item })),
+    ...(showNoBot ? [{ kind: "no-bot" } as Row] : []),
+    ...matches.map((preset): Row => ({ kind: "preset", preset })), { kind: "other" }, ...(unsaved ? [{ kind: "save" } as Row] : []),
+  ];
 
-  // Start on the current preset.
+  // Start on the current bot, else the current preset.
   useEffect(() => {
     const current = findPreset(presets, selection);
-    setActive(Math.max(0, matches.findIndex((preset) => preset === current)));
+    const index = bot ? rows.findIndex((row) => row.kind === "bot" && row.bot.id === bot.id)
+      : rows.findIndex((row) => row.kind === "preset" && row.preset === current);
+    setActive(Math.max(0, index));
   }, []);
   useEffect(() => {
     listRef.current?.querySelector(`[data-index="${active}"]`)?.scrollIntoView({ block: "nearest" });
@@ -56,7 +70,9 @@ export function ModelList({ presets, names, selection, onChoose, onSavePresets, 
 
   const activate = (row: Row | undefined) => {
     if (!row) return;
-    if (row.kind === "preset") onChoose(row.preset, "preset");
+    if (row.kind === "bot") onChooseBot?.(row.bot);
+    else if (row.kind === "no-bot") onChooseBot?.(null);
+    else if (row.kind === "preset") onChoose(row.preset, "preset");
     else if (row.kind === "other") listRef.current?.querySelector<HTMLButtonElement>("[data-other-model] button")?.click();
     else setNaming("");
   };
@@ -92,8 +108,8 @@ export function ModelList({ presets, names, selection, onChoose, onSavePresets, 
       <input
         autoFocus
         value={query}
-        placeholder="Choose a preset or model…"
-        aria-label="Search model presets"
+        placeholder={onChooseBot && bots.length > 0 ? "Choose a bot, preset, or model…" : "Choose a preset or model…"}
+        aria-label="Search bots and model presets"
         onChange={(e) => { setQuery(e.target.value); setActive(0); }}
         onKeyDown={onKeyDown}
         style={{ padding: "8px 12px", border: "none", borderBottom: "1px solid var(--border)", background: "transparent", color: "var(--foreground)", fontSize: 13, outline: "none" }}
@@ -103,6 +119,30 @@ export function ModelList({ presets, names, selection, onChoose, onSavePresets, 
           const base: CSSProperties = { ...rowStyle, background: index === active ? "var(--accent)" : "transparent" };
           const enter = { onMouseEnter: () => setActive(index) };
           const hover = { ...enter, onMouseDown: (e: { preventDefault(): void }) => e.preventDefault() };
+          if (row.kind === "bot") {
+            const item = row.bot;
+            return (
+              <div key={`bot:${item.id}`} role="option" data-index={index} aria-selected={index === active} {...hover}
+                onClick={() => onChooseBot?.(item)} style={base}>
+                <span style={{ display: "flex", gap: 8, minWidth: 0, flex: 1, alignItems: "center" }}>
+                  <BotAvatar bot={item} size={18} />
+                  <span style={ellipsis}>{item.name}</span>
+                  <span style={providerBadge}>Bot</span>
+                  <span style={{ ...ellipsis, color: "var(--muted-foreground)" }}>{item.model ? modelSpec(item.model, names) : "Any model"}</span>
+                </span>
+                {bot?.id === item.id && <span style={{ color: "var(--muted-foreground)" }}>current</span>}
+              </div>
+            );
+          }
+          if (row.kind === "no-bot") {
+            return (
+              <div key="no-bot" role="option" data-index={index} aria-selected={index === active} {...hover}
+                onClick={() => onChooseBot?.(null)} style={base}>
+                <span>No bot</span>
+                <span style={{ marginLeft: "auto", color: "var(--muted-foreground)" }}>keep the model, drop {botLabel(bot!)}</span>
+              </div>
+            );
+          }
           if (row.kind === "preset") {
             const { preset } = row;
             const current = selection !== null && sameModel(preset, selection);
@@ -155,7 +195,7 @@ export function ModelList({ presets, names, selection, onChoose, onSavePresets, 
             </div>
           );
         })}
-        {matches.length === 0 && presets.length > 0 && query !== "" && <div style={emptyStyle}>No matching presets</div>}
+        {matches.length === 0 && botMatches.length === 0 && (presets.length > 0 || bots.length > 0) && query !== "" && <div style={emptyStyle}>No matching bots or presets</div>}
         {presets.length === 0 && <div style={emptyStyle}>No presets yet. Pick a model below, then save it.</div>}
         {error && <div role="alert" style={{ ...emptyStyle, color: "var(--destructive, #e5484d)" }}>{error}</div>}
       </div>
@@ -171,17 +211,18 @@ const emptyStyle: CSSProperties = { padding: "6px 8px", fontSize: 12, color: "va
 const providerBadge: CSSProperties = { flex: "none", padding: "0 6px", borderRadius: 4, border: "1px solid var(--border)", fontSize: 11, lineHeight: "16px", color: "var(--muted-foreground)" };
 
 /** Trigger that takes the place of the host's model picker button. */
-export function ModelTrigger({ label, onClick, disabled }: { label: string; onClick: () => void; disabled?: boolean }) {
+export function ModelTrigger({ label, icon, onClick, disabled }: { label: string; icon?: ReactNode; onClick: () => void; disabled?: boolean }) {
   return (
     <button
       type="button"
       disabled={disabled}
       aria-label={`Model: ${label}`}
-      title="Choose model or preset (Mod+Shift+M)"
+      title="Choose bot, model, or preset (Mod+Shift+M)"
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       style={{ display: "inline-flex", alignItems: "center", gap: 6, maxWidth: 280, padding: "4px 8px", border: "none", borderRadius: 8, background: "transparent", color: "var(--muted-foreground)", cursor: "pointer", fontSize: 13 }}
     >
+      {icon}
       <span style={ellipsis}>{label}</span>
       <span aria-hidden style={{ fontSize: 10, opacity: 0.6 }}>▾</span>
     </button>

@@ -9,12 +9,16 @@ import { DEFAULT_ROOT, worktreeRootSchema } from "./worktree-root.ts";
 import { resolveDefaultPresets, type Catalog, type CatalogModel } from "./default-presets.ts";
 import { modelKey } from "./presets.ts";
 import { modelStateSchema, presetsSchema, savedModelStateSchema, selectionSchema } from "./presets.schema.ts";
+import { registerBots } from "./bots-server.ts";
+import { NO_BOT_TEXT, withBotMention } from "./bots.ts";
 
 export const quickComposeRpcContract = defineRpcContract({
   // Forwarded unchanged; `threads.spawn` validates the request.
   createThread: {
     input: z.object({ request: z.custom<NewThreadRequest>(),
-      placement: z.object({ sectionId: z.string().nullable(), pinned: z.boolean() }).optional() }),
+      placement: z.object({ sectionId: z.string().nullable(), pinned: z.boolean() }).optional(),
+      // A bot id starts the thread as that bot; null means the user chose "No bot" over an inherited one.
+      botId: z.string().min(1).nullable().optional() }),
     output: z.object({ threadId: z.string() }),
   },
   // A fork keeps the source's provider and model, so only these request fields apply.
@@ -39,6 +43,8 @@ const reviewKey = (threadId: string) => `pending-review.v1:${threadId}`;
 const pendingReviewSchema = z.object({ branch: z.string(), base: z.string(), pr: resolvedSchema.shape.pr });
 
 export default async function plugin(bb: BbPluginApi) {
+  const bots = registerBots(bb);
+
   // Starter presets come from the live catalog so every row can run on this
   // machine. A provider whose catalog fails to load contributes nothing.
   async function loadCatalog(): Promise<Catalog> {
@@ -110,8 +116,11 @@ export default async function plugin(bb: BbPluginApi) {
       if (parseRef(ref).kind === "invalid") return { resolved: null, error: null };
       return host.call("resolveRef", { sourcePath: await sourcePath(projectId, hostId), ref }, { hostId });
     },
-    async createThread({ request, placement }) {
-      const thread = await bb.sdk.threads.spawn({ ...request, ...placement });
+    async createThread({ request, placement, botId }) {
+      const input: NewThreadRequest["input"] = botId ? withBotMention(request.input, bots.require(botId), bb.pluginId)
+        : botId === null ? [...request.input, { type: "text", text: NO_BOT_TEXT, mentions: [], visibility: "agent-only" }]
+        : request.input;
+      const thread = await bb.sdk.threads.spawn({ ...request, input, ...placement });
       return { threadId: thread.id };
     },
     async forkThread({ sourceThreadId, sourceSeqEnd, request }) {
