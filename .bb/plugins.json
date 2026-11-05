@@ -4,6 +4,10 @@
   "name": "bb-plugins",
   "plugins": [
     {
+      "name": "bots",
+      "source": "./plugins/bots"
+    },
+    {
       "name": "canvas",
       "source": "./plugins/canvas"
     },

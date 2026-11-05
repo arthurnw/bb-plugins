@@ -4,6 +4,7 @@
 
 | Plugin | What it does |
 | --- | --- |
+| [bots](plugins/bots) | Saved launch configurations (instructions, memory, avatar, model) and a thread list grouped by bot. Works with or without Launcher. |
 | [canvas](plugins/canvas) | Zoomable canvas of your threads: project frames, fork links, live status, pinned chats, and sticky notes. |
 | [composer-vim](plugins/composer-vim) | Neovim-style modal editing for the composer, with readline insert-mode keys. |
 | [inbox](plugins/inbox) | Inbox page for agent threads: live status, filter tabs, and rows with Approve, Reject, Retry, and Open. |
