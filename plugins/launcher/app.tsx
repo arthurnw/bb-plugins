@@ -18,6 +18,16 @@ function currentProjectId(composer: PluginComposerApi) {
   return composer.selection?.projectId ?? (composer.scope.kind === "new-thread" ? composer.scope.projectId : null);
 }
 
+/** The machine of the project's default checkout, used when the current environment names no machine. */
+async function defaultHostId(sdk: Sdk | null, projectId: string | null): Promise<string | undefined> {
+  if (!sdk || !projectId) return undefined;
+  try {
+    const { sources } = await sdk.projects.get({ projectId });
+    const local = sources.filter((source) => source.type === "local_path");
+    return (local.find((source) => source.isDefault) ?? local[0])?.hostId;
+  } catch { return undefined; }
+}
+
 function ProjectPopup() {
   const composer = useComposer();
   return <ProjectList selectedId={currentProjectId(composer)} onClose={() => composer.experimental_closePopup()} onChoose={(option) => {
@@ -82,7 +92,9 @@ export default definePluginApp((app) => {
         await composer.setSelection({ environment: { type: "provider", environmentProviderId: EXISTING_PROVIDER_ID, inputs: null, ...machine } });
         focusExistingRef(within, 2000);
       } else if (providerId === EXISTING_PROVIDER_ID) {
-        await composer.setSelection({ environment: { type: "host", workspace: { type: "unmanaged", path: null }, ...(hostId ? { hostId } : {}) } });
+        // bb ignores a host environment without a hostId, and an Existing branch selection may carry no machine.
+        const target = hostId ?? await defaultHostId(sdkRef, currentProjectId(composer));
+        if (target) await composer.setSelection({ environment: { type: "host", workspace: { type: "unmanaged", path: null }, hostId: target } });
       } else {
         await composer.setSelection({ environment: { type: "provider", environmentProviderId: PROVIDER_ID, inputs: null, ...machine } });
         focusBranchName(within, 2000);
