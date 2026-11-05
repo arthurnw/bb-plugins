@@ -215,7 +215,13 @@ function Session({ session, kind, visible, focusRequest }: {
   </ComposerDialog>;
 }
 
+// A disabled plugin's app code can stay loaded until the window reloads, with
+// its window listeners still attached. Claim events only while the overlay is
+// actually on screen, so a disabled Launcher leaves them to Bots' dialog.
+let overlayMounts = 0;
+
 function Overlay() {
+  useEffect(() => { overlayMounts++; return () => { overlayMounts--; }; }, []);
   const state = useSyncExternalStore(subscribe, quickCompose.getState, quickCompose.getState);
   return <TooltipProvider delayDuration={300}><BotsSync />{(["new-thread", "handoff", "fork"] as const).map(kind => {
     const session = state.sessions[kind];
@@ -228,6 +234,7 @@ export function registerOverlay(app: PluginAppBuilder) {
   // Other plugins (Canvas, Bots) open the composer with cancelable window
   // events; handling one tells the sender the Launcher took it.
   onNewThread(detail => {
+    if (overlayMounts === 0) return false;
     quickCompose.open("new-thread", {
       projectId: detail?.projectId ?? null, threadId: null,
       placement: detail?.placement ?? null, hostId: detail?.hostId ?? null,
@@ -235,6 +242,7 @@ export function registerOverlay(app: PluginAppBuilder) {
     });
   });
   onHandoff(detail => {
+    if (overlayMounts === 0) return false;
     quickCompose.open("handoff", { projectId: detail.projectId, threadId: detail.threadId, ...(detail.botId !== undefined ? { botId: detail.botId } : {}) });
   });
   app.commands.register({ id: "new-thread", title: "Launcher: quick compose", defaultShortcut: { key: "n", mod: true }, run: context => quickCompose.toggle("new-thread", context) });
