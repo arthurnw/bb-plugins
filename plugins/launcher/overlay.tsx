@@ -6,13 +6,12 @@ import {
   type PluginAppBuilder,
 } from "@get-bb/plugin-sdk/app";
 import { onHandoff, onNewThread } from "@arthurnw/bb-shared/events";
-import { ComposerDialog, checkoutOn, handoffPrompt, hasDraft, ModelList, modelLabel, ModelTrigger, reuseOrCheckout } from "@arthurnw/bb-shared/composer";
+import { BotAvatar, ComposerDialog, checkoutOn, handoffPrompt, hasDraft, ModelList, modelLabel, ModelTrigger, reuseOrCheckout } from "@arthurnw/bb-shared/composer";
 import { cycle, ProjectList, useProjectOptions } from "@arthurnw/bb-shared/projects";
 import type { Bot, BotEnvironment, PermissionMode } from "@arthurnw/bb-shared/bots";
 import type { ModelSelection, ModelState } from "@arthurnw/bb-shared/selection";
 import type { quickComposeRpcContract } from "./server";
-import type { botsContract } from "./bots-server";
-import { BotAvatar, BotIconSync } from "./bot-avatars";
+import { BotsSync, useBotsRpc } from "./bots-client";
 import { quickCompose, subscribe, type QuickComposeKind, type QuickComposeSession } from "./overlay-store";
 import { projectShortcut } from "./overlay-keys";
 import { PROVIDER_ID } from "./named-worktree";
@@ -33,7 +32,7 @@ function Session({ session, kind, visible, focusRequest }: {
   session: QuickComposeSession; kind: QuickComposeKind; visible: boolean; focusRequest: number;
 }) {
   const rpc = useRpc<typeof quickComposeRpcContract>();
-  const botsRpc = useRpc<typeof botsContract>();
+  const botsRpc = useBotsRpc();
   const sidebar = useSidebarThreads();
   const [source, setSource] = useState<{ projectId: string | null; environmentId: string | null }>();
   const [projectId, setProjectId] = useState(session.projectId);
@@ -89,7 +88,7 @@ function Session({ session, kind, visible, focusRequest }: {
   latest.current = { bot, inheritedBot };
   useEffect(() => {
     if (!customModel) { setBots([]); return; }
-    Promise.all([botsRpc.call("listBots", {}), kind === "handoff" ? botsRpc.call("threadBots", {}) : Promise.resolve({ threads: {} as Record<string, string> })]).then(
+    Promise.all([botsRpc.listBots(), kind === "handoff" ? botsRpc.threadBots() : Promise.resolve({ threads: {} as Record<string, string> })]).then(
       ([{ bots: list }, { threads }]) => {
         const inherited = session.sourceThreadId ? threads[session.sourceThreadId] ?? null : null;
         setInheritedBot(inherited);
@@ -102,7 +101,7 @@ function Session({ session, kind, visible, focusRequest }: {
       () => setBots([]));
   }, [botsRpc, customModel, kind, session.sourceThreadId, session.botId]);
   useEffect(() => {
-    if (popup === "model") botsRpc.call("listBots", {}).then(({ bots: list }) => setBots(list), () => {});
+    if (popup === "model") botsRpc.listBots().then(({ bots: list }) => setBots(list), () => {});
   }, [popup, botsRpc]);
   // Applies the bot's saved fields in one re-seed; fields it leaves unset keep
   // their value. Before the composer mounts its draft is empty by definition.
@@ -218,7 +217,7 @@ function Session({ session, kind, visible, focusRequest }: {
 
 function Overlay() {
   const state = useSyncExternalStore(subscribe, quickCompose.getState, quickCompose.getState);
-  return <TooltipProvider delayDuration={300}><BotIconSync />{(["new-thread", "handoff", "fork"] as const).map(kind => {
+  return <TooltipProvider delayDuration={300}><BotsSync />{(["new-thread", "handoff", "fork"] as const).map(kind => {
     const session = state.sessions[kind];
     return session && <Session key={session.id} session={session} kind={kind} visible={state.active === kind} focusRequest={state.focusRequest} />;
   })}</TooltipProvider>;

@@ -1,12 +1,12 @@
-// The Launcher's bot-and-model picker on bb's own New thread composer. The
+// The Launcher's bot-and-model picker on bb's own New thread composer; bots come from the Bots plugin. The
 // overlay has its own, so this stays out of composers the overlay embeds.
-import { experimental_usePluginId as usePluginId, useComposer, useRpc, type ComposerSelection, type PluginComposerApi } from "@get-bb/plugin-sdk/app";
+import { useComposer, useRpc, type ComposerSelection, type PluginComposerApi } from "@get-bb/plugin-sdk/app";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { quickComposeRpcContract } from "./server";
-import { BotAvatar, useBots } from "./bot-avatars";
-import { draftBotId, draftWithBot, type Bot } from "@arthurnw/bb-shared/bots";
-import { HOST_MODEL_PICKER, ModelList, modelLabel, ModelTrigger, useModelSlot } from "@arthurnw/bb-shared/composer";
+import { useBots } from "./bots-client";
+import { BOT_MENTION_PLUGINS, BOTS_PLUGIN_ID, draftBotId, draftWithBot, type Bot } from "@arthurnw/bb-shared/bots";
+import { BotAvatar, HOST_MODEL_PICKER, ModelList, modelLabel, ModelTrigger, useModelSlot } from "@arthurnw/bb-shared/composer";
 import type { ModelSelection, ModelState } from "@arthurnw/bb-shared/selection";
 import { markEnvironmentApplied } from "./default-environment";
 import { EXISTING_PROVIDER_ID } from "./existing-branch";
@@ -60,9 +60,9 @@ function selectionFor(bot: Bot, current: ComposerSelection | null): ComposerSele
 
 const restore = (composer: PluginComposerApi, selection: ComposerSelection) => composer.setSelection(selection);
 
-async function chooseBot(composer: PluginComposerApi, pluginId: string, bot: Bot | null) {
+async function chooseBot(composer: PluginComposerApi, bot: Bot | null) {
   const key = composer.key;
-  composer.replace((draft) => draftWithBot(draft, bot, pluginId));
+  composer.replace((draft) => draftWithBot(draft, bot, BOTS_PLUGIN_ID));
   if (!bot) {
     const previous = saved.get(key);
     saved.delete(key);
@@ -96,20 +96,19 @@ function useModelState() {
  */
 export function NativeModelTrigger() {
   const composer = useComposer();
-  const pluginId = usePluginId();
   const bots = useBots();
   const { state } = useModelState();
   const anchor = useRef<HTMLSpanElement>(null);
   const [root, setRoot] = useState<HTMLElement | null>(null);
   const key = composer.key;
   const own = !isOverlay(composer) && composer.scope.kind === "new-thread";
-  const botId = draftBotId(composer.draft, pluginId);
+  const botId = draftBotId(composer.draft, BOT_MENTION_PLUGINS);
   const bot = botId ? bots?.find((item) => item.id === botId) ?? null : null;
 
   useEffect(() => {
     if (!own) return;
     const pending = pendingRestore.get(key);
-    if (pending && !draftBotId(composer.draft, pluginId)) {
+    if (pending && !draftBotId(composer.draft, BOT_MENTION_PLUGINS)) {
       pendingRestore.delete(key);
       void restore(composer, pending).catch(() => {});
     }
@@ -120,7 +119,7 @@ export function NativeModelTrigger() {
       pendingRestore.set(key, previous);
       void restore(composer, previous).then(() => pendingRestore.delete(key), () => {});
     });
-  }, [composer, key, pluginId, own]);
+  }, [composer, key, own]);
 
   // Mark this composer so the stylesheet hides only its own host model button.
   useEffect(() => {
@@ -136,7 +135,7 @@ export function NativeModelTrigger() {
   const selection = currentSelection(composer.selection);
   const label = state ? modelLabel(state.presets, selection, state.names, bot && { ...bot, emoji: "" }) : "";
   return (
-    <span ref={anchor} style={{ display: "contents" }}>
+    <span ref={anchor} data-launcher-model-trigger="" style={{ display: "contents" }}>
       {slot && state && <style>{`[${NATIVE_ATTR}] ${HOST_MODEL_PICKER} { display: none !important; }`}</style>}
       {slot && state && createPortal(
         <ModelTrigger icon={bot ? <BotAvatar bot={bot} size={16} /> : undefined} label={label} onClick={() => composer.experimental_openPopup(BOT_POPUP_ID)} />,
@@ -148,16 +147,15 @@ export function NativeModelTrigger() {
 /** Bots, then presets, then Other model…, applied through bb's own pickers. */
 export function NativeModelPopup() {
   const composer = useComposer();
-  const pluginId = usePluginId();
   const bots = useBots();
   const { state, setState, rpc } = useModelState();
-  const botId = draftBotId(composer.draft, pluginId);
+  const botId = draftBotId(composer.draft, BOT_MENTION_PLUGINS);
   const bot = botId ? bots?.find((item) => item.id === botId) ?? null : null;
   const close = () => { composer.experimental_closePopup(); composer.focus(); };
   if (!state || bots === null) return <div style={{ padding: "8px 12px", fontSize: 12, color: "var(--muted-foreground)" }}>Loading…</div>;
   return (
     <ModelList bots={[...bots]} bot={bot} names={state.names} presets={state.presets} selection={currentSelection(composer.selection)}
-      onChooseBot={(next) => { composer.experimental_closePopup(); void chooseBot(composer, pluginId, next).then(() => composer.focus()); }}
+      onChooseBot={(next) => { composer.experimental_closePopup(); void chooseBot(composer, next).then(() => composer.focus()); }}
       onChoose={(selection, source) => {
         void composer.setSelection({ providerId: selection.providerId, model: selection.model, reasoningLevel: selection.reasoningLevel, serviceTier: selection.serviceTier }).catch(() => {});
         if (source === "preset") close();

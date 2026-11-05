@@ -9,8 +9,8 @@ import { DEFAULT_ROOT, worktreeRootSchema } from "./worktree-root.ts";
 import { resolveDefaultPresets, type Catalog, type CatalogModel } from "./default-presets.ts";
 import { modelKey } from "@arthurnw/bb-shared/selection";
 import { modelStateSchema, presetsSchema, savedModelStateSchema, selectionSchema } from "@arthurnw/bb-shared/selection/schema";
-import { registerBots } from "./bots-server.ts";
-import { NO_BOT_TEXT, withBotMention, withoutBotMentions } from "@arthurnw/bb-shared/bots";
+import { BOT_MENTION_PLUGINS, BOTS_PLUGIN_ID, NO_BOT_TEXT, withBotMention, withoutBotMentions } from "@arthurnw/bb-shared/bots";
+import { botsRpcContract } from "@arthurnw/bb-shared/bots/schema";
 
 export const quickComposeRpcContract = defineRpcContract({
   // Forwarded unchanged; `threads.spawn` validates the request.
@@ -43,8 +43,6 @@ const reviewKey = (threadId: string) => `pending-review.v1:${threadId}`;
 const pendingReviewSchema = z.object({ branch: z.string(), base: z.string(), pr: resolvedSchema.shape.pr });
 
 export default async function plugin(bb: BbPluginApi) {
-  const bots = registerBots(bb);
-
   // Starter presets come from the live catalog so every row can run on this
   // machine. A provider whose catalog fails to load contributes nothing.
   async function loadCatalog(): Promise<Catalog> {
@@ -99,6 +97,18 @@ export default async function plugin(bb: BbPluginApi) {
     return withNames(parsed);
   }
 
+  // Bots own the bot records; ask the Bots plugin for the one to mention.
+  async function getBot(botId: string) {
+    let bot;
+    try {
+      ({ bot } = await bb.sdk.plugins.callRpc({ pluginId: BOTS_PLUGIN_ID, method: "getBot", input: { botId }, outputSchema: botsRpcContract.getBot.output }));
+    } catch (error) {
+      throw new Error(`Could not reach the Bots plugin: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (!bot) throw new Error("That bot no longer exists.");
+    return bot;
+  }
+
   bb.rpc.register(quickComposeRpcContract, {
     getModelState: () => exclusive(async () => withNames(await readModelState())),
     restoreDefaultPresets: () => exclusive(async () => {
@@ -118,8 +128,8 @@ export default async function plugin(bb: BbPluginApi) {
     },
     async createThread({ request, placement, botId }) {
       // An explicit choice replaces any bot pill already in the draft, so the thread gets one.
-      const input: NewThreadRequest["input"] = botId ? withBotMention(withoutBotMentions(request.input, bb.pluginId), bots.require(botId), bb.pluginId)
-        : botId === null ? [...withoutBotMentions(request.input, bb.pluginId), { type: "text", text: NO_BOT_TEXT, mentions: [], visibility: "agent-only" }]
+      const input: NewThreadRequest["input"] = botId ? withBotMention(withoutBotMentions(request.input, BOT_MENTION_PLUGINS), await getBot(botId), BOTS_PLUGIN_ID)
+        : botId === null ? [...withoutBotMentions(request.input, BOT_MENTION_PLUGINS), { type: "text", text: NO_BOT_TEXT, mentions: [], visibility: "agent-only" }]
         : request.input;
       const thread = await bb.sdk.threads.spawn({ ...request, input, ...placement });
       return { threadId: thread.id };
@@ -129,7 +139,7 @@ export default async function plugin(bb: BbPluginApi) {
         permissionMode: request.permissionMode });
       return { threadId: thread.id };
     },
-  });
+  }, { experimental_discoverable: true, experimental_description: "Launcher model presets and thread creation; Bots reads presets from here." });
 
   const settings = bb.settings.define({
     defaultNamedWorktree: {

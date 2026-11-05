@@ -5,12 +5,7 @@ import { PROVIDER_ID } from "./named-worktree";
 import { branchNameFocused, focusBranchName, NamedWorktreeInputs } from "./named-worktree-inputs";
 import { registerOverlay } from "./overlay";
 import { PresetSettings } from "./settings";
-import { BotSettings } from "./bot-settings";
-import { registerBotIcons } from "./bot-avatars";
 import { BOT_POPUP_ID, NativeModelPopup, NativeModelTrigger } from "./native-bot";
-import { registerBotThreadAction } from "./bot-thread-action";
-import { registerBotThreadInfo } from "./bot-thread-info";
-import { BotThreadList } from "./bots-view";
 import { DefaultEnvironment } from "./default-environment";
 import { loadProjectOptions, ProjectList } from "@arthurnw/bb-shared/projects";
 import { cycle } from "@arthurnw/bb-shared/projects";
@@ -35,16 +30,7 @@ export default definePluginApp((app) => {
   app.slots.experimental_environmentProviderInputs({ environmentProviderId: PROVIDER_ID, component: NamedWorktreeInputs });
   app.slots.experimental_environmentProviderInputs({ environmentProviderId: EXISTING_PROVIDER_ID, component: ExistingBranchInputs });
   registerOverlay(app);
-  registerBotIcons(app);
-  registerBotThreadAction(app);
-  registerBotThreadInfo(app);
-  app.slots.experimental_threadList({
-    id: "bots", title: "Launcher bots", description: "Bots and custom sections in one order you arrange. Drag a thread onto a bot to hand it off, onto a thread to nest it, or onto a section to file it.",
-    component: ({ activeThreadId, activeProjectId, onNavigate }) =>
-      <BotThreadList activeThreadId={activeThreadId} activeProjectId={activeProjectId} onNavigate={onNavigate} />,
-  });
   app.slots.settingsSection({ id: "model-presets", title: "Model presets", description: "Presets for the floating composer's model picker.", component: PresetSettings });
-  app.slots.settingsSection({ id: "bots", title: "Bots", description: "Saved launch configurations with their own instructions and memory.", component: BotSettings });
   // The browser SDK client is only reachable through a hook, so commands that
   // run outside React use the one captured by the popup component tree.
   let sdkRef: Sdk | null = null;

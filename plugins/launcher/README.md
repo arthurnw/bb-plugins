@@ -109,7 +109,12 @@ name, avatar, instructions, starter prompt, and optional model, permission
 mode, environment, and project. Fields left unset keep the composer's current
 value. Keep method in skills and point a bot at them (for example a starter
 prompt of `/skill:research `); bot instructions are limited to 2,000
-characters. Manage bots in Settings → Launcher → Bots.
+characters.
+
+> Bots are managed by the [Bots plugin](../bots): Settings → Bots, the Bots thread
+> list, the thread menu and Info tab, `bot_memory`, and the bot records. The
+> Launcher reads them over RPC and shows them in its picker. The paragraphs below
+> describe behavior that now lives in Bots and are reworked in a later step.
 
 ### Starting a thread as a bot
 
