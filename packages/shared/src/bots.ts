@@ -1,6 +1,6 @@
 // Frontend-safe bot model and pure helpers. Zod schemas live in
 // bots.schema.ts and SQLite in bot-store.ts so the app bundle stays small.
-import type { ModelSelection } from "./presets.ts";
+import type { ModelSelection } from "./selection.ts";
 
 export const MAX_BOTS = 30;
 export const NAME_MAX = 40;
@@ -244,3 +244,11 @@ export function ownerOf(lookup: OwnerLookup, thread: { id: string; parentThreadI
   }
   return null;
 }
+
+/**
+ * The plugin that owns bots. Plugin ids in mentions, RPC calls, and thread
+ * origins resolve against it. Still "launcher" until bots move to their own plugin.
+ */
+export const BOTS_PLUGIN_ID = "launcher";
+/** Plugins whose new threads the binding hook treats as started by the user's bot picker. */
+export const TRUSTED_ORIGIN_PLUGINS = ["bots", "launcher"] as const;

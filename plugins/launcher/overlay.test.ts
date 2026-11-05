@@ -1,7 +1,7 @@
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { quickCompose } from "./overlay-store.ts";
-import { isBackgroundSubmit, projectShortcut } from "./overlay-keys.ts";
+import { projectShortcut } from "./overlay-keys.ts";
 
 beforeEach(() => { quickCompose.finish("new-thread"); quickCompose.finish("handoff"); quickCompose.finish("fork"); });
 test("a session with a draft survives reopening elsewhere", () => {
@@ -89,15 +89,6 @@ test("model picker shortcut matches Mod+Shift+M only", () => {
   assert.equal(projectShortcut({ ...m, metaKey: true, altKey: true }, true), null);
 });
 
-test("Cmd+Enter starts a thread in the background; plain and Shift+Enter do not", () => {
-  const enter = { key: "Enter", ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, isComposing: false };
-  assert.equal(isBackgroundSubmit({ ...enter, metaKey: true }, true), true);
-  assert.equal(isBackgroundSubmit({ ...enter, ctrlKey: true }, false), true);
-  assert.equal(isBackgroundSubmit({ ...enter, ctrlKey: true }, true), false);
-  assert.equal(isBackgroundSubmit(enter, true), false);
-  assert.equal(isBackgroundSubmit({ ...enter, metaKey: true, shiftKey: true }, true), false);
-  assert.equal(isBackgroundSubmit({ ...enter, metaKey: true, isComposing: true }, true), false);
-});
 test("a draft is kept only for the same section and machine", () => {
   const unregister = quickCompose.registerDraftCheck(() => true);
   const section = { sectionId: "s1", pinned: false };

@@ -3,8 +3,8 @@ import { z } from "zod";
 import { BotStore, BotStoreError, MIGRATIONS, type SqlDb } from "./bot-store.ts";
 import {
   applyMemoryChange, botIconName, filterBots, findBotMention, handoffSource, hasNoBotMarker, MemoryError, MEMORY_MAX, MEMORY_TOOL, MENTION_PROVIDER, ownerOf, renderInstructions,
-} from "./bots.ts";
-import { botsRpcContract, memoryToolSchema } from "./bots.schema.ts";
+} from "@arthurnw/bb-shared/bots";
+import { botsRpcContract, memoryToolSchema } from "@arthurnw/bb-shared/bots/schema";
 
 export const botsContract = defineRpcContract(botsRpcContract);
 const LIST_ORDER_KEY = "list-order.v1";

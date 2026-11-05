@@ -1,37 +1,24 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { TooltipProvider } from "@radix-ui/react-tooltip";
-import { createPortal } from "react-dom";
-import { toast } from "sonner";
 import {
-  experimental_NewThreadComposer as NewThreadComposer,
   experimental_useSidebarThreads as useSidebarThreads,
-  useBbNavigate, useRpc, useSdk, useSettings,
+  useRpc, useSdk, useSettings,
   type PluginAppBuilder,
 } from "@get-bb/plugin-sdk/app";
+import { onHandoff, onNewThread } from "@arthurnw/bb-shared/events";
+import { ComposerDialog, checkoutOn, handoffPrompt, hasDraft, ModelList, modelLabel, ModelTrigger, reuseOrCheckout } from "@arthurnw/bb-shared/composer";
+import { cycle, ProjectList, useProjectOptions } from "@arthurnw/bb-shared/projects";
+import type { Bot, BotEnvironment, PermissionMode } from "@arthurnw/bb-shared/bots";
+import type { ModelSelection, ModelState } from "@arthurnw/bb-shared/selection";
 import type { quickComposeRpcContract } from "./server";
 import type { botsContract } from "./bots-server";
-import type { Bot, BotEnvironment, PermissionMode } from "./bots";
 import { BotAvatar, BotIconSync } from "./bot-avatars";
-import { quickCompose, subscribe, type QuickComposeKind, type QuickComposePlacement, type QuickComposeSession } from "./overlay-store";
-import { cycle } from "./projects";
-import { ProjectList, useProjectOptions } from "./project-list";
-import { isBackgroundSubmit, projectShortcut } from "./overlay-keys";
-import { ModelList, ModelTrigger, modelLabel } from "./model-picker";
-import { HOST_MODEL_PICKER, useModelSlot } from "./model-slot";
-import type { ModelSelection, ModelState } from "./presets";
+import { quickCompose, subscribe, type QuickComposeKind, type QuickComposeSession } from "./overlay-store";
+import { projectShortcut } from "./overlay-keys";
 import { PROVIDER_ID } from "./named-worktree";
 import { branchNameFocused, focusBranchName } from "./named-worktree-inputs";
 import { EXISTING_PROVIDER_ID } from "./existing-branch";
 import { existingRefShown, focusExistingRef } from "./existing-branch-inputs";
-
-// The SDK exposes no draft state for the embedded composer. Check the editor
-// text, then bb's persisted draft (which also covers attachments). The storage
-// key format is bb-internal (0.46.1); if it changes, attachment-only drafts
-// re-seed their selections, but the draft itself is kept by draftKey.
-function hasDraft(section: HTMLElement | null, draftKey: string): boolean {
-  return !!section?.querySelector("[data-promptbox-editor-content]")?.textContent?.trim()
-    || localStorage.getItem(`bb.promptbox.contents-plugin-draft-${encodeURIComponent(draftKey)}-3`) !== null;
-}
 
 const LABELS: Record<QuickComposeKind, { dialog: string; placeholder: string }> = {
   "new-thread": { dialog: "Launcher quick compose", placeholder: "Start a new thread" },
@@ -40,20 +27,13 @@ const LABELS: Record<QuickComposeKind, { dialog: string; placeholder: string }> 
   fork: { dialog: "Launcher fork", placeholder: "Fork this thread into a new worktree" },
 };
 
-const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
 const SEED_FOR: Record<BotEnvironment, "named" | "existing" | "checkout"> = { "named-worktree": "named", "existing-branch": "existing", checkout: "checkout" };
-
-/** Seeds the project checkout on a chosen machine; no seed leaves the composer's default. */
-function checkoutOn(hostId: string | null) {
-  return hostId ? { type: "host" as const, hostId, workspace: { type: "unmanaged" as const, path: null } } : undefined;
-}
 
 function Session({ session, kind, visible, focusRequest }: {
   session: QuickComposeSession; kind: QuickComposeKind; visible: boolean; focusRequest: number;
 }) {
   const rpc = useRpc<typeof quickComposeRpcContract>();
   const botsRpc = useRpc<typeof botsContract>();
-  const navigate = useBbNavigate();
   const sidebar = useSidebarThreads();
   const [source, setSource] = useState<{ projectId: string | null; environmentId: string | null }>();
   const [projectId, setProjectId] = useState(session.projectId);
@@ -139,12 +119,6 @@ function Session({ session, kind, visible, focusRequest }: {
     void rpc.call("setSelection", { selection }).then(setModelState, () => {});
     if (from === "preset") { setPopup(null); setFocus(n => n + 1); }
   };
-  const [composerRoot, setComposerRoot] = useState<HTMLDivElement | null>(null);
-  const modelSlot = useModelSlot(composerRoot, customModel && modelState !== undefined);
-
-  // Enter opens the new thread; Cmd+Enter (Ctrl+Enter elsewhere) leaves it in the background.
-  const backgroundRef = useRef(false);
-
   const choose = (id: string) => { setProjectId(id); setPopup(null); setFocus(n => n + 1); };
   const sectionRef = useRef<HTMLElement>(null);
   const draftKey = session.sourceThreadId
@@ -154,25 +128,6 @@ function Session({ session, kind, visible, focusRequest }: {
     if (kind === "new-thread") return quickCompose.registerDraftCheck(() => hasDraft(sectionRef.current, draftKey));
   }, [kind, draftKey]);
 
-  // bb's editor calls preventDefault on every Escape, so this listens in the
-  // capture phase. It is added after composer-vim's capture listener, so an
-  // Escape that vim consumes (Insert → Normal) is already defaultPrevented;
-  // the next Escape reaches here and closes.
-  useEffect(() => {
-    if (!visible || popup) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) return;
-      const section = sectionRef.current;
-      if (!section || !(event.target instanceof Node) || !section.contains(event.target)) return;
-      // Let bb close its @-mention and command menu first.
-      if (section.querySelector("[data-promptbox-typeahead-menu]")) return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      quickCompose.close();
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [visible, popup]);
   useEffect(() => {
     if (!visible) { setPopup(null); return; }
     const onKey = (event: KeyboardEvent) => {
@@ -211,69 +166,47 @@ function Session({ session, kind, visible, focusRequest }: {
 
   // Only a new-thread session carries a machine; the others take theirs from the source thread.
   const machine = session.hostId ? { machine: { type: "existing" as const, hostId: session.hostId } } : {};
-  const close = (e: { target: EventTarget; currentTarget: EventTarget }) => { if (e.target === e.currentTarget) quickCompose.close(); };
-  return <div style={{ display: visible ? "block" : "none", position: "fixed", inset: 0, zIndex: 50, background: "rgb(0 0 0 / .3)" }} onPointerDown={close}>
-    <div style={{ position: "absolute", inset: 0, display: "flex", justifyContent: "center", alignItems: "flex-start", padding: "15vh 16px 16px", overflowY: "auto", boxSizing: "border-box" }} onPointerDown={close}>
-    <section role="dialog" aria-label={LABELS[kind].dialog} style={{ width: "100%", maxWidth: 720, padding: 16, borderRadius: 12, background: "var(--background)", color: "var(--foreground)" }} ref={sectionRef}
-      onPointerDownCapture={() => { backgroundRef.current = false; }}
-      onKeyDownCapture={(event: ReactKeyboardEvent) => {
-        if (event.key !== "Enter" || !composerRoot?.contains(event.target as Node)) return;
-        backgroundRef.current = isBackgroundSubmit(event.nativeEvent, MAC);
-        if (!backgroundRef.current) return;
-        event.preventDefault();
-        event.stopPropagation();
-        composerRoot.querySelector<HTMLFormElement>("form[data-promptbox]")?.requestSubmit();
-      }}>
-      {customModel && <style>{`[data-launcher-composer] ${HOST_MODEL_PICKER} { display: none !important; }`}</style>}
-      {source && (kind !== "fork" || forkBase) && (!customModel || modelState) && bots && <div ref={setComposerRoot} data-launcher-composer=""><NewThreadComposer
-        defaultProviderId={model?.providerId}
-        defaultModel={model?.model}
-        defaultReasoningLevel={model?.reasoningLevel}
-        defaultServiceTier={model?.serviceTier}
-        defaultPermissionMode={permissionMode}
-        defaultProjectId={projectId ?? undefined}
-        defaultEnvironment={kind === "fork" && forkBase ? {
-            type: "provider", environmentProviderId: PROVIDER_ID,
-            inputs: { name: "", baseBranch: forkBase.branch ?? "" },
-            ...(forkBase.hostId ? { machine: { type: "existing", hostId: forkBase.hostId } } : {}),
-          }
-          : seeded === "checkout" ? checkoutOn(session.hostId)
-          : seeded === "existing" ? { type: "provider", environmentProviderId: EXISTING_PROVIDER_ID, inputs: null, ...machine }
-          : seeded === "named" || (defaultNamed && kind === "new-thread") ? { type: "provider", environmentProviderId: PROVIDER_ID, inputs: null, ...machine }
-          : projectId === source.projectId && source.environmentId ? { type: "reuse", environmentId: source.environmentId } : checkoutOn(session.hostId)}
-        initialPrompt={(kind === "handoff" && session.sourceThreadId ? `@thread:${session.sourceThreadId} ` : "") + starter || undefined}
-        draftKey={draftKey}
-        layout="document" focusRequest={visible ? focusRequest + focus : undefined}
-        placeholder={kind === "fork" && session.sourceSeqEnd !== null ? "Fork from this message into a new worktree" : `${LABELS[kind].placeholder}  ·  ↵ open  ·  ${MAC ? "⌘↵" : "Ctrl+↵"} background`}
-        onSubmit={async request => {
-          const background = backgroundRef.current;
-          backgroundRef.current = false;
-          try {
-            const { threadId } = kind === "fork" && session.sourceThreadId
-              ? await rpc.call("forkThread", { sourceThreadId: session.sourceThreadId, request,
-                ...(session.sourceSeqEnd === null ? {} : { sourceSeqEnd: session.sourceSeqEnd }) })
-              : await rpc.call("createThread", { request, ...(session.placement ? { placement: session.placement } : {}),
-                ...(bot ? { botId: bot.id } : inheritedBot !== null ? { botId: null } : {}) });
-            quickCompose.finish(kind);
-            if (background) toast.success(kind === "fork" ? "Fork started" : "Thread started", { action: { label: "Open", onClick: () => navigate.toThread(threadId) } });
-            else navigate.toThread(threadId);
-          } catch (error) { toast.error(`Could not start thread: ${String(error)}`); throw error; }
-        }}
-      />
-      {modelSlot && modelState && createPortal(
-        <ModelTrigger icon={bot ? <BotAvatar bot={bot} size={16} /> : undefined} label={modelLabel(modelState.presets, model, modelState.names, bot && { ...bot, emoji: "" })} onClick={() => setPopup(value => value === "model" ? null : "model")} />,
-        modelSlot)}
-      </div>}
-      {popup && <div style={{ marginTop: 8, border: "1px solid var(--border)", borderRadius: 8, background: "var(--popover, var(--background))", overflow: "hidden" }}>
-        {popup === "project"
-          ? <ProjectList selectedLabel="last chosen here" selectedId={projectId} onChoose={option => choose(option.id)} onClose={() => { setPopup(null); setFocus(n => n + 1); }} />
-          : <ModelList bots={bots ?? []} bot={bot} onChooseBot={chooseBot} presets={modelState?.presets ?? []} names={modelState?.names ?? {}} selection={model} onChoose={chooseModel}
-              onSavePresets={async presets => { setModelState(await rpc.call("savePresets", { presets })); }}
-              onClose={() => { setPopup(null); setFocus(n => n + 1); }} />}
-      </div>}
-    </section>
-    </div>
-  </div>;
+  return <ComposerDialog
+    visible={visible} label={LABELS[kind].dialog} sectionRef={sectionRef} onClose={() => quickCompose.close()} popupOpen={popup !== null}
+    draftKey={draftKey} focusRequest={visible ? focusRequest + focus : undefined}
+    placeholder={kind === "fork" && session.sourceSeqEnd !== null ? "Fork from this message into a new worktree" : LABELS[kind].placeholder}
+    hint={!(kind === "fork" && session.sourceSeqEnd !== null)}
+    ready={!!source && (kind !== "fork" || !!forkBase) && (!customModel || !!modelState) && !!bots}
+    composerProps={source ? {
+      defaultProviderId: model?.providerId,
+      defaultModel: model?.model,
+      defaultReasoningLevel: model?.reasoningLevel,
+      defaultServiceTier: model?.serviceTier,
+      defaultPermissionMode: permissionMode,
+      defaultProjectId: projectId ?? undefined,
+      defaultEnvironment: kind === "fork" && forkBase ? {
+          type: "provider", environmentProviderId: PROVIDER_ID,
+          inputs: { name: "", baseBranch: forkBase.branch ?? "" },
+          ...(forkBase.hostId ? { machine: { type: "existing", hostId: forkBase.hostId } } : {}),
+        }
+        : seeded === "checkout" ? checkoutOn(session.hostId)
+        : seeded === "existing" ? { type: "provider", environmentProviderId: EXISTING_PROVIDER_ID, inputs: null, ...machine }
+        : seeded === "named" || (defaultNamed && kind === "new-thread") ? { type: "provider", environmentProviderId: PROVIDER_ID, inputs: null, ...machine }
+        : reuseOrCheckout(projectId, source, session.hostId),
+      initialPrompt: handoffPrompt(kind === "handoff" ? session.sourceThreadId : null, starter),
+    } : {}}
+    modelTrigger={customModel ? modelState ? <ModelTrigger icon={bot ? <BotAvatar bot={bot} size={16} /> : undefined} label={modelLabel(modelState.presets, model, modelState.names, bot && { ...bot, emoji: "" })} onClick={() => setPopup(value => value === "model" ? null : "model")} /> : null : undefined}
+    startedMessage={kind === "fork" ? "Fork started" : "Thread started"}
+    onStarted={() => quickCompose.finish(kind)}
+    submit={request => kind === "fork" && session.sourceThreadId
+      ? rpc.call("forkThread", { sourceThreadId: session.sourceThreadId, request,
+        ...(session.sourceSeqEnd === null ? {} : { sourceSeqEnd: session.sourceSeqEnd }) })
+      : rpc.call("createThread", { request, ...(session.placement ? { placement: session.placement } : {}),
+        ...(bot ? { botId: bot.id } : inheritedBot !== null ? { botId: null } : {}) })}
+  >
+    {popup && <div style={{ marginTop: 8, border: "1px solid var(--border)", borderRadius: 8, background: "var(--popover, var(--background))", overflow: "hidden" }}>
+      {popup === "project"
+        ? <ProjectList selectedLabel="last chosen here" selectedId={projectId} onChoose={option => choose(option.id)} onClose={() => { setPopup(null); setFocus(n => n + 1); }} />
+        : <ModelList bots={bots ?? []} bot={bot} onChooseBot={chooseBot} presets={modelState?.presets ?? []} names={modelState?.names ?? {}} selection={model} onChoose={chooseModel}
+            onSavePresets={async presets => { setModelState(await rpc.call("savePresets", { presets })); }}
+            onClose={() => { setPopup(null); setFocus(n => n + 1); }} />}
+    </div>}
+  </ComposerDialog>;
 }
 
 function Overlay() {
@@ -286,18 +219,17 @@ function Overlay() {
 
 export function registerOverlay(app: PluginAppBuilder) {
   app.slots.experimental_appOverlay({ id: "quick-compose", component: Overlay });
-  // Other plugins (Canvas) open the composer with this cancelable window event.
-  // Calling preventDefault tells the sender the Launcher handled it.
-  window.addEventListener("bb-launcher:new-thread", event => {
-    const detail = (event as CustomEvent<{
-      projectId?: string | null; placement?: QuickComposePlacement | null; hostId?: string | null; botId?: string | null;
-    } | null>).detail;
+  // Other plugins (Canvas, Bots) open the composer with cancelable window
+  // events; handling one tells the sender the Launcher took it.
+  onNewThread(detail => {
     quickCompose.open("new-thread", {
       projectId: detail?.projectId ?? null, threadId: null,
       placement: detail?.placement ?? null, hostId: detail?.hostId ?? null,
       ...(detail?.botId !== undefined ? { botId: detail.botId } : {}),
     });
-    event.preventDefault();
+  });
+  onHandoff(detail => {
+    quickCompose.open("handoff", { projectId: detail.projectId, threadId: detail.threadId, ...(detail.botId !== undefined ? { botId: detail.botId } : {}) });
   });
   app.commands.register({ id: "new-thread", title: "Launcher: quick compose", defaultShortcut: { key: "n", mod: true }, run: context => quickCompose.toggle("new-thread", context) });
   app.commands.register({ id: "handoff", title: "Launcher: hand off this thread", defaultShortcut: { key: "h", mod: true, shift: true }, isAvailable: context => context.threadId !== null, run: context => quickCompose.toggle("handoff", context) });

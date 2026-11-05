@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MAX_PRESETS, type ModelPreset, type ModelSelection, type ModelState } from "./presets.ts";
+import { MAX_PRESETS, type ModelPreset, type ModelSelection, type ModelState } from "./selection.ts";
 
 export const selectionSchema: z.ZodType<ModelSelection, unknown> = z.object({
   providerId: z.string().trim().min(1).max(256),

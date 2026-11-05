@@ -32,6 +32,7 @@
     "typescript": "^5.7.0"
   },
   "dependencies": {
+    "@arthurnw/bb-shared": "file:../../packages/shared",
     "zod": "^4.6.7"
   }
 }

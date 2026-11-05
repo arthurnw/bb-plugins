@@ -1,7 +1,7 @@
 import { experimental_ProviderModelPicker as ProviderModelPicker, useRpc } from "@get-bb/plugin-sdk/app";
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import type { quickComposeRpcContract } from "./server";
-import { MAX_PRESETS, modelSpec, sameModel, type ModelPreset, type ModelSelection, type ModelState } from "./presets";
+import { MAX_PRESETS, modelSpec, sameModel, type ModelPreset, type ModelSelection, type ModelState } from "@arthurnw/bb-shared/selection";
 
 const button: CSSProperties = { padding: "4px 10px", border: "1px solid var(--border)", borderRadius: 6, background: "transparent", color: "var(--foreground)", cursor: "pointer", fontSize: 13 };
 const iconButton: CSSProperties = { ...button, padding: "2px 8px", color: "var(--muted-foreground)" };

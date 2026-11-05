@@ -2,9 +2,9 @@ import {
   experimental_ProviderIcon as ProviderIcon, experimental_ProviderModelPicker as ProviderModelPicker, experimental_useProviders as useProviders,
 } from "@get-bb/plugin-sdk/app";
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
-import { BotAvatar } from "./bot-avatars.tsx";
-import { filterPresets, findPreset, MAX_PRESETS, modelSpec, providerLabel, sameModel, type ModelPreset, type ModelSelection } from "./presets.ts";
-import { botLabel, filterBots, type Bot } from "./bots.ts";
+import { BotAvatar } from "./bot-avatar.tsx";
+import { filterPresets, findPreset, MAX_PRESETS, modelSpec, providerLabel, sameModel, type ModelPreset, type ModelSelection } from "../selection.ts";
+import { botLabel, filterBots, type Bot } from "../bots.ts";
 
 type Names = Record<string, string>;
 
@@ -23,16 +23,18 @@ export function modelLabel(presets: readonly ModelPreset[], selection: ModelSele
  * provider/model picker for every specific. A selection that matches no preset
  * can be saved. Picking a model after a bot keeps the bot.
  */
-export function ModelList({ bots = [], bot = null, onChooseBot, presets, names, selection, onChoose, onSavePresets, onClose }: {
+export function ModelList({ bots = [], bot = null, onChooseBot, presets = [], names = {}, selection, onChoose, onSavePresets, onClose }: {
   bots?: Bot[];
   bot?: Bot | null;
   onChooseBot?: (bot: Bot | null) => void;
-  presets: ModelPreset[];
-  names: Names;
+  /** Omit to hide the Presets section. */
+  presets?: ModelPreset[];
+  names?: Names;
   selection: ModelSelection | null;
   /** Called for a preset and for every change made in the embedded picker. */
   onChoose: (selection: ModelSelection, source: "preset" | "custom") => void;
-  onSavePresets: (presets: ModelPreset[]) => Promise<void>;
+  /** Omit to hide saving and deleting presets. */
+  onSavePresets?: (presets: ModelPreset[]) => Promise<void>;
   onClose: () => void;
 }) {
   const { providers } = useProviders();
@@ -45,7 +47,7 @@ export function ModelList({ bots = [], bot = null, onChooseBot, presets, names, 
   const matches = useMemo(() => filterPresets(presets, query, names), [presets, query, names]);
   const botMatches = useMemo(() => onChooseBot ? filterBots(bots, query) : [], [bots, query, onChooseBot]);
   const showNoBot = bot !== null && onChooseBot !== undefined && (query === "" || "no bot".includes(query.trim().toLowerCase()));
-  const unsaved = selection !== null && findPreset(presets, selection) === undefined && presets.length < MAX_PRESETS;
+  const unsaved = onSavePresets !== undefined && selection !== null && findPreset(presets, selection) === undefined && presets.length < MAX_PRESETS;
   const rows: Row[] = [
     ...botMatches.map((item): Row => ({ kind: "bot", bot: item })),
     ...(showNoBot ? [{ kind: "no-bot" } as Row] : []),
@@ -82,7 +84,7 @@ export function ModelList({ bots = [], bot = null, onChooseBot, presets, names, 
 
   async function save(presetsNext: ModelPreset[]) {
     setError(null);
-    try { await onSavePresets(presetsNext); } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    try { await onSavePresets?.(presetsNext); } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
   }
   const saveCurrent = (name: string) => {
     if (!selection) return;
@@ -148,9 +150,9 @@ export function ModelList({ bots = [], bot = null, onChooseBot, presets, names, 
                   <span style={{ ...ellipsis, color: "var(--muted-foreground)" }}>{modelSpec(preset, names)}</span>
                 </span>
                 {current && <span style={{ color: "var(--muted-foreground)" }}>current</span>}
-                <button type="button" aria-label={`Delete preset ${preset.name}`} title="Delete preset"
+                {onSavePresets && <button type="button" aria-label={`Delete preset ${preset.name}`} title="Delete preset"
                   onClick={(e) => { e.stopPropagation(); void save(presets.filter((item) => item.id !== preset.id)); }}
-                  style={{ ...deleteStyle, visibility: index === active ? "visible" : "hidden" }}>×</button>
+                  style={{ ...deleteStyle, visibility: index === active ? "visible" : "hidden" }}>×</button>}
               </div>
             );
           }
@@ -213,7 +215,7 @@ export function ModelList({ bots = [], bot = null, onChooseBot, presets, names, 
           return <Fragment key={`${row.kind}:${row.kind === "bot" ? row.bot.id : row.kind === "preset" ? row.preset.id : index}`}>{lead}{renderRow(row, index, section !== "other")}</Fragment>;
         })}
         {matches.length === 0 && botMatches.length === 0 && (presets.length > 0 || bots.length > 0) && query !== "" && <div style={emptyStyle}>No matching bots or presets</div>}
-        {presets.length === 0 && <div style={emptyStyle}>No presets yet. Pick a model below, then save it.</div>}
+        {presets.length === 0 && onSavePresets && <div style={emptyStyle}>No presets yet. Pick a model below, then save it.</div>}
         {error && <div role="alert" style={{ ...emptyStyle, color: "var(--destructive, #e5484d)" }}>{error}</div>}
       </div>
     </div>

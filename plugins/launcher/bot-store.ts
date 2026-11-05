@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { AVATAR_DATA_URL, AVATAR_MAX_CHARS, MAX_BOTS, MEMORY_MAX, type BindingSource, type Bot, type BotDraft, type OwnerLookup } from "./bots.ts";
+import { AVATAR_DATA_URL, AVATAR_MAX_CHARS, MAX_BOTS, MEMORY_MAX, type BindingSource, type Bot, type BotDraft, type OwnerLookup } from "@arthurnw/bb-shared/bots";
 
 /** The subset of better-sqlite3 (and node:sqlite, for tests) the store uses. */
 export interface SqlDb {

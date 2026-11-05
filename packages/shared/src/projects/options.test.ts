@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { cycle, filter, PERSONAL_LABEL, toOptions } from "./projects.ts";
+import { cycle, filter, PERSONAL_LABEL, toOptions } from "./options.ts";
 
 const options = toOptions([
   { id: "p", name: "Personal", kind: "personal" },

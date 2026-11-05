@@ -12,10 +12,10 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import { useEffect, useMemo, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import type { quickComposeRpcContract } from "./server";
-import type { Bot } from "./bots";
-import { modelSpec } from "./presets";
+import type { Bot } from "@arthurnw/bb-shared/bots";
+import { modelSpec } from "@arthurnw/bb-shared/selection";
 import { BotAvatar } from "./bot-avatars";
-import { quickCompose } from "./overlay-store";
+import { openNewThread } from "@arthurnw/bb-shared/events";
 import { feedSort, sortFeed, type FeedSort } from "./list-model";
 
 const FEED_PAGE = 10;
@@ -126,7 +126,7 @@ export function BotsSummary(props: SummaryProps) {
               {/* One column so the status glyph centers under the +. */}
               <span style={{ position: "absolute", top: 6, right: 6, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
                 <button type="button" aria-label={`New thread with ${bot.name}`} title={`New thread with ${bot.name}`}
-                  onClick={(e) => { e.stopPropagation(); quickCompose.open("new-thread", { projectId: bot.projectId ?? props.activeProjectId, threadId: null, botId: bot.id }); }}
+                  onClick={(e) => { e.stopPropagation(); openNewThread({ projectId: bot.projectId ?? props.activeProjectId, botId: bot.id }); }}
                   style={plus}><Icon name="Plus" className="size-3.5" aria-hidden /></button>
                 {indicator && (
                   <span aria-label={waiting > 0 ? `${bot.name} needs you` : `${bot.name} is working`} style={{ display: "inline-flex" }}>

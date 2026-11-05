@@ -1,6 +1,6 @@
 import { useSdk } from "@get-bb/plugin-sdk/app";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { filter, toOptions, type ProjectOption } from "./projects";
+import { filter, toOptions, type ProjectOption } from "./options.ts";
 
 export async function loadProjectOptions(sdk: ReturnType<typeof useSdk>) {
   return toOptions(await sdk.projects.list({ includePersonal: true }));

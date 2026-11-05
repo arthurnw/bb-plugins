@@ -234,8 +234,14 @@ bb plugin build
 bb plugin install --yes path:$PWD
 ```
 
-The overlay session logic and shortcut matching have pure Node tests alongside
-the project ordering, cycling, and filtering tests. Live testing is also needed
+The plugin depends on `@arthurnw/bb-shared` (`file:../../packages/shared`, TypeScript
+source with no build step), which `npm ci` links and `bb plugin build` bundles.
+Import it by package name, never by relative path: path installs reject server
+imports that leave the plugin directory. After editing only `packages/shared`,
+run `bb plugin reload launcher`.
+
+The overlay session logic and shortcut matching have pure Node tests; the project
+ordering and model-preset tests live in `packages/shared`. Live testing is also needed
 for host composer reconciliation and plugin shortcut conflicts.
 
 Quick Compose's MIT copyright and permission notice are retained in

@@ -1,0 +1,36 @@
+{
+  "name": "@arthurnw/bb-shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Code shared by the Bots, Launcher, and Canvas plugins. TypeScript source only; each plugin bundles it.",
+  "type": "module",
+  "exports": {
+    "./bots": "./src/bots.ts",
+    "./bots/schema": "./src/bots.schema.ts",
+    "./events": "./src/events.ts",
+    "./composer": "./src/composer/index.ts",
+    "./projects": "./src/projects/index.ts",
+    "./selection": "./src/selection.ts",
+    "./selection/schema": "./src/selection.schema.ts"
+  },
+  "scripts": {
+    "test": "node --test \"src/**/*.test.ts\"",
+    "typecheck": "tsc"
+  },
+  "peerDependencies": {
+    "@get-bb/plugin-sdk": "*",
+    "react": "*",
+    "react-dom": "*",
+    "sonner": "*",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "0.6.104",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.3.0",
+    "sonner": "^1.7.4",
+    "typescript": "^5.7.0",
+    "zod": "^4.6.7"
+  }
+}

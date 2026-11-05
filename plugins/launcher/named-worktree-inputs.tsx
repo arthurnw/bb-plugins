@@ -2,8 +2,8 @@ import { experimental_BranchPicker as BranchPicker, useSdk, type PluginEnvironme
 import { useEffect, useRef, useState } from "react";
 import { branchNameError, inputsSchema } from "./named-worktree";
 
-import { createFocusRegistry } from "./focus-field";
-import { useHostFontSize } from "./host-font";
+import { createFocusRegistry } from "@arthurnw/bb-shared/composer";
+import { useHostFontSize } from "@arthurnw/bb-shared/composer";
 
 const registry = createFocusRegistry();
 

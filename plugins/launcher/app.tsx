@@ -12,8 +12,8 @@ import { registerBotThreadAction } from "./bot-thread-action";
 import { registerBotThreadInfo } from "./bot-thread-info";
 import { BotThreadList } from "./bots-view";
 import { DefaultEnvironment } from "./default-environment";
-import { loadProjectOptions, ProjectList } from "./project-list";
-import { cycle } from "./projects";
+import { loadProjectOptions, ProjectList } from "@arthurnw/bb-shared/projects";
+import { cycle } from "@arthurnw/bb-shared/projects";
 
 const POPUP_ID = "launcher";
 

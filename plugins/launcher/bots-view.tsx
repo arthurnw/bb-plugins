@@ -18,9 +18,9 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerE
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import type { botsContract } from "./bots-server";
-import type { Bot } from "./bots";
+import type { Bot } from "@arthurnw/bb-shared/bots";
 import { BotAvatar, useBots } from "./bot-avatars";
-import { quickCompose } from "./overlay-store";
+import { openHandoff, openNewThread } from "@arthurnw/bb-shared/events";
 import { groupKeys, groupThreads, moveBefore, wouldCycle, type GroupKey } from "./list-model";
 import { BotsSummary } from "./bots-summary";
 
@@ -56,7 +56,7 @@ function useListOrder(rpc: BotsRpc) {
  */
 export async function sendThreadToBot(rpc: BotsRpc, thread: { id: string; projectId: string; status: string }, botId: string | null) {
   if (thread.status !== "pending") {
-    quickCompose.open("handoff", { projectId: thread.projectId, threadId: thread.id, botId });
+    openHandoff({ projectId: thread.projectId, threadId: thread.id, botId });
     return;
   }
   try {
@@ -465,7 +465,7 @@ export function BotThreadList({ activeThreadId, activeProjectId, onNavigate }: {
             <Group key={key} {...groupProps(key)} groupBot={bot.id} threads={placed.get(key) ?? []} onHeaderPointerDown={headerDrag}
               title={<><BotAvatar bot={bot} size={16} /><span style={{ ...groupTitle, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bot.name}</span></>}
               actions={<button type="button" aria-label={`New thread with ${bot.name}`} title={`New thread with ${bot.name}`} style={iconButton}
-                onClick={() => quickCompose.open("new-thread", { projectId: bot.projectId ?? activeProjectId, threadId: null, botId: bot.id })}>+</button>} />
+                onClick={() => openNewThread({ projectId: bot.projectId ?? activeProjectId, botId: bot.id })}>+</button>} />
           );
         }
         const section = sections.find((item) => `section:${item.id}` === key)!;

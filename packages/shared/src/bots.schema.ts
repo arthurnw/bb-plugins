@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { AVATAR_MAX_CHARS, BOT_ENVIRONMENTS, FACT_MAX, INSTRUCTIONS_MAX, MAX_BOTS, MEMORY_MAX, NAME_MAX, STARTER_MAX, type Bot, type BotDraft } from "./bots.ts";
-import { selectionSchema } from "./presets.schema.ts";
+import { selectionSchema } from "./selection.schema.ts";
 
 const permissionModeSchema = z.enum(["accept-edits", "auto", "full"]);
 

@@ -5,9 +5,9 @@ import type { quickComposeRpcContract } from "./server";
 import {
   BOT_ENVIRONMENTS, INSTRUCTIONS_MAX, MAX_BOTS, MEMORY_MAX, NAME_MAX, STARTER_MAX,
   type Bot, type BotDraft, type BotEnvironment, type PermissionMode,
-} from "./bots";
-import { modelSpec, sameModel, type ModelSelection } from "./presets";
-import { useProjectOptions } from "./project-list";
+} from "@arthurnw/bb-shared/bots";
+import { modelSpec, sameModel, type ModelSelection } from "@arthurnw/bb-shared/selection";
+import { useProjectOptions } from "@arthurnw/bb-shared/projects";
 import { avatarFromFile, avatarFromUrl, BotAvatar, svgDataUrl } from "./bot-avatars";
 import { AVATAR_GALLERY } from "./avatar-gallery";
 

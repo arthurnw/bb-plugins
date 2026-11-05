@@ -1,5 +1,5 @@
 // Adapted from Ultra Launcher (Dillion Verma); see THIRD_PARTY_LICENSES.md.
-import type { ModelPreset } from "./presets.ts";
+import type { ModelPreset } from "@arthurnw/bb-shared/selection";
 
 // Starter presets, ordered most-used first. Each rung lists candidate
 // provider/model/effort combinations in preference order; the first one the

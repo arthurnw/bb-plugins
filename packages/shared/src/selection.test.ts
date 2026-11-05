@@ -1,8 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { filterPresets, findPreset, modelSpec, sameModel, type ModelPreset } from "./presets.ts";
-import { resolveDefaultPresets } from "./default-presets.ts";
-import { savedModelStateSchema as modelStateSchema } from "./presets.schema.ts";
+import { filterPresets, findPreset, modelSpec, sameModel, type ModelPreset } from "./selection.ts";
+import { savedModelStateSchema as modelStateSchema } from "./selection.schema.ts";
 
 const preset = (id: string, name: string, model: string, reasoningLevel = "high", serviceTier = "default"): ModelPreset =>
   ({ id, name, providerId: "claude-code", model, reasoningLevel, serviceTier });
@@ -23,16 +22,6 @@ test("preset filtering matches every word against name and model", () => {
   assert.deepEqual(filterPresets(presets, "quick son").map((p) => p.id), ["b"]);
   assert.deepEqual(filterPresets(presets, "medium").map((p) => p.id), ["b"]);
   assert.deepEqual(filterPresets(presets, "nothing"), []);
-});
-
-test("default presets keep rungs the catalog offers and drop the rest", () => {
-  const catalog = new Map([["claude-code", [
-    { id: "claude-opus-5", supportedReasoningEfforts: [{ reasoningEffort: "high" }], defaultReasoningEffort: "high" },
-  ]]]);
-  const presets = resolveDefaultPresets(catalog);
-  assert.deepEqual(presets.map((p) => p.id), ["default:daily"]);
-  assert.equal(presets[0]?.model, "claude-opus-5");
-  assert.deepEqual(resolveDefaultPresets(new Map()), []);
 });
 
 test("model names replace ids in the spec and in filtering", () => {

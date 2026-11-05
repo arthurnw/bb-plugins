@@ -1,7 +1,7 @@
 import { useRealtime, useRpc, type PluginAppBuilder } from "@get-bb/plugin-sdk/app";
 import { useEffect, useState } from "react";
 import type { botsContract } from "./bots-server";
-import { botIconName, type Bot } from "./bots";
+import { botIconName, type Bot } from "@arthurnw/bb-shared/bots";
 import { useBots } from "./bot-avatars";
 import { sendThreadToBot } from "./bots-view";
 

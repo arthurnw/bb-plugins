@@ -4,8 +4,8 @@ import { createPortal } from "react-dom";
 import type { z } from "zod";
 import type { refChoicesSchema } from "./contract";
 import { existingInputsSchema, parseRef, type Resolved } from "./existing-branch";
-import { createFocusRegistry } from "./focus-field";
-import { useHostFontSize } from "./host-font";
+import { createFocusRegistry } from "@arthurnw/bb-shared/composer";
+import { useHostFontSize } from "@arthurnw/bb-shared/composer";
 import type { quickComposeRpcContract } from "./server";
 
 type Choices = z.infer<typeof refChoicesSchema>;

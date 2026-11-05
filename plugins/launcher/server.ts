@@ -3,14 +3,14 @@ import { defineRpcContract, type BbPluginApi, type NewThreadRequest } from "@get
 import { z } from "zod";
 import { hostContract, refChoicesSchema } from "./contract.ts";
 import { EXISTING_PROVIDER_ID, existingInputsSchema, parseRef, resolvedSchema, reviewPrompt, type ExistingInputs, type Resolved } from "./existing-branch.ts";
-import type { ModelPreset, ModelSelection } from "./presets.ts";
+import type { ModelPreset, ModelSelection } from "@arthurnw/bb-shared/selection";
 import { autoBranchName, inputsSchema, PROVIDER_ID, type NamedWorktreeInputs } from "./named-worktree.ts";
 import { DEFAULT_ROOT, worktreeRootSchema } from "./worktree-root.ts";
 import { resolveDefaultPresets, type Catalog, type CatalogModel } from "./default-presets.ts";
-import { modelKey } from "./presets.ts";
-import { modelStateSchema, presetsSchema, savedModelStateSchema, selectionSchema } from "./presets.schema.ts";
+import { modelKey } from "@arthurnw/bb-shared/selection";
+import { modelStateSchema, presetsSchema, savedModelStateSchema, selectionSchema } from "@arthurnw/bb-shared/selection/schema";
 import { registerBots } from "./bots-server.ts";
-import { NO_BOT_TEXT, withBotMention } from "./bots.ts";
+import { NO_BOT_TEXT, withBotMention } from "@arthurnw/bb-shared/bots";
 
 export const quickComposeRpcContract = defineRpcContract({
   // Forwarded unchanged; `threads.spawn` validates the request.
