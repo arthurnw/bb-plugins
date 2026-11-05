@@ -20,7 +20,7 @@ function fakeBb() {
     agents: { configure() {}, registerTool() {} },
     experimental_hooks: { on: (_: string, handler: Dispatch) => { dispatch = handler; } },
     ui: { registerMentionProvider: (provider: typeof mention) => { mention = provider; } },
-    rpc: { register: (_: unknown, handlers: typeof rpc) => { rpc = handlers; } },
+    rpc: { register: (_: unknown, handlers: typeof rpc) => { rpc = { ...rpc, ...handlers }; } },
     sdk: { threads: { get: async () => ({}) } },
   } as unknown as BbPluginApi;
   assert.equal(MIGRATIONS.length > 0, true);

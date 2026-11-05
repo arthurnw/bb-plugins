@@ -6,12 +6,13 @@ import { onBotsHandoff, onBotsNewThread } from "@arthurnw/bb-shared/events";
 import { ComposerDialog, checkoutOn, handoffPrompt, hasDraft, ModelList, ModelTrigger, reuseOrCheckout } from "@arthurnw/bb-shared/composer";
 import { botLabel, type Bot, type PermissionMode } from "@arthurnw/bb-shared/bots";
 import type { ModelSelection } from "@arthurnw/bb-shared/selection";
-import type { botsContract } from "./bots-server";
+import type { botsContract, spawnContract } from "./bots-server";
 import { BotAvatar, BotIconSync, useBots } from "./bot-avatars";
 import { dialog, subscribeDialog, type DialogSession } from "./dialog-store";
 
 function Session({ session, visible, focusRequest }: { session: DialogSession; visible: boolean; focusRequest: number }) {
   const rpc = useRpc<typeof botsContract>();
+  const spawnRpc = useRpc<typeof spawnContract>();
   const sidebar = useSidebarThreads();
   const bots = useBots();
   const [source, setSource] = useState<{ projectId: string | null; environmentId: string | null }>();
@@ -87,7 +88,7 @@ function Session({ session, visible, focusRequest }: { session: DialogSession; v
     } : {}}
     chip={<ModelTrigger icon={bot ? <BotAvatar bot={bot} size={16} /> : undefined} label={bot ? botLabel({ ...bot, emoji: "" }) : "Bot"} onClick={() => setPopup((value) => !value)} />}
     onStarted={() => dialog.close()}
-    submit={(request) => rpc.call("createThread", { request, ...(session.placement ? { placement: session.placement } : {}),
+    submit={(request) => spawnRpc.call("createThread", { request, ...(session.placement ? { placement: session.placement } : {}),
       ...(latest.current.bot ? { botId: latest.current.bot.id } : latest.current.inheritedBot !== null ? { botId: null } : {}) })}
   >
     {popup && <div style={{ marginTop: 8, border: "1px solid var(--border)", borderRadius: 8, background: "var(--popover, var(--background))", overflow: "hidden" }}>

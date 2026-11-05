@@ -7,8 +7,9 @@ import {
 } from "@arthurnw/bb-shared/bots";
 import { botsRpcContract, memoryToolSchema } from "@arthurnw/bb-shared/bots/schema";
 
-export const botsContract = defineRpcContract({
-  ...botsRpcContract,
+export const botsContract = defineRpcContract(botsRpcContract);
+// Registered apart from `botsContract`: its `z.custom` request cannot be published as discoverable.
+export const spawnContract = defineRpcContract({
   // Starts a thread as a bot (or without one) for composers that have no Launcher.
   createThread: {
     input: z.object({ request: z.custom<NewThreadRequest>(),
@@ -176,14 +177,6 @@ export function registerBots(bb: BbPluginApi) {
       if (!bot) return { botId: null, source: "none" as const, instructions: null };
       return { botId: bot.id, source: store.hasBinding(threadId) ? "own" as const : "inherited" as const, instructions: renderInstructions(bot) };
     },
-    async createThread({ request, placement, botId }) {
-      // An explicit choice replaces any bot pill already in the draft, so the thread gets one.
-      const input: NewThreadRequest["input"] = botId ? withBotMention(withoutBotMentions(request.input, BOT_MENTION_PLUGINS), store.require(botId), BOTS_PLUGIN_ID)
-        : botId === null ? [...withoutBotMentions(request.input, BOT_MENTION_PLUGINS), { type: "text", text: NO_BOT_TEXT, mentions: [], visibility: "agent-only" }]
-        : request.input;
-      const thread = await bb.sdk.threads.spawn({ ...request, input, ...placement });
-      return { threadId: thread.id };
-    },
     async rowPreferences() {
       const fallback = { rowActions: ["bb--core/read", "bb--core/archive"], showProviderIcons: true, showRowMetadata: true, chronologicalSort: "updated" };
       try {
@@ -209,6 +202,17 @@ export function registerBots(bb: BbPluginApi) {
       return { order };
     },
   }, { experimental_discoverable: true, experimental_description: "Bots: saved launch configurations with instructions and memory." });
+
+  bb.rpc.register(spawnContract, {
+    async createThread({ request, placement, botId }) {
+      // An explicit choice replaces any bot pill already in the draft, so the thread gets one.
+      const input: NewThreadRequest["input"] = botId ? withBotMention(withoutBotMentions(request.input, BOT_MENTION_PLUGINS), store.require(botId), BOTS_PLUGIN_ID)
+        : botId === null ? [...withoutBotMentions(request.input, BOT_MENTION_PLUGINS), { type: "text", text: NO_BOT_TEXT, mentions: [], visibility: "agent-only" }]
+        : request.input;
+      const thread = await bb.sdk.threads.spawn({ ...request, input, ...placement });
+      return { threadId: thread.id };
+    },
+  });
 
   // bb does not tell plugins when a thread is deleted, so drop rows for
   // threads that are gone once per load, in the background.
