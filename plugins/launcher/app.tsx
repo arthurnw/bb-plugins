@@ -1,6 +1,6 @@
 import { definePluginApp, useComposer, useSdk, type PluginComposerApi } from "@get-bb/plugin-sdk/app";
 import { EXISTING_PROVIDER_ID } from "./existing-branch";
-import { ExistingBranchInputs, focusExistingRef } from "./existing-branch-inputs";
+import { ExistingBranchInputs, existingRefShown, focusExistingRef } from "./existing-branch-inputs";
 import { PROVIDER_ID } from "./named-worktree";
 import { branchNameFocused, focusBranchName, NamedWorktreeInputs } from "./named-worktree-inputs";
 import { registerOverlay } from "./overlay";
@@ -84,7 +84,9 @@ export default definePluginApp((app) => {
       const hostId = current?.type === "host" ? current.hostId
         : current?.type === "provider" && current.machine?.type === "existing" ? current.machine.hostId : undefined;
       const machine = hostId ? { machine: { type: "existing", hostId } } as const : {};
-      const providerId = current?.type === "provider" ? current.environmentProviderId : null;
+      // bb reports no environment while Existing branch / PR has no ref chosen yet, so fall back to what is on screen.
+      const providerId = current?.type === "provider" ? current.environmentProviderId
+        : current === undefined && existingRefShown(within) ? EXISTING_PROVIDER_ID : null;
       // Cycles Named worktree (branch name field) -> Existing branch / PR -> Project checkout.
       // From Named worktree, the first press only focuses the field when it isn't focused yet.
       if (providerId === PROVIDER_ID && !branchNameFocused(within) && focusBranchName(within)) return;
