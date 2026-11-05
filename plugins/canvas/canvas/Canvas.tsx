@@ -56,7 +56,7 @@ import { GROUPINGS, LAYOUT_CHANGED, emptyLayout, type ArrangeStyle, type Groupin
 import { BUCKETS, BUCKET_LABEL, age, bucketOf, type Bucket } from "./status.ts";
 import { openNewThread } from "@arthurnw/bb-shared/events";
 import { availableGroupings, effectiveGrouping, rebound } from "./bots.ts";
-import { useLauncherBots } from "./launcher.ts";
+import { sendThreadToBot, useLauncherBots } from "./launcher.ts";
 
 const CLIENT_ID = Math.random().toString(36).slice(2, 10);
 const UNDO_LIMIT = 50;
@@ -1039,7 +1039,7 @@ function CanvasInner() {
     (_event: unknown, _node: CanvasNode, dragged: CanvasNode[]) => {
       dragging.current = false;
       record();
-      const changes: Record<string, Point> = {};
+      const changes: Record<string, Point | null> = {};
       // Save where linked chats ended up after their cards moved.
       const saveLinkedChat = (threadId: string) => {
         const chat = linkedChat(threadId);
@@ -1069,6 +1069,29 @@ function CanvasInner() {
             );
             if (target !== undefined) void moveToSection(node.id, target.group.sectionId, true);
           }
+          // In the bot grouping, dropping a card on another bot's frame gives the
+          // thread to that bot (a started thread opens a handoff instead).
+          if (grouping === "bot" && !frameDragged) {
+            const center = { x: point.x + CARD_W / 2, y: point.y + CARD_H / 2 };
+            const own = groups.get(node.id)?.key;
+            const target = framesAtDragStart.current.find(
+              ({ group, bounds }) =>
+                group.key !== own &&
+                center.x >= bounds.x &&
+                center.x <= bounds.x + bounds.width &&
+                center.y >= bounds.y &&
+                center.y <= bounds.y + bounds.height,
+            );
+            const thread = threadsById.get(node.id);
+            if (target !== undefined && thread !== undefined) {
+              // The card is placed again once its binding changes; a handoff leaves it in its frame.
+              changes[node.id] = null;
+              sendThreadToBot(sdk, thread, target.group.botId).then(
+                (result) => { if (result === "assigned") toast.success(`Moved to ${target.group.botId === null ? "No bot" : target.group.name}`); },
+                failed("move the thread"),
+              );
+            }
+          }
         }
         if (node.type === "frame" && grouping !== "machine" && membersOf(node.data.groupKey).length === 0) {
           changes[`frame:${node.data.groupKey}`] = node.position;
@@ -1089,7 +1112,7 @@ function CanvasInner() {
       }
       if (Object.keys(changes).length > 0) save(changes);
     },
-    [membersOf, save, updateNote, updateChat, record, grouping, groups, moveToSection, linkedChat],
+    [membersOf, save, updateNote, updateChat, record, grouping, groups, moveToSection, linkedChat, threadsById, sdk],
   );
 
   const edges = useMemo<Edge[]>(() => {

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useSdk } from "@get-bb/plugin-sdk/app";
 import { z } from "zod";
 import { BOTS_PLUGIN_ID } from "@arthurnw/bb-shared/bots";
-import { BOTS_CHANGED_EVENT } from "@arthurnw/bb-shared/events";
+import { BOTS_CHANGED_EVENT, openHandoff } from "@arthurnw/bb-shared/events";
 import type { LauncherBots } from "./bots.ts";
 
 // Only the fields the canvas draws; the bots carry more.
@@ -57,4 +57,28 @@ export function useLauncherBots(threadIds: string): LauncherBots {
     };
   }, [load]);
   return state;
+}
+
+/**
+ * Gives a thread to a bot, or takes its bot away with `null`. A thread that has
+ * not started is reassigned in place; a started one keeps its session's
+ * instructions, so this opens a handoff composer instead. Resolves to which
+ * happened.
+ */
+export async function sendThreadToBot(
+  sdk: ReturnType<typeof useSdk>,
+  thread: { id: string; projectId: string; status: string },
+  botId: string | null,
+): Promise<"assigned" | "handoff"> {
+  if (thread.status !== "pending") {
+    if (!openHandoff({ threadId: thread.id, projectId: thread.projectId, botId })) throw new Error("No composer is available for the handoff.");
+    return "handoff";
+  }
+  await sdk.plugins.callRpc({
+    pluginId: BOTS_PLUGIN_ID,
+    method: botId ? "assignThread" : "detachThread",
+    input: botId ? { threadId: thread.id, botId } : { threadId: thread.id },
+    outputSchema: z.object({}).passthrough(),
+  });
+  return "assigned";
 }
