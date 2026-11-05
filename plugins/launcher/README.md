@@ -1,6 +1,6 @@
 # Launcher
 
-A floating new-thread composer with model presets and [bots](#bots), plus
+A floating new-thread composer with model presets and a [bots](#bots) picker, plus
 project shortcuts, named Git worktrees, and thread handoff. The composer is adapted from Sawyer Hood's
 Quick Compose and Dillion Verma's Ultra Launcher. Formerly `project-picker`; the
 rename did not carry over its saved state, which lives under the plugin ID.
@@ -104,99 +104,15 @@ Rebind commands in Settings → Keyboard. Existing New thread commands retain ID
 
 ## Bots
 
-A bot is a saved launch configuration with its own instructions and memory:
-name, avatar, instructions, starter prompt, and optional model, permission
-mode, environment, and project. Fields left unset keep the composer's current
-value. Keep method in skills and point a bot at them (for example a starter
-prompt of `/skill:research `); bot instructions are limited to 2,000
-characters.
+Bots are managed by the [Bots plugin](../bots/README.md); the Launcher doesn't
+store them. When Bots is installed, the Launcher's picker lists bots first (in
+the overlay and on bb's New thread page, where it replaces bb's model button),
+picking one applies its fields, and a thread started from the overlay gets the
+bot's pill through Bots' `getBot` RPC. A **+** on a bot or a handoff to a bot
+opens the Launcher's overlay. Without Bots the picker has no Bots section and
+nothing else changes. The Bots plugin's own composer dialog covers the same
+requests when the Launcher is absent.
 
-> Bots are managed by the [Bots plugin](../bots): Settings → Bots, the Bots thread
-> list, the thread menu and Info tab, `bot_memory`, and the bot records. The
-> Launcher reads them over RPC and shows them in its picker. The paragraphs below
-> describe behavior that now lives in Bots and are reworked in a later step.
-
-### Starting a thread as a bot
-
-A thread belongs to a bot when its first message mentions the bot. Every entry
-point produces that mention:
-
-- **Overlay**: pick the bot in the model picker. Its fields are applied in one
-  re-seed and the starter prompt fills an empty draft. Picking a model
-  afterwards keeps the bot; **No bot** drops it. The server adds the mention
-  when the thread is created.
-- **New thread page**: the Launcher's picker replaces bb's model button there
-  too (bots, then presets, then **Other model…**; a bottom sheet on phones).
-  Presets and other models go through bb's own pickers. A bot's fields do too,
-  and its pill goes first in the draft; bb saves picker changes as the next
-  thread's defaults, so the earlier values come back after the send (or when
-  you choose **No bot**). bb's button is hidden by its label, as in the
-  overlay; if bb renames it, both buttons show.
-
-The bot's instructions and the `bot_memory` tool are attached when the thread's
-session starts, through `bb.agents.configure`, and a running session keeps what
-it started with. Forks, side chats, and handoffs (bb's "Continue in new thread"
-and the Launcher's) inherit the bot. Mentions in later messages bind nothing.
-
-**Hand off to bot** in every thread menu, and the Bot row in the thread's Info
-tab, reassign a thread that has not started. A started thread opens a Launcher
-handoff to the chosen bot instead; **Without a bot** hands off with none. The
-Info tab also shows the instructions a session starting now would get.
-
-Deleting a bot keeps its threads; they get no bot at their next session start.
-
-### Memory
-
-Each bot keeps up to 1,800 characters of facts, one per line, shown in full in
-the thread instructions. Agents read and change it with `bot_memory` (`read`,
-`append`, `forget`, or `overwrite` with the sha256 from a read); its
-instructions say to store only durable preferences and never credentials. Edit
-it in the bot's settings; a save is refused if an agent changed it meanwhile.
-
-### Avatars
-
-Upload an image (PNG, JPEG, WebP, GIF, or SVG) or pick one of 14 built-in
-avatars; it is cropped to a square and stored as a 128 px WebP. Without one, the
-emoji shows, then the first letter. App icons can only be registered at setup,
-so bots use 30 fixed icon names (`launcher-bot-0` to `-29`); a deleted bot's
-slot goes to the next new bot, which then also shows in old pills.
-
-### Launcher bots thread list
-
-Choose **Launcher bots** in Settings → Appearance → Sidebar thread list. A
-**Bots | Threads** toggle at the top switches between two views.
-
-**Bots** shows one tile per bot in your bot order (tiles never move): model,
-thread count, running and needs-you counts, memory size, and **+** for a new
-thread. A tile opens the Threads view at that bot. Below the tiles, **Pinned**
-lists pinned threads, including ones without a bot (the only non-bot threads in
-this view); drag a recent thread onto it to pin it. **Recent across bots** then
-lists the other bot threads newest first, 10 at a time, sorted by Last
-activity (`updatedAt`), Last response (`latestAttentionAt`, when the thread last
-finished a turn or asked for input), or Created. Until you choose, it follows
-the built-in list's sort. Drag a recent thread onto a tile to hand it off to
-that bot (or reassign it if it has not started).
-
-**Threads** is the full list. The Launcher list replaces bb's whole list (bb
-does not let a plugin add a mode to the built-in one): Pinned, then bots and bb's custom sections in one order you set by
-dragging group headers, then Threads. A thread with a bot and a section shows
-under both; child threads stay under their parent. Rows show the agent icon,
-plugin row metadata, and the built-in list's hover actions, following its
-`rowActions`, `showProviderIcons`, and `showRowMetadata` preferences (read
-through the built-in plugin's RPC, falling back to defaults).
-
-Drag a row onto:
-
-- a bot, to hand it off (or reassign it if it has not started);
-- another row, to nest it under that thread;
-- a section, to file it there as a top-level thread;
-- Threads, to make it top-level with no section;
-- Pinned, to pin it.
-
-Dragging toward the main area opens a split, as in bb's list. **+ New section**
-and each section's **⋯** (Rename, Delete) use bb's sections. Quick actions with
-a submenu are left to the **⋯** menu. Drag needs this list: bb's own rows carry
-no drag data.
 
 ## SDK limits (bb 0.46.1 / SDK 0.6.49)
 

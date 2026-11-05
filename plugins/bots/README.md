@@ -34,6 +34,95 @@ plugin id and still bind. Bots do not appear in the `@` menu.
 Other plugins read bots over RPC (`listBots`, `threadBots`, `getBot`) and
 listen for the `bb-bots:changed` window event.
 
+## Details
+
+A bot is a saved launch configuration with its own instructions and memory:
+name, avatar, instructions, starter prompt, and optional model, permission
+mode, environment, and project. Fields left unset keep the composer's current
+value. Keep method in skills and point a bot at them (for example a starter
+prompt of `/skill:research `); bot instructions are limited to 2,000
+characters.
+
+### Starting a thread as a bot
+
+A thread belongs to a bot when its first message mentions the bot. Every entry
+point produces that mention:
+
+- **Launcher overlay** (when installed): pick the bot in the model picker. Its fields are applied in one
+  re-seed and the starter prompt fills an empty draft. Picking a model
+  afterwards keeps the bot; **No bot** drops it. The server adds the mention
+  when the thread is created.
+- **New thread page**: with the Launcher, its picker lists bots; without it, Bots
+  adds a Bot chip beside bb's model button. A bot's fields go through bb's own pickers,
+  and its pill goes first in the draft; bb saves picker changes as the next
+  thread's defaults, so the earlier values come back after the send (or when
+  you choose **No bot**). 
+
+The bot's instructions and the `bot_memory` tool are attached when the thread's
+session starts, through `bb.agents.configure`, and a running session keeps what
+it started with. Forks, side chats, and handoffs (bb's "Continue in new thread"
+and the composer's) inherit the bot. Mentions in later messages bind nothing.
+
+**Hand off to bot** in every thread menu, and the Bot row in the thread's Info
+tab, reassign a thread that has not started. A started thread opens a
+handoff to the chosen bot instead; **Without a bot** hands off with none. The
+Info tab also shows the instructions a session starting now would get.
+
+Deleting a bot keeps its threads; they get no bot at their next session start.
+
+### Memory
+
+Each bot keeps up to 1,800 characters of facts, one per line, shown in full in
+the thread instructions. Agents read and change it with `bot_memory` (`read`,
+`append`, `forget`, or `overwrite` with the sha256 from a read); its
+instructions say to store only durable preferences and never credentials. Edit
+it in the bot's settings; a save is refused if an agent changed it meanwhile.
+
+### Avatars
+
+Upload an image (PNG, JPEG, WebP, GIF, or SVG) or pick one of 14 built-in
+avatars; it is cropped to a square and stored as a 128 px WebP. Without one, the
+emoji shows, then the first letter. App icons can only be registered at setup,
+so bots use 30 fixed icon names (`bot-0` to `bot-29`); a deleted bot's
+slot goes to the next new bot, which then also shows in old pills.
+
+### Thread list
+
+Choose **Bots** in Settings → Appearance → Sidebar thread list. A
+**Bots | Threads** toggle at the top switches between two views.
+
+**Bots** shows one tile per bot in your bot order (tiles never move): model,
+thread count, running and needs-you counts, memory size, and **+** for a new
+thread. A tile opens the Threads view at that bot. Below the tiles, **Pinned**
+lists pinned threads, including ones without a bot (the only non-bot threads in
+this view); drag a recent thread onto it to pin it. **Recent across bots** then
+lists the other bot threads newest first, 10 at a time, sorted by Last
+activity (`updatedAt`), Last response (`latestAttentionAt`, when the thread last
+finished a turn or asked for input), or Created. Until you choose, it follows
+the built-in list's sort. Drag a recent thread onto a tile to hand it off to
+that bot (or reassign it if it has not started).
+
+**Threads** is the full list. The Bots list replaces bb's whole list (bb
+does not let a plugin add a mode to the built-in one): Pinned, then bots and bb's custom sections in one order you set by
+dragging group headers, then Threads. A thread with a bot and a section shows
+under both; child threads stay under their parent. Rows show the agent icon,
+plugin row metadata, and the built-in list's hover actions, following its
+`rowActions`, `showProviderIcons`, and `showRowMetadata` preferences (read
+through the built-in plugin's RPC, falling back to defaults).
+
+Drag a row onto:
+
+- a bot, to hand it off (or reassign it if it has not started);
+- another row, to nest it under that thread;
+- a section, to file it there as a top-level thread;
+- Threads, to make it top-level with no section;
+- Pinned, to pin it.
+
+Dragging toward the main area opens a split, as in bb's list. **+ New section**
+and each section's **⋯** (Rename, Delete) use bb's sections. Quick actions with
+a submenu are left to the **⋯** menu. Drag needs this list: bb's own rows carry
+no drag data.
+
 ## Develop
 
 ```sh
