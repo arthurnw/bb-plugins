@@ -8,6 +8,7 @@ import { useBots } from "./bots-client";
 import { BOT_MENTION_PLUGINS, BOTS_PLUGIN_ID, draftBotId, draftWithBot, type Bot } from "@arthurnw/bb-shared/bots";
 import { BotAvatar, HOST_MODEL_PICKER, ModelList, modelLabel, ModelTrigger, useModelSlot } from "@arthurnw/bb-shared/composer";
 import type { ModelSelection, ModelState } from "@arthurnw/bb-shared/selection";
+import { projectShortcut } from "./overlay-keys";
 import { markEnvironmentApplied } from "./default-environment";
 import { EXISTING_PROVIDER_ID } from "./existing-branch";
 import { PROVIDER_ID } from "./named-worktree";
@@ -130,6 +131,26 @@ export function NativeModelTrigger() {
     return () => { form?.removeAttribute(NATIVE_ATTR); setRoot(null); };
   }, [own]);
   const slot = useModelSlot(root, own && state !== null);
+
+  // bb's own Mod+Shift+M toggles its model picker, which this trigger hides.
+  // While the trigger is shown, the shortcut opens this picker instead, in the
+  // composer that holds the caret.
+  const shown = slot !== null && state !== null;
+  useEffect(() => {
+    if (!own || !shown || !root) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (projectShortcut(event, /Mac|iPhone|iPad/.test(navigator.platform)) !== "model") return;
+      const target = event.target;
+      // The picker's own search box sits outside the composer but should toggle it closed.
+      const inPicker = target instanceof Element && target.matches("input[aria-label='Search bots and model presets']");
+      if (!(target instanceof Node) || !(root.contains(target) || inPicker)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (inPicker) { composer.experimental_closePopup(); composer.focus(); } else composer.experimental_openPopup(BOT_POPUP_ID);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [own, shown, root, composer]);
 
   if (!own) return null;
   const selection = currentSelection(composer.selection);

@@ -8,7 +8,7 @@ import { BotAvatar, useBots } from "./bot-avatars";
 import { BOT_MENTION_PLUGINS, BOTS_PLUGIN_ID, botLabel, draftBotId, draftWithBot, type Bot } from "@arthurnw/bb-shared/bots";
 import { ModelList, ModelTrigger, useModelSlot } from "@arthurnw/bb-shared/composer";
 
-export const BOT_POPUP_ID = "bot";
+export const BOT_POPUP_ID = "bot-chip";
 /** Set by the Launcher on its own picker's anchor. */
 const LAUNCHER_PICKER = "[data-launcher-model-trigger]";
 

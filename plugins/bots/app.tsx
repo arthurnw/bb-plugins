@@ -22,6 +22,6 @@ export default definePluginApp((app) => {
     id: "bots",
     scopes: ["new-thread"],
     experimental_popups: [{ id: BOT_POPUP_ID, label: "Choose bot", component: BotPopup }],
-    actions: [{ id: "bot", component: BotChip }],
+    actions: [{ id: "bot-chip", component: BotChip }],
   });
 });
