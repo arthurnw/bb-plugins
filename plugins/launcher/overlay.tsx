@@ -6,14 +6,14 @@ import {
   type PluginAppBuilder,
 } from "@get-bb/plugin-sdk/app";
 import { onHandoff, onNewThread } from "@arthurnw/bb-shared/events";
-import { BotAvatar, ComposerDialog, checkoutOn, handoffPrompt, hasDraft, ModelList, modelLabel, ModelTrigger, reuseOrCheckout } from "@arthurnw/bb-shared/composer";
+import { BotAvatar, ComposerDialog, checkoutOn, handoffPrompt, hasDraft, ModelList, modelLabel, ModelTrigger, projectShortcut, reuseOrCheckout } from "@arthurnw/bb-shared/composer";
 import { cycle, ProjectList, useProjectOptions } from "@arthurnw/bb-shared/projects";
 import type { Bot, BotEnvironment, PermissionMode } from "@arthurnw/bb-shared/bots";
 import type { ModelSelection, ModelState } from "@arthurnw/bb-shared/selection";
 import type { quickComposeRpcContract } from "./server";
 import { BotsSync, useBotsRpc } from "./bots-client";
 import { quickCompose, subscribe, type QuickComposeKind, type QuickComposeSession } from "./overlay-store";
-import { projectShortcut } from "./overlay-keys";
+
 import { PROVIDER_ID } from "./named-worktree";
 import { branchNameFocused, focusBranchName } from "./named-worktree-inputs";
 import { EXISTING_PROVIDER_ID } from "./existing-branch";

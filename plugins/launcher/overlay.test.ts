@@ -1,7 +1,6 @@
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { quickCompose } from "./overlay-store.ts";
-import { projectShortcut } from "./overlay-keys.ts";
 
 beforeEach(() => { quickCompose.finish("new-thread"); quickCompose.finish("handoff"); quickCompose.finish("fork"); });
 test("a session with a draft survives reopening elsewhere", () => {
@@ -44,27 +43,6 @@ test("handoff is scoped to its source and does not clear the new-thread session"
   quickCompose.finish("handoff");
   assert.equal(quickCompose.getState().sessions["new-thread"], plain);
 });
-test("overlay shortcuts respect platform, option-produced characters, and IME", () => {
-  const base = { key: "j", code: "KeyJ", ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, isComposing: false };
-  assert.equal(projectShortcut({ ...base, key: "∆", altKey: true }, true), "next");
-  assert.equal(projectShortcut({ ...base, altKey: true, shiftKey: true }, true), "previous");
-  assert.equal(projectShortcut({ ...base, metaKey: true, shiftKey: true }, true), "open");
-  assert.equal(projectShortcut({ ...base, ctrlKey: true, shiftKey: true }, false), "open");
-  assert.equal(projectShortcut({ ...base, ctrlKey: true, shiftKey: true }, true), null);
-  assert.equal(projectShortcut({ ...base, altKey: true, isComposing: true }, false), null);
-  assert.equal(projectShortcut(base, false), null);
-});
-
-test("branch name shortcut matches Mod+Shift+B only", () => {
-  const b = { key: "b", code: "KeyB", ctrlKey: false, metaKey: false, altKey: false, shiftKey: true, isComposing: false };
-  assert.equal(projectShortcut({ ...b, metaKey: true }, true), "branch-name");
-  assert.equal(projectShortcut({ ...b, ctrlKey: true }, false), "branch-name");
-  assert.equal(projectShortcut({ ...b, key: "g", code: "KeyG", metaKey: true }, true), "existing-ref");
-  assert.equal(projectShortcut({ ...b, ctrlKey: true }, true), null);
-  assert.equal(projectShortcut({ ...b, metaKey: true, altKey: true }, true), null);
-  assert.equal(projectShortcut({ ...b, metaKey: true, shiftKey: false }, true), null);
-});
-
 test("fork sessions are scoped to their source thread", () => {
   quickCompose.toggle("fork", { projectId: "a", threadId: "t1" });
   const fork = quickCompose.getState().sessions.fork;
@@ -78,15 +56,6 @@ test("fork sessions are scoped to their source thread", () => {
   quickCompose.toggle("fork", { projectId: "a", threadId: "t2", sourceSeqEnd: 40 });
   assert.equal(quickCompose.getState().active, null);
   quickCompose.finish("fork");
-});
-
-test("model picker shortcut matches Mod+Shift+M only", () => {
-  const m = { key: "m", code: "KeyM", ctrlKey: false, metaKey: false, altKey: false, shiftKey: true, isComposing: false };
-  assert.equal(projectShortcut({ ...m, metaKey: true }, true), "model");
-  assert.equal(projectShortcut({ ...m, ctrlKey: true }, false), "model");
-  assert.equal(projectShortcut({ ...m, ctrlKey: true }, true), null);
-  assert.equal(projectShortcut({ ...m, metaKey: true, shiftKey: false }, true), null);
-  assert.equal(projectShortcut({ ...m, metaKey: true, altKey: true }, true), null);
 });
 
 test("a draft is kept only for the same section and machine", () => {

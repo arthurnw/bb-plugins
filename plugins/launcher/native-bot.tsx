@@ -6,9 +6,9 @@ import { createPortal } from "react-dom";
 import type { quickComposeRpcContract } from "./server";
 import { useBots } from "./bots-client";
 import { BOT_MENTION_PLUGINS, BOTS_PLUGIN_ID, draftBotId, draftWithBot, type Bot } from "@arthurnw/bb-shared/bots";
-import { BotAvatar, HOST_MODEL_PICKER, ModelList, modelLabel, ModelTrigger, useModelSlot } from "@arthurnw/bb-shared/composer";
+import { BotAvatar, HOST_MODEL_PICKER, ModelList, modelLabel, ModelTrigger, projectShortcut, useModelSlot } from "@arthurnw/bb-shared/composer";
 import type { ModelSelection, ModelState } from "@arthurnw/bb-shared/selection";
-import { projectShortcut } from "./overlay-keys";
+
 import { markEnvironmentApplied } from "./default-environment";
 import { EXISTING_PROVIDER_ID } from "./existing-branch";
 import { PROVIDER_ID } from "./named-worktree";
