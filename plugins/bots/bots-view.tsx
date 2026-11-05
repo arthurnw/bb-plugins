@@ -422,6 +422,10 @@ export function BotThreadList({ activeThreadId, activeProjectId, onNavigate }: {
   };
   const groupProps = (key: string) => ({ dropKey: key, collapsed: collapsedGroups.has(key), onToggle: () => toggleGroup(key), context });
   const dragged = dragState.drag;
+  // Dividers separate Pinned, the bot and section groups, and Threads, only between non-empty groups.
+  const hasPinned = (placed.get("pinned")?.length ?? 0) > 0;
+  const hasMiddle = keys.length > 0;
+  const hasThreads = (placed.get("threads")?.length ?? 0) > 0;
   const toggle = (
     <div role="tablist" aria-label="Sidebar view" style={{ display: "inline-flex", alignSelf: "flex-start", margin: "4px 8px 6px", padding: 2, borderRadius: 8, background: "var(--accent)" }}>
       {(["bots", "threads"] as const).map((item) => (
@@ -454,9 +458,10 @@ export function BotThreadList({ activeThreadId, activeProjectId, onNavigate }: {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: "4px 4px 16px", userSelect: dragged ? "none" : undefined }}>
       {toggle}
-      {(placed.get("pinned")?.length ?? 0) > 0 && (
+      {hasPinned && (
         <Group {...groupProps("pinned")} title={<span style={groupTitle}>Pinned</span>} threads={placed.get("pinned") ?? []} />
       )}
+      {hasPinned && hasMiddle && <Divider />}
       {keys.map((key) => {
         const headerDrag = dragState.start({ kind: "group", key, label: key });
         if (key.startsWith("bot:")) {
@@ -474,11 +479,16 @@ export function BotThreadList({ activeThreadId, activeProjectId, onNavigate }: {
             title={<span style={groupTitle}>{section.name}</span>} actions={<SectionActions section={section} />} empty="Drop a thread here to file it." />
         );
       })}
+      {hasMiddle && hasThreads && <Divider />}
       <Group {...groupProps("threads")} title={<span style={groupTitle}>Threads</span>} threads={placed.get("threads") ?? []} limit={PAGE} />
       <NewSection onCreated={(id) => saveOrder([...keys, `section:${id}`])} />
       {ghost}
     </div>
   );
+}
+
+function Divider() {
+  return <div role="separator" style={{ height: 0, margin: "4px 0", borderTop: "1px solid color-mix(in srgb, var(--border) 60%, transparent)" }} />;
 }
 
 const rowStyle: CSSProperties = { display: "flex", alignItems: "flex-start", gap: 8, padding: "5px 8px", borderRadius: 6, fontSize: 13, color: "var(--foreground)", textDecoration: "none", cursor: "pointer" };
