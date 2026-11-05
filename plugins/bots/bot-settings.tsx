@@ -1,13 +1,14 @@
-import { experimental_ProviderModelPicker as ProviderModelPicker, useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
+import { experimental_ProviderModelPicker as ProviderModelPicker, experimental_useProviders as useProviders, useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import type { botsContract } from "./bots-server";
-import { useLauncherModelState } from "./launcher-models";
+import { useLauncher, useLauncherModelState } from "./launcher-models";
 import {
   BOT_ENVIRONMENTS, INSTRUCTIONS_MAX, MAX_BOTS, MEMORY_MAX, NAME_MAX, STARTER_MAX,
   type Bot, type BotDraft, type BotEnvironment, type PermissionMode,
 } from "@arthurnw/bb-shared/bots";
 import { modelSpec, sameModel, type ModelSelection } from "@arthurnw/bb-shared/selection";
 import { useProjectOptions } from "@arthurnw/bb-shared/projects";
+import { availableEnvironments } from "@arthurnw/bb-shared/composer";
 import { avatarFromFile, avatarFromUrl, BotAvatar, svgDataUrl } from "./bot-avatars";
 import { AVATAR_GALLERY } from "./avatar-gallery";
 
@@ -18,8 +19,8 @@ const ENVIRONMENT_LABELS: Record<BotEnvironment, string> = {
 };
 const PERMISSION_LABELS: Record<PermissionMode, string> = { "accept-edits": "Accept edits", auto: "Auto", full: "Full access" };
 const KEEP = "";
-// Without Launcher presets, bb's picker starts from an empty value and reports a real model once loaded.
-const NO_TEMPLATE: ModelSelection = { providerId: "", model: "", reasoningLevel: "medium", serviceTier: "default" };
+// Without Launcher presets, bb's picker starts from the first available provider and reports a real model once loaded.
+const startingModel = (providerId: string): ModelSelection => ({ providerId, model: "", reasoningLevel: "medium", serviceTier: "default" });
 
 const errorText = (e: unknown) => e instanceof Error ? e.message : String(e);
 const toDraft = ({ name, emoji, instructions, starterPrompt, model, permissionMode, environment, projectId, memoryWrites }: Bot): BotDraft =>
@@ -100,6 +101,9 @@ export function BotSettings() {
 function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<unknown> }) {
   const rpc = useRpc<typeof botsContract>();
   const launcherModels = useLauncherModelState();
+  const launcherPresent = useLauncher().status === "present";
+  const { providers } = useProviders();
+  const firstProvider = providers.find((provider) => provider.available)?.id ?? providers[0]?.id ?? "";
   const projects = useProjectOptions();
   const saved = toDraft(bot);
   const [draft, setDraft] = useState<BotDraft>(saved);
@@ -146,7 +150,7 @@ function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<unknown>
         <Field label="Model">
           <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <select value={draft.model ? "set" : KEEP} style={select} aria-label="Model"
-              onChange={(e) => set("model", e.target.value === KEEP ? null : (draft.model ?? template ?? NO_TEMPLATE))}>
+              onChange={(e) => set("model", e.target.value === KEEP ? null : (draft.model ?? template ?? startingModel(firstProvider)))}>
               <option value={KEEP}>Any</option>
               <option value="set">Specific model</option>
             </select>
@@ -170,7 +174,11 @@ function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<unknown>
           <select value={draft.environment ?? KEEP} style={select} aria-label="Environment"
             onChange={(e) => set("environment", (e.target.value || null) as BotEnvironment | null)}>
             <option value={KEEP}>Any</option>
-            {BOT_ENVIRONMENTS.map((env) => <option key={env} value={env}>{ENVIRONMENT_LABELS[env]}</option>)}
+            {BOT_ENVIRONMENTS.map((env) => {
+              // Worktree environments are the Launcher's. A bot that already uses one keeps it, marked, so saving does not silently change it.
+              const available = availableEnvironments(launcherPresent).includes(env);
+              return (available || draft.environment === env) && <option key={env} value={env}>{ENVIRONMENT_LABELS[env]}{available ? "" : " (needs Launcher)"}</option>;
+            })}
           </select>
         </Field>
         <Field label="Project">

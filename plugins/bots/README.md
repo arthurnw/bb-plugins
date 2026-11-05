@@ -15,7 +15,14 @@ Manage bots in Settings → Bots.
 - **New thread page**: a Bot chip beside bb's model button. It hides itself when
   the Launcher's own picker (which lists bots first) is on the page.
 - **Handoff and "+" on a bot**: opens the Launcher's composer when it is
-  installed, and Bots' own dialog otherwise.
+  installed, and Bots' own dialog otherwise (Mod+Shift+M bot picker,
+  Mod+Shift+J project picker, Alt+J next project; Enter opens the thread and
+  Cmd/Ctrl+Enter starts it in the background). A "+" with no bot is left to the
+  sender, which opens bb's New thread page.
+- **Without the Launcher**: a bot's Environment is limited to Project checkout,
+  and the model field uses bb's own picker with no presets. Named worktree and
+  Existing branch / PR need the Launcher; a bot that already uses one keeps it,
+  marked "needs Launcher".
 - **`bot_memory` tool**: agents read and append facts shared by every thread
   that uses the bot.
 

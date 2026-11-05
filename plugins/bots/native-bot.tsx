@@ -6,7 +6,8 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { BotAvatar, useBots } from "./bot-avatars";
 import { BOT_MENTION_PLUGINS, BOTS_PLUGIN_ID, botLabel, draftBotId, draftWithBot, type Bot } from "@arthurnw/bb-shared/bots";
-import { ModelList, ModelTrigger, useModelSlot } from "@arthurnw/bb-shared/composer";
+import { environmentFor, ModelList, ModelTrigger, useModelSlot } from "@arthurnw/bb-shared/composer";
+import { useLauncher } from "./launcher-models";
 
 export const BOT_POPUP_ID = "bot-chip";
 /** Set by the Launcher on its own picker's anchor. */
@@ -40,11 +41,9 @@ function hostOf(selection: ComposerSelection | null) {
     : environment?.type === "provider" && environment.machine?.type === "existing" ? environment.machine.hostId : undefined;
 }
 
-// Named worktrees and existing branches are the Launcher's, so only the checkout applies here.
-function selectionFor(bot: Bot, current: ComposerSelection | null): ComposerSelection {
-  const hostId = hostOf(current);
-  const environment: ComposerSelection["environment"] =
-    bot.environment === "checkout" && hostId ? { type: "host", hostId, workspace: { type: "unmanaged", path: null } } : undefined;
+// Named worktrees and existing branches are the Launcher's providers, so without it only the checkout applies.
+function selectionFor(bot: Bot, current: ComposerSelection | null, launcher: boolean): ComposerSelection {
+  const environment = environmentFor(bot.environment, hostOf(current) ?? null, launcher);
   return {
     ...(bot.projectId ? { projectId: bot.projectId } : {}),
     ...(environment ? { environment } : {}),
@@ -55,7 +54,7 @@ function selectionFor(bot: Bot, current: ComposerSelection | null): ComposerSele
 
 const restore = (composer: PluginComposerApi, selection: ComposerSelection) => composer.setSelection(selection);
 
-async function chooseBot(composer: PluginComposerApi, bot: Bot | null) {
+async function chooseBot(composer: PluginComposerApi, bot: Bot | null, launcher: boolean) {
   const key = composer.key;
   composer.replace((draft) => draftWithBot(draft, bot, BOTS_PLUGIN_ID));
   if (!bot) {
@@ -65,7 +64,7 @@ async function chooseBot(composer: PluginComposerApi, bot: Bot | null) {
     return;
   }
   if (!saved.has(key) && composer.selection) saved.set(key, composer.selection);
-  await composer.setSelection(selectionFor(bot, composer.selection)).catch(() => {});
+  await composer.setSelection(selectionFor(bot, composer.selection, launcher)).catch(() => {});
 }
 
 function useLauncherPicker(form: HTMLElement | null) {
@@ -131,10 +130,11 @@ export function BotChip() {
 export function BotPopup() {
   const composer = useComposer();
   const bots = useBots();
+  const launcher = useLauncher().status === "present";
   const botId = draftBotId(composer.draft, BOT_MENTION_PLUGINS);
   const bot = botId ? bots?.find((item) => item.id === botId) ?? null : null;
   const close = () => { composer.experimental_closePopup(); composer.focus(); };
   if (bots === null) return <div style={{ padding: "8px 12px", fontSize: 12, color: "var(--muted-foreground)" }}>Loading…</div>;
   return <ModelList hideModels bots={[...bots]} bot={bot} onClose={close}
-    onChooseBot={(next) => { composer.experimental_closePopup(); void chooseBot(composer, next).then(() => composer.focus()); }} />;
+    onChooseBot={(next) => { composer.experimental_closePopup(); void chooseBot(composer, next, launcher).then(() => composer.focus()); }} />;
 }
