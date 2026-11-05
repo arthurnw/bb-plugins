@@ -144,6 +144,32 @@ export function findBotMention(blocks: readonly InputBlock[], pluginId: string, 
 type RequestBlock = { type: string; text?: string; mentions?: { start: number; end: number; resource: unknown }[] } & Record<string, unknown>;
 
 /**
+ * Removes every bot mention this plugin owns, with the space after it, and
+ * shifts later mentions in the same block back. Other mentions are kept.
+ */
+export function withoutBotMentions<B extends RequestBlock>(blocks: readonly B[], pluginId: string): B[] {
+  return blocks.map((block) => {
+    if (block.type !== "text" || !block.mentions?.length) return block;
+    const text = block.text ?? "";
+    const own = block.mentions
+      .filter((m) => botMentionId(m.resource as MentionResource, pluginId) !== null)
+      .sort((x, y) => x.start - y.start);
+    if (own.length === 0) return block;
+    // Each cut is [start, end) plus one trailing space.
+    const cuts = own.map((m) => [m.start, text[m.end] === " " ? m.end + 1 : m.end] as const);
+    const shift = (pos: number) => cuts.reduce((sum, [from, to]) => sum + (pos >= to ? to - from : pos > from ? pos - from : 0), 0);
+    let next = "";
+    let cursor = 0;
+    for (const [from, to] of cuts) { next += text.slice(cursor, from); cursor = to; }
+    next += text.slice(cursor);
+    const mentions = block.mentions
+      .filter((m) => !own.includes(m))
+      .map((m) => ({ ...m, start: m.start - shift(m.start), end: m.end - shift(m.start) }));
+    return { ...block, text: next, mentions };
+  });
+}
+
+/**
  * Puts a mention of `bot` at the start of the first message unless it already
  * mentions that bot. Offsets of later mentions in that block shift with it.
  */

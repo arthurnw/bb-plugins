@@ -82,12 +82,18 @@ function Session({ session, kind, visible, focusRequest }: {
   const [inheritedBot, setInheritedBot] = useState<string | null>(null);
   const [permissionMode, setPermissionMode] = useState<PermissionMode>();
   const [starter, setStarter] = useState("");
+  // The bot picked in this session. The load below only seeds the opening bot,
+  // so it must not replace a choice made first; submit reads the latest state.
+  const chosenRef = useRef(false);
+  const latest = useRef({ bot, inheritedBot });
+  latest.current = { bot, inheritedBot };
   useEffect(() => {
     if (!customModel) { setBots([]); return; }
     Promise.all([botsRpc.call("listBots", {}), kind === "handoff" ? botsRpc.call("threadBots", {}) : Promise.resolve({ threads: {} as Record<string, string> })]).then(
       ([{ bots: list }, { threads }]) => {
         const inherited = session.sourceThreadId ? threads[session.sourceThreadId] ?? null : null;
         setInheritedBot(inherited);
+        if (chosenRef.current) { setBots(list); return; }
         const requested = session.botId === undefined ? undefined : list.find((item) => item.id === session.botId) ?? null;
         if (requested) applyBot(requested, true);
         else setBot(requested === null ? null : list.find((item) => item.id === inherited) ?? null);
@@ -109,6 +115,7 @@ function Session({ session, kind, visible, focusRequest }: {
     if (next.starterPrompt && (beforeMount || !hasDraft(sectionRef.current, draftKey))) setStarter(next.starterPrompt);
   }
   const chooseBot = (next: Bot | null) => {
+    chosenRef.current = true;
     if (next) applyBot(next);
     else setBot(null);
     setPopup(null);
@@ -197,7 +204,7 @@ function Session({ session, kind, visible, focusRequest }: {
       ? rpc.call("forkThread", { sourceThreadId: session.sourceThreadId, request,
         ...(session.sourceSeqEnd === null ? {} : { sourceSeqEnd: session.sourceSeqEnd }) })
       : rpc.call("createThread", { request, ...(session.placement ? { placement: session.placement } : {}),
-        ...(bot ? { botId: bot.id } : inheritedBot !== null ? { botId: null } : {}) })}
+        ...(latest.current.bot ? { botId: latest.current.bot.id } : latest.current.inheritedBot !== null ? { botId: null } : {}) })}
   >
     {popup && <div style={{ marginTop: 8, border: "1px solid var(--border)", borderRadius: 8, background: "var(--popover, var(--background))", overflow: "hidden" }}>
       {popup === "project"

@@ -10,7 +10,7 @@ import { resolveDefaultPresets, type Catalog, type CatalogModel } from "./defaul
 import { modelKey } from "@arthurnw/bb-shared/selection";
 import { modelStateSchema, presetsSchema, savedModelStateSchema, selectionSchema } from "@arthurnw/bb-shared/selection/schema";
 import { registerBots } from "./bots-server.ts";
-import { NO_BOT_TEXT, withBotMention } from "@arthurnw/bb-shared/bots";
+import { NO_BOT_TEXT, withBotMention, withoutBotMentions } from "@arthurnw/bb-shared/bots";
 
 export const quickComposeRpcContract = defineRpcContract({
   // Forwarded unchanged; `threads.spawn` validates the request.
@@ -117,8 +117,9 @@ export default async function plugin(bb: BbPluginApi) {
       return host.call("resolveRef", { sourcePath: await sourcePath(projectId, hostId), ref }, { hostId });
     },
     async createThread({ request, placement, botId }) {
-      const input: NewThreadRequest["input"] = botId ? withBotMention(request.input, bots.require(botId), bb.pluginId)
-        : botId === null ? [...request.input, { type: "text", text: NO_BOT_TEXT, mentions: [], visibility: "agent-only" }]
+      // An explicit choice replaces any bot pill already in the draft, so the thread gets one.
+      const input: NewThreadRequest["input"] = botId ? withBotMention(withoutBotMentions(request.input, bb.pluginId), bots.require(botId), bb.pluginId)
+        : botId === null ? [...withoutBotMentions(request.input, bb.pluginId), { type: "text", text: NO_BOT_TEXT, mentions: [], visibility: "agent-only" }]
         : request.input;
       const thread = await bb.sdk.threads.spawn({ ...request, input, ...placement });
       return { threadId: thread.id };

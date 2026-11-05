@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  applyMemoryChange, draftBotId, draftWithBot, FACT_MAX, filterBots, findBotMention, handoffSource, hasNoBotMarker, NO_BOT_TEXT, withBotMention, INSTRUCTION_BUDGET, INSTRUCTIONS_MAX, MEMORY_MAX, MemoryError, NAME_MAX,
+  applyMemoryChange, draftBotId, draftWithBot, FACT_MAX, filterBots, findBotMention, handoffSource, hasNoBotMarker, NO_BOT_TEXT, withBotMention, withoutBotMentions, INSTRUCTION_BUDGET, INSTRUCTIONS_MAX, MEMORY_MAX, MemoryError, NAME_MAX,
   renderInstructions, type Bot,
 } from "./bots.ts";
 import { memoryToolSchema } from "./bots.schema.ts";
@@ -102,4 +102,18 @@ test("draftWithBot swaps the bot pill, keeps other mentions in place, and adds t
 
 test("read-only memory is marked in the instructions", () => {
   assert.match(renderInstructions({ name: "W", instructions: "", memory: "- a", memoryWrites: false }), /## Bot memory \(read-only\)/);
+});
+
+test("withoutBotMentions drops this plugin's bot pills and shifts the other mentions", () => {
+  const bot = (id: string, label: string, start: number) => ({ start, end: start + label.length + 1, resource: { kind: "plugin", pluginId, itemId: `bot:${id}`, label } });
+  const thread = { start: 16, end: 23, resource: { kind: "thread", threadId: "t" } };
+  const other = { start: 0, end: 4, resource: { kind: "plugin", pluginId: "elsewhere", itemId: "bot:x", label: "Bot" } };
+  const input = [{ type: "text", text: "@Assistant @Engineer @Source go", mentions: [bot("a", "Assistant", 0), bot("e", "Engineer", 11), { ...thread, start: 21, end: 28 }] }];
+  const [cleaned] = withoutBotMentions(input, pluginId);
+  assert.equal(cleaned!.text, "@Source go");
+  assert.deepEqual(cleaned!.mentions!.map((m) => [m.start, m.end]), [[0, 7]]);
+  const keep = [{ type: "text", text: "@Bot hi", mentions: [other] }];
+  assert.deepEqual(withoutBotMentions(keep, pluginId), keep);
+  assert.equal(withoutBotMentions([{ type: "image" }], pluginId).length, 1);
+  assert.equal(findBotMention(withoutBotMentions(input, pluginId), pluginId, () => true), null);
 });
