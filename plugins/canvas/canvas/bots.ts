@@ -2,10 +2,6 @@
 // that loads them is in launcher.ts.
 import type { Grouping } from "./shared.ts";
 
-export const LAUNCHER_PLUGIN_ID = "launcher";
-/** The Launcher dispatches this on window after its bots or thread bindings change. */
-export const BOTS_CHANGED_EVENT = "bb-launcher:bots-changed";
-
 export interface LauncherBot {
   id: string;
   name: string;

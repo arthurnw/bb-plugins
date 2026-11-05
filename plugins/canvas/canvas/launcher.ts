@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSdk } from "@get-bb/plugin-sdk/app";
 import { z } from "zod";
-import { BOTS_CHANGED_EVENT, LAUNCHER_PLUGIN_ID, type LauncherBots } from "./bots.ts";
+import { BOTS_PLUGIN_ID } from "@arthurnw/bb-shared/bots";
+import { BOTS_CHANGED_EVENT } from "@arthurnw/bb-shared/events";
+import type { LauncherBots } from "./bots.ts";
 
 // Only the fields the canvas draws; the Launcher's bots carry more.
 const botsSchema = z.object({
@@ -28,7 +30,7 @@ export function useLauncherBots(threadIds: string): LauncherBots {
   const load = useCallback(() => {
     const current = ++generation.current;
     const call = <T,>(method: string, outputSchema: z.ZodType<T>) =>
-      sdk.plugins.callRpc({ pluginId: LAUNCHER_PLUGIN_ID, method, input: {}, outputSchema });
+      sdk.plugins.callRpc({ pluginId: BOTS_PLUGIN_ID, method, input: {}, outputSchema });
     Promise.all([call("listBots", botsSchema), call("threadBots", threadBotsSchema)]).then(
       ([{ bots }, { threads }]): LauncherBots => ({ status: "ready", bots, threadBots: threads }),
       // A missing or disabled Launcher answers 404; keep the last read through other failures.

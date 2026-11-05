@@ -94,6 +94,12 @@ bb plugin install . # first time
 bb plugin dev       # rebuild and reload on save
 ```
 
+The plugin depends on `@arthurnw/bb-shared` (`file:../../packages/shared`, TypeScript
+source with no build step), which `npm ci` links and `bb plugin build` bundles.
+Import it by package name, never by relative path: path installs reject server
+imports that leave the plugin directory. After editing only `packages/shared`,
+run `bb plugin reload canvas`.
+
 `server.ts` stores the arrangement in the plugin's key-value storage and exposes it over RPC. The page itself (`canvas/`) reads threads from bb's live thread list, so it updates as threads change without polling.
 
 ## License

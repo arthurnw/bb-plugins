@@ -54,6 +54,7 @@ import { edgeTypes } from "./TetherEdge.tsx";
 import { Triage, needsAttention } from "./Triage.tsx";
 import { GROUPINGS, LAYOUT_CHANGED, emptyLayout, type ArrangeStyle, type Grouping } from "./shared.ts";
 import { BUCKETS, BUCKET_LABEL, age, bucketOf, type Bucket } from "./status.ts";
+import { openNewThread } from "@arthurnw/bb-shared/events";
 import { availableGroupings, effectiveGrouping, rebound } from "./bots.ts";
 import { useLauncherBots } from "./launcher.ts";
 
@@ -149,17 +150,6 @@ function matches(thread: PluginSidebarThread, groupName: string, query: string):
 }
 
 /** A host-styled button that keeps the native `title` tooltip. */
-/** Opens the Launcher plugin's composer if it is installed; false means it didn't handle the request. */
-function openLauncher(detail: {
-  projectId?: string | null;
-  placement?: { sectionId: string | null; pinned: boolean };
-  hostId?: string;
-  botId?: string;
-}): boolean {
-  const event = new CustomEvent("bb-launcher:new-thread", { detail, cancelable: true });
-  return !window.dispatchEvent(event);
-}
-
 function ToolButton({
   variant,
   size,
@@ -1399,11 +1389,11 @@ function CanvasInner() {
         const section = frame.grouping === "section" ? { placement: { sectionId: frame.sectionId, pinned: false } } : null;
         const machine = frame.grouping === "machine" && frame.groupKey !== NO_GROUP ? { hostId: frame.groupKey } : null;
         if (frame.grouping === "bot") {
-          if (!openLauncher(frame.botId === null ? {} : { botId: frame.botId })) navigate.toCompose({ focusPrompt: true });
+          if (!openNewThread(frame.botId === null ? {} : { botId: frame.botId })) navigate.toCompose({ focusPrompt: true });
           return;
         }
         const target = project ?? section ?? machine ?? {};
-        if (openLauncher(target)) return;
+        if (openNewThread(target)) return;
         navigate.toCompose({ ...target, focusPrompt: true });
       },
       setFrameColor: (frameKey, color) => {
@@ -1962,7 +1952,7 @@ function CanvasInner() {
                     <Icon name="ListChecks" className="size-3.5" />
                     {attentionQueue.length > 0 ? <span className="tabular-nums">{attentionQueue.length}</span> : null}
                   </ToolButton>
-                  <ToolButton size="sm" className="ml-1 h-7 gap-1 px-2.5" onClick={() => { if (!openLauncher({})) navigate.toCompose({ focusPrompt: true }); }}>
+                  <ToolButton size="sm" className="ml-1 h-7 gap-1 px-2.5" onClick={() => { if (!openNewThread({})) navigate.toCompose({ focusPrompt: true }); }}>
                     <Icon name="Plus" className="size-3.5" />
                     New thread
                   </ToolButton>
