@@ -5,7 +5,7 @@ import { BOTS_PLUGIN_ID } from "@arthurnw/bb-shared/bots";
 import { BOTS_CHANGED_EVENT } from "@arthurnw/bb-shared/events";
 import type { LauncherBots } from "./bots.ts";
 
-// Only the fields the canvas draws; the Launcher's bots carry more.
+// Only the fields the canvas draws; the bots carry more.
 const botsSchema = z.object({
   bots: z.array(z.object({ id: z.string(), name: z.string(), emoji: z.string(), avatar: z.string().nullable() })),
 });
@@ -18,8 +18,8 @@ const isNotFound = (error: unknown) =>
 let last: LauncherBots = { status: "loading" };
 
 /**
- * The Launcher's bots and thread bindings, or "unavailable" when the Launcher
- * plugin isn't installed or running. Rereads when the Launcher reports a
+ * The bots and thread bindings from the Bots plugin, or "unavailable" when it
+ * isn't installed or running. Rereads when Bots reports a
  * change, when the window regains focus, and when `threadIds` changes (a new
  * thread's binding can land just after the thread appears).
  */
