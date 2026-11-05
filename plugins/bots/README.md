@@ -82,7 +82,7 @@ it in the bot's settings; a save is refused if an agent changed it meanwhile.
 
 Pick one of 16 animated avatars (Smooth or Geometric), or upload an image (PNG,
 JPEG, WebP, GIF, or SVG), which is cropped to a square and stored as a 128 px
-WebP. A pick is stored as `gallery:<id>` and drawn as inline SVG without a
+WebP (animations below). A pick is stored as `gallery:<id>` and drawn as inline SVG without a
 circle crop. New bots get a random animated avatar no other bot uses, while one
 is left. Without an avatar the emoji shows, then the first letter.
 
@@ -94,6 +94,16 @@ menu icons show the bot's combined state over all its threads, waiting first,
 then unread, then working. Eyes follow the pointer in bot settings and on the
 bot headers in the thread list. With reduced motion nothing moves; unread shows
 a red badge and waiting a still question bubble.
+
+An animated GIF, WebP, or PNG (APNG) upload of up to 1 MB is kept as uploaded,
+and its first frame is stored as the 128 px still; larger animations are
+refused with the size in the error. The still shows when the bot is idle; the
+animation plays while it is working, unread, or waiting, cropped to a circle at
+display time, and a waiting bot also shows the question bubble. With reduced
+motion the still stays, with the same badge and bubble as the animated avatars.
+The animated bytes live in their own table and are left out of `listBots`; the
+Bots app fetches them with `getBotAvatarAnimation` the first time a bot
+animates. Other plugins (the Launcher, Canvas) show the still.
 
 The 14 still avatars that came before were stored as WebP data URLs. Once per
 browser profile, the app rasterizes them again and gives any bot whose stored
