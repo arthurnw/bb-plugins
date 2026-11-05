@@ -4,7 +4,7 @@
 import { useComposer, type ComposerSelection, type PluginComposerApi } from "@get-bb/plugin-sdk/app";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { BotAvatar, useBots } from "./bot-avatars";
+import { BotAvatar, useBots, useBotStates } from "./bot-avatars";
 import { BOT_MENTION_PLUGINS, BOTS_PLUGIN_ID, botLabel, draftBotId, draftWithBot, type Bot } from "@arthurnw/bb-shared/bots";
 import { environmentFor, ModelList, ModelTrigger, useModelSlot } from "@arthurnw/bb-shared/composer";
 import { useLauncher } from "./launcher-models";
@@ -84,6 +84,7 @@ function useLauncherPicker(form: HTMLElement | null) {
 export function BotChip() {
   const composer = useComposer();
   const bots = useBots();
+  const botStates = useBotStates();
   const anchor = useRef<HTMLSpanElement>(null);
   const [form, setForm] = useState<HTMLElement | null>(null);
   const key = composer.key;
@@ -120,7 +121,7 @@ export function BotChip() {
   return (
     <span ref={anchor} style={{ display: "contents" }}>
       {slot && createPortal(
-        <ModelTrigger icon={bot ? <BotAvatar bot={bot} size={16} /> : undefined} label={bot ? botLabel({ ...bot, emoji: "" }) : "Bot"}
+        <ModelTrigger icon={bot ? <BotAvatar bot={bot} size={16} state={botStates.get(bot.id)} /> : undefined} label={bot ? botLabel({ ...bot, emoji: "" }) : "Bot"}
           onClick={() => composer.experimental_openPopup(BOT_POPUP_ID)} />,
         slot)}
     </span>
@@ -130,11 +131,12 @@ export function BotChip() {
 export function BotPopup() {
   const composer = useComposer();
   const bots = useBots();
+  const botStates = useBotStates();
   const launcher = useLauncher().status === "present";
   const botId = draftBotId(composer.draft, BOT_MENTION_PLUGINS);
   const bot = botId ? bots?.find((item) => item.id === botId) ?? null : null;
   const close = () => { composer.experimental_closePopup(); composer.focus(); };
   if (bots === null) return <div style={{ padding: "8px 12px", fontSize: 12, color: "var(--muted-foreground)" }}>Loading…</div>;
-  return <ModelList hideModels bots={[...bots]} bot={bot} onClose={close}
+  return <ModelList hideModels bots={[...bots]} bot={bot} botState={(item) => botStates.get(item.id) ?? "idle"} onClose={close}
     onChooseBot={(next) => { composer.experimental_closePopup(); void chooseBot(composer, next, launcher).then(() => composer.focus()); }} />;
 }

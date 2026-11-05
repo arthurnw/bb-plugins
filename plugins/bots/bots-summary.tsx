@@ -13,7 +13,8 @@ import {
 import { useEffect, useMemo, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import type { Bot } from "@arthurnw/bb-shared/bots";
 import { modelSpec } from "@arthurnw/bb-shared/selection";
-import { BotAvatar } from "./bot-avatars";
+import { BotAvatar, useBotStates } from "./bot-avatars";
+import { threadAvatarState } from "@arthurnw/bb-shared/avatars";
 import { useLauncherModelState } from "./launcher-models";
 import { openNewThread } from "@arthurnw/bb-shared/events";
 import { feedSort, sortFeed, type FeedSort } from "./list-model";
@@ -65,7 +66,7 @@ function FeedRow({ thread, bot, sort, active, showRowMetadata, actionTarget, onO
         onClick={(event) => { if (event.metaKey || event.ctrlKey || event.shiftKey) return; event.preventDefault(); onOpen(thread); }}
         style={{ ...feedRow, background: active ? "var(--accent)" : "transparent" }}>
         <span style={{ marginTop: 1, width: 16, height: 16, flex: "none", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-          {bot ? <BotAvatar bot={bot} size={16} /> : <ProviderIcon providerKind="agent" provider={provider} aria-hidden className="size-3.5" />}
+          {bot ? <BotAvatar bot={bot} size={16} state={threadAvatarState(thread)} /> : <ProviderIcon providerKind="agent" provider={provider} aria-hidden className="size-3.5" />}
         </span>
         <span style={{ flex: 1, minWidth: 0 }}>
           <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: thread.isUnread ? 600 : 400 }}>
@@ -85,6 +86,7 @@ function FeedRow({ thread, bot, sort, active, showRowMetadata, actionTarget, onO
 export function BotsSummary(props: SummaryProps) {
   const { bots, threads, threadBots } = props;
   const names = useLauncherModelState()?.names ?? {};
+  const botStates = useBotStates();
   const [stored, setStored] = useState(() => localStorage.getItem(SORT_KEY));
   const sort = feedSort(stored, props.builtInSort);
   const [shown, setShown] = useState(FEED_PAGE);
@@ -132,7 +134,7 @@ export function BotsSummary(props: SummaryProps) {
                   </span>
                 )}
               </span>
-              <BotAvatar bot={bot} size={36} />
+              <BotAvatar bot={bot} size={36} state={botStates.get(bot.id)} track />
               <div style={{ fontWeight: 600, marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bot.name}</div>
               <div style={{ ...muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bot.model ? modelSpec(bot.model, names) : "Any model"}</div>
               <div style={{ ...muted, display: "flex", flexWrap: "wrap", gap: "0 8px", marginTop: 4 }}>

@@ -19,7 +19,8 @@ import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import type { botsContract } from "./bots-server";
 import type { Bot } from "@arthurnw/bb-shared/bots";
-import { BotAvatar, useBots } from "./bot-avatars";
+import { BotAvatar, liveThread, useBots, useBotStates, useThreadBots } from "./bot-avatars";
+import { threadAvatarState } from "@arthurnw/bb-shared/avatars";
 import { openHandoff, openNewThread } from "@arthurnw/bb-shared/events";
 import { groupKeys, groupThreads, moveBefore, wouldCycle, type GroupKey } from "./list-model";
 import { BotsSummary } from "./bots-summary";
@@ -28,15 +29,6 @@ type BotsRpc = ReturnType<typeof useRpc<typeof botsContract>>;
 const PAGE = 30;
 const VIEW_KEY = "bb-bots:list-view";
 const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
-
-export function useThreadBots(): Record<string, string> {
-  const rpc = useRpc<typeof botsContract>();
-  const [threads, setThreads] = useState<Record<string, string>>({});
-  const load = () => { rpc.call("threadBots", {}).then((result) => setThreads(result.threads), () => {}); };
-  useEffect(load, [rpc]);
-  useRealtime("bots", load);
-  return threads;
-}
 
 function useListOrder(rpc: BotsRpc) {
   const [order, setOrder] = useState<string[]>([]);
@@ -71,7 +63,7 @@ export async function sendThreadToBot(rpc: BotsRpc, thread: { id: string; projec
 export const actionTarget = (thread: PluginSidebarThread) => ({
   ...thread, environment: thread.environment?.id ? { id: thread.environment.id, path: thread.environment.path } : null,
 });
-const visible = (thread: PluginSidebarThread) => !thread.isArchived && !thread.isHidden;
+const visible = liveThread;
 const byRecent = (a: PluginSidebarThread, b: PluginSidebarThread) => b.updatedAt - a.updatedAt;
 
 /** Roots of a group with their in-group descendants, most recent first. */
@@ -236,7 +228,7 @@ function ThreadRow({ thread, depth, childrenOf, groupBot, context }: {
                 <HoverActions thread={thread} keys={context.preferences.rowActions} onMenuOpenChange={setMenuOpen} />
               ) : (
                 <>
-                  {bot && <span title={bot.name} style={{ flex: "none", display: "inline-flex" }}><BotAvatar bot={bot} size={14} /></span>}
+                  {bot && <span title={bot.name} style={{ flex: "none", display: "inline-flex" }}><BotAvatar bot={bot} size={14} state={threadAvatarState(thread)} /></span>}
                   <span style={{ flex: "none", display: "inline-flex" }}><ThreadStatusGlyph indicator={thread.indicator} size="compact" /></span>
                 </>
               )}
@@ -346,6 +338,8 @@ export function BotThreadList({ activeThreadId, activeProjectId, onNavigate }: {
   const sidebar = useSidebarThreads();
   const bots = useBots();
   const threadBots = useThreadBots();
+  // Combined over all of a bot's threads, including those filed under Pinned or a section.
+  const botStates = useBotStates();
   const navigate = useBbNavigate();
   const rpc = useRpc<typeof botsContract>();
   const sdk = useSdk();
@@ -468,7 +462,7 @@ export function BotThreadList({ activeThreadId, activeProjectId, onNavigate }: {
           const bot = bots.find((item) => `bot:${item.id}` === key)!;
           return (
             <Group key={key} {...groupProps(key)} groupBot={bot.id} threads={placed.get(key) ?? []} onHeaderPointerDown={headerDrag}
-              title={<><BotAvatar bot={bot} size={16} /><span style={{ ...groupTitle, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bot.name}</span></>}
+              title={<><BotAvatar bot={bot} size={16} state={botStates.get(bot.id)} track /><span style={{ ...groupTitle, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bot.name}</span></>}
               actions={<button type="button" aria-label={`New thread with ${bot.name}`} title={`New thread with ${bot.name}`} style={iconButton}
                 onClick={() => openNewThread({ projectId: bot.projectId ?? activeProjectId, botId: bot.id })}>+</button>} />
           );

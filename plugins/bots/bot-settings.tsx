@@ -10,7 +10,7 @@ import { modelSpec, sameModel, type ModelSelection } from "@arthurnw/bb-shared/s
 import { useProjectOptions } from "@arthurnw/bb-shared/projects";
 import { availableEnvironments } from "@arthurnw/bb-shared/composer";
 import { AnimatedAvatar, galleryAvatar, galleryId, GEOMETRIC_AVATARS, SMOOTH_AVATARS, type GalleryAvatar } from "@arthurnw/bb-shared/avatars";
-import { avatarFromFile, BotAvatar } from "./bot-avatars";
+import { avatarFromFile, BotAvatar, useBotState, useBotStates } from "./bot-avatars";
 
 const ENVIRONMENT_LABELS: Record<BotEnvironment, string> = {
   "named-worktree": "Named worktree",
@@ -31,6 +31,7 @@ export function BotSettings() {
   const rpc = useRpc<typeof botsContract>();
   const [bots, setBots] = useState<Bot[] | null>(null);
   const names = useLauncherModelState()?.names ?? {};
+  const botStates = useBotStates();
   const [editing, setEditing] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -71,7 +72,7 @@ export function BotSettings() {
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <button type="button" aria-expanded={editing === bot.id} onClick={() => setEditing(editing === bot.id ? null : bot.id)}
               style={{ ...plain, flex: 1, display: "flex", gap: 8, alignItems: "center", minWidth: 0, textAlign: "left" }}>
-              <BotAvatar bot={bot} size={20} />
+              <BotAvatar bot={bot} size={20} state={botStates.get(bot.id)} track />
               <span style={{ fontWeight: 500 }}>{bot.name}</span>
               <span style={{ ...muted, ...ellipsis }}>{bot.model ? modelSpec(bot.model, names) : "Any model"}</span>
             </button>
@@ -212,6 +213,7 @@ function AvatarField({ bot, emoji, name }: { bot: Bot; emoji: string; name: stri
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const picked = galleryId(bot.avatar);
+  const state = useBotState(bot.id);
   async function apply(avatar: Promise<string | null>) {
     setBusy(true);
     setError(null);
@@ -222,7 +224,7 @@ function AvatarField({ bot, emoji, name }: { bot: Bot; emoji: string; name: stri
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
     <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-      <BotAvatar bot={{ avatar: bot.avatar, emoji, name }} size={40} />
+      <BotAvatar bot={{ avatar: bot.avatar, emoji, name }} size={40} state={state} track />
       <label style={{ ...button, whiteSpace: "nowrap", opacity: busy ? 0.6 : 1 }}>
         {bot.avatar && !picked ? "Replace image…" : "Upload image…"}
         <input type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" disabled={busy} style={{ display: "none" }}

@@ -2,13 +2,19 @@ import type { CSSProperties } from "react";
 import type { Bot } from "../bots.ts";
 import { AnimatedAvatar } from "../avatars/animated-avatar.tsx";
 import { GALLERY_PREFIX, galleryId } from "../avatars/ids.ts";
+import type { AvatarState } from "../avatars/state.ts";
 
 export type Face = Pick<Bot, "avatar" | "emoji" | "name">;
 
-/** Gallery avatar, else image, else emoji, else the first letter of the name. Only the last three are cropped to a circle. */
-export function BotAvatar({ bot, size, className }: { bot: Face | null | undefined; size?: number; className?: string }) {
+/**
+ * Gallery avatar, else image, else emoji, else the first letter of the name.
+ * Only the last three are cropped to a circle; `state` and `track` apply to gallery avatars.
+ */
+export function BotAvatar({ bot, size, className, state = "idle", track = false }: {
+  bot: Face | null | undefined; size?: number; className?: string; state?: AvatarState; track?: boolean;
+}) {
   const gallery = galleryId(bot?.avatar);
-  if (gallery) return <AnimatedAvatar id={gallery} size={size} className={className} />;
+  if (gallery) return <AnimatedAvatar id={gallery} size={size} className={className} state={state} track={track} />;
   const box: CSSProperties = {
     display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "none", borderRadius: "50%", overflow: "hidden",
     ...(size ? { width: size, height: size, fontSize: size * 0.7 } : { width: "1em", height: "1em" }), lineHeight: 1,

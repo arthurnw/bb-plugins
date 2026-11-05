@@ -1,6 +1,7 @@
-import { useRealtime, useRpc, type PluginAppBuilder } from "@get-bb/plugin-sdk/app";
-import { useEffect, useSyncExternalStore } from "react";
+import { experimental_useSidebarThreads as useSidebarThreads, useRealtime, useRpc, type PluginAppBuilder, type PluginSidebarThread } from "@get-bb/plugin-sdk/app";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { BotAvatar, type Face } from "@arthurnw/bb-shared/composer";
+import { combinedAvatarState, type AvatarState } from "@arthurnw/bb-shared/avatars";
 import type { botsContract } from "./bots-server";
 import { AVATAR_SIZE, botIconName, MAX_BOTS, type Bot } from "@arthurnw/bb-shared/bots";
 import { notifyBotsChanged } from "@arthurnw/bb-shared/events";
@@ -9,28 +10,66 @@ import { LEGACY_GALLERY, legacyReassignments } from "./legacy-gallery";
 
 // Icons are registered once at setup, so each fixed slot reads its bot from
 // here. The same list backs the native composer's bot chip.
-let faces = new Map<number, Face>();
+let faces = new Map<number, Face & { id: string }>();
 let allBots: readonly Bot[] | null = null;
+/** Each bot's combined avatar state; a bot with no live threads is absent (idle). */
+let states: ReadonlyMap<string, AvatarState> = new Map();
 const listeners = new Set<() => void>();
+const notify = () => listeners.forEach((listener) => listener());
 function setBots(bots: readonly Bot[]) {
   allBots = bots;
-  faces = new Map(bots.map((bot) => [bot.avatarSlot, { avatar: bot.avatar, emoji: bot.emoji, name: bot.name }]));
-  listeners.forEach((listener) => listener());
+  faces = new Map(bots.map((bot) => [bot.avatarSlot, { id: bot.id, avatar: bot.avatar, emoji: bot.emoji, name: bot.name }]));
+  notify();
+}
+function setStates(next: ReadonlyMap<string, AvatarState>) {
+  if (next.size === states.size && [...next].every(([id, state]) => states.get(id) === state)) return;
+  states = next;
+  notify();
 }
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 const snapshot = () => faces;
 const botsSnapshot = () => allBots;
+const statesSnapshot = () => states;
 /** Every bot, kept current by `BotIconSync`; null until the first load. */
 export const useBots = () => useSyncExternalStore(subscribe, botsSnapshot, botsSnapshot);
+/** Bot id → combined state of its live threads: waiting, then unread, then working, else idle. */
+export const useBotStates = () => useSyncExternalStore(subscribe, statesSnapshot, statesSnapshot);
+export const useBotState = (botId: string | null | undefined): AvatarState => {
+  const all = useBotStates();
+  return (botId && all.get(botId)) || "idle";
+};
 
 function SlotIcon({ slot, className }: { slot: number; className?: string }) {
   const face = useSyncExternalStore(subscribe, snapshot, snapshot).get(slot);
-  return <BotAvatar bot={face} className={className} />;
+  return <BotAvatar bot={face} className={className} state={useBotState(face?.id)} />;
 }
 
-/** Keeps the slot icons current; mount once in an always-present surface. */
+/** Thread id → bot id for live bots, refreshed on every Bots change. */
+export function useThreadBots(): Record<string, string> {
+  const rpc = useRpc<typeof botsContract>();
+  const [threads, setThreads] = useState<Record<string, string>>({});
+  const load = () => { rpc.call("threadBots", {}).then((result) => setThreads(result.threads), () => {}); };
+  useEffect(load, [rpc]);
+  useRealtime("bots", load);
+  return threads;
+}
+
+/** Archived and hidden threads do not count toward a bot's state. */
+export const liveThread = (thread: PluginSidebarThread) => !thread.isArchived && !thread.isHidden;
+
+/** Keeps the slot icons and bot states current; mount once in an always-present surface. */
 export function BotIconSync() {
   const rpc = useRpc<typeof botsContract>();
+  const sidebar = useSidebarThreads();
+  const threadBots = useThreadBots();
+  useEffect(() => {
+    const byBot = new Map<string, PluginSidebarThread[]>();
+    for (const thread of sidebar.threads) {
+      const botId = threadBots[thread.id];
+      if (botId && liveThread(thread)) byBot.set(botId, [...(byBot.get(botId) ?? []), thread]);
+    }
+    setStates(new Map([...byBot].map(([botId, threads]) => [botId, combinedAvatarState(threads)])));
+  }, [sidebar.threads, threadBots]);
   const load = () => {
     rpc.call("listBots", {}).then(({ bots }) => {
       setBots(bots);

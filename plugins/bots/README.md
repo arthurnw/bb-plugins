@@ -86,6 +86,15 @@ WebP. A pick is stored as `gallery:<id>` and drawn as inline SVG without a
 circle crop. New bots get a random animated avatar no other bot uses, while one
 is left. Without an avatar the emoji shows, then the first letter.
 
+Animated avatars show what a bot is doing: idle (breathes and blinks),
+working (a steady fast loop), unread (a gesture every 3 seconds), and waiting
+for an approval or answer (a slow head tilt and a question bubble). A thread row
+shows its own thread's state; bot headers, pickers, chips, mention pills, and
+menu icons show the bot's combined state over all its threads, waiting first,
+then unread, then working. Eyes follow the pointer in bot settings and on the
+bot headers in the thread list. With reduced motion nothing moves; unread shows
+a red badge and waiting a still question bubble.
+
 The 14 still avatars that came before were stored as WebP data URLs. Once per
 browser profile, the app rasterizes them again and gives any bot whose stored
 image matches exactly the corresponding animated avatar; other uploads stay. App icons can only be registered at setup,

@@ -8,7 +8,7 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import { useEffect, useState } from "react";
 import type { botsContract } from "./bots-server";
-import { BotAvatar, useBots } from "./bot-avatars";
+import { BotAvatar, useBots, useBotStates } from "./bot-avatars";
 import { sendThreadToBot } from "./bots-view";
 
 type ThreadBot = { botId: string | null; source: "own" | "inherited" | "none" | "detached"; instructions: string | null };
@@ -34,13 +34,14 @@ const NONE = "";
 function BotRow({ threadId }: { threadId: string }) {
   const { rpc, state, thread } = useThreadBot(threadId);
   const bots = useBots();
+  const botStates = useBotStates();
   if (!state || !bots || bots.length === 0 || !thread) return null;
   const bot = bots.find((item) => item.id === state.botId) ?? null;
   const started = thread.status !== "pending";
   return (
     <DetailRow label="Bot" icon="Bot">
       <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-        {bot && <BotAvatar bot={bot} size={14} />}
+        {bot && <BotAvatar bot={bot} size={14} state={botStates.get(bot.id)} />}
         <select value={bot?.id ?? NONE} aria-label={started ? "Hand off to bot" : "Bot"}
           title={started ? "A started thread keeps its bot. Picking another opens a handoff." : undefined}
           onChange={(e) => void sendThreadToBot(rpc, thread, e.target.value || null)}

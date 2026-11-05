@@ -3,6 +3,7 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { BotAvatar } from "./bot-avatar.tsx";
+import type { AvatarState } from "../avatars/state.ts";
 import { filterPresets, findPreset, MAX_PRESETS, modelSpec, providerLabel, sameModel, type ModelPreset, type ModelSelection } from "../selection.ts";
 import { botLabel, filterBots, type Bot } from "../bots.ts";
 
@@ -23,9 +24,11 @@ export function modelLabel(presets: readonly ModelPreset[], selection: ModelSele
  * provider/model picker for every specific. A selection that matches no preset
  * can be saved. Picking a model after a bot keeps the bot.
  */
-export function ModelList({ bots = [], bot = null, onChooseBot, presets = [], names = {}, selection = null, onChoose, onSavePresets, onClose, hideModels = false }: {
+export function ModelList({ bots = [], bot = null, botState, onChooseBot, presets = [], names = {}, selection = null, onChoose, onSavePresets, onClose, hideModels = false }: {
   bots?: Bot[];
   bot?: Bot | null;
+  /** Each bot's combined avatar state; omitted, avatars show idle. */
+  botState?: (bot: Bot) => AvatarState;
   onChooseBot?: (bot: Bot | null) => void;
   /** Omit to hide the Presets section. */
   presets?: ModelPreset[];
@@ -120,7 +123,7 @@ export function ModelList({ bots = [], bot = null, onChooseBot, presets = [], na
               <div key={`bot:${item.id}`} role="option" data-index={index} aria-selected={index === active} {...hover}
                 onClick={() => onChooseBot?.(item)} style={base}>
                 <span style={{ display: "flex", gap: 8, minWidth: 0, flex: 1, alignItems: "center" }}>
-                  <BotAvatar bot={item} size={18} />
+                  <BotAvatar bot={item} size={18} state={botState?.(item)} />
                   <span style={ellipsis}>{item.name}</span>
                   <span style={{ ...ellipsis, color: "var(--muted-foreground)" }}>{item.model ? modelSpec(item.model, names) : "Any model"}</span>
                 </span>

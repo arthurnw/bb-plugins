@@ -10,7 +10,7 @@ import { cycle, ProjectList, useProjectOptions } from "@arthurnw/bb-shared/proje
 import { botLabel, type Bot, type BotEnvironment, type PermissionMode } from "@arthurnw/bb-shared/bots";
 import type { ModelSelection } from "@arthurnw/bb-shared/selection";
 import type { botsContract, spawnContract } from "./bots-server";
-import { BotIconSync, useBots } from "./bot-avatars";
+import { BotIconSync, useBots, useBotStates } from "./bot-avatars";
 import { dialog, subscribeDialog, type DialogSession } from "./dialog-store";
 import { useLauncher } from "./launcher-models";
 
@@ -21,6 +21,7 @@ function Session({ session, visible, focusRequest }: { session: DialogSession; v
   const spawnRpc = useRpc<typeof spawnContract>();
   const sidebar = useSidebarThreads();
   const bots = useBots();
+  const botStates = useBotStates();
   const launcher = useLauncher().status === "present";
   const projects = useProjectOptions();
   const [source, setSource] = useState<{ projectId: string | null; environmentId: string | null }>();
@@ -122,7 +123,7 @@ function Session({ session, visible, focusRequest }: { session: DialogSession; v
       defaultEnvironment: environmentFor(environment, hostId, launcher) ?? reuseOrCheckout(projectId, source, hostId),
       initialPrompt: handoffPrompt(handoff ? session.threadId : null, starter),
     } : {}}
-    chip={<ModelTrigger icon={bot ? <BotAvatar bot={bot} size={16} /> : undefined} label={bot ? botLabel({ ...bot, emoji: "" }) : "Bot"} onClick={() => setPopup((value) => value === "bot" ? null : "bot")} />}
+    chip={<ModelTrigger icon={bot ? <BotAvatar bot={bot} size={16} state={botStates.get(bot.id)} /> : undefined} label={bot ? botLabel({ ...bot, emoji: "" }) : "Bot"} onClick={() => setPopup((value) => value === "bot" ? null : "bot")} />}
     onStarted={() => dialog.finish(session.kind)}
     submit={(request) => spawnRpc.call("createThread", { request, ...(session.placement ? { placement: session.placement } : {}),
       ...(latest.current.bot ? { botId: latest.current.bot.id } : latest.current.inheritedBot !== null ? { botId: null } : {}) })}
@@ -130,7 +131,7 @@ function Session({ session, visible, focusRequest }: { session: DialogSession; v
     {popup && <div style={{ marginTop: 8, border: "1px solid var(--border)", borderRadius: 8, background: "var(--popover, var(--background))", overflow: "hidden" }}>
       {popup === "project"
         ? <ProjectList selectedLabel="last chosen here" selectedId={projectId} onChoose={(option) => chooseProject(option.id)} onClose={() => { setPopup(null); setFocus((n) => n + 1); }} />
-        : <ModelList hideModels bots={bots ? [...bots] : []} bot={bot} onChooseBot={chooseBot} onClose={() => { setPopup(null); setFocus((n) => n + 1); }} />}
+        : <ModelList hideModels bots={bots ? [...bots] : []} bot={bot} botState={(item) => botStates.get(item.id) ?? "idle"} onChooseBot={chooseBot} onClose={() => { setPopup(null); setFocus((n) => n + 1); }} />}
     </div>}
   </ComposerDialog>;
 }
