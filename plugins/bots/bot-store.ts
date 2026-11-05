@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { AVATAR_DATA_URL, AVATAR_MAX_CHARS, MAX_BOTS, MEMORY_MAX, type BindingSource, type Bot, type BotDraft, type OwnerLookup } from "@arthurnw/bb-shared/bots";
+import { AVATAR_DATA_URL, AVATAR_MAX_CHARS, GALLERY_IDS, galleryAvatar, galleryId, MAX_BOTS, MEMORY_MAX, type BindingSource, type Bot, type BotDraft, type OwnerLookup } from "@arthurnw/bb-shared/bots";
 
 /** The subset of better-sqlite3 (and node:sqlite, for tests) the store uses. */
 export interface SqlDb {
@@ -84,9 +84,9 @@ export class BotStore implements OwnerLookup {
     if (botId === undefined) {
       if (this.bots.size >= MAX_BOTS) throw new BotStoreError(`You can have up to ${MAX_BOTS} bots.`);
       const position = Math.max(-1, ...[...this.bots.values()].map((bot) => bot.position)) + 1;
-      const bot: Bot = { ...draft, id: randomUUID(), position, memory: "", avatar: null, avatarSlot: this.freeSlot(), createdAt: at, updatedAt: at };
-      this.db.prepare("INSERT INTO bots (id, position, draft_json, memory, avatar_slot, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-        .run(bot.id, bot.position, JSON.stringify(draft), "", bot.avatarSlot, at, at);
+      const bot: Bot = { ...draft, id: randomUUID(), position, memory: "", avatar: this.freshAvatar(), avatarSlot: this.freeSlot(), createdAt: at, updatedAt: at };
+      this.db.prepare("INSERT INTO bots (id, position, draft_json, memory, avatar, avatar_slot, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(bot.id, bot.position, JSON.stringify(draft), "", bot.avatar, bot.avatarSlot, at, at);
       this.bots.set(bot.id, bot);
       return bot;
     }
@@ -97,14 +97,22 @@ export class BotStore implements OwnerLookup {
   }
 
   setAvatar(botId: string, avatar: string | null): Bot {
-    if (avatar !== null && (avatar.length > AVATAR_MAX_CHARS || !AVATAR_DATA_URL.test(avatar))) {
-      throw new BotStoreError("The avatar must be a small PNG, JPEG, or WebP image.");
+    if (avatar !== null && !galleryId(avatar) && (avatar.length > AVATAR_MAX_CHARS || !AVATAR_DATA_URL.test(avatar))) {
+      throw new BotStoreError("The avatar must be a built-in avatar or a small PNG, JPEG, or WebP image.");
     }
     const at = this.now();
     this.db.prepare("UPDATE bots SET avatar = ?, updated_at = ? WHERE id = ?").run(avatar, at, botId);
     const bot: Bot = { ...this.require(botId), avatar, updatedAt: at };
     this.bots.set(botId, bot);
     return bot;
+  }
+
+  /** A random gallery avatar, preferring one no other bot uses. */
+  private freshAvatar(): string {
+    const used = new Set([...this.bots.values()].map((bot) => galleryId(bot.avatar)));
+    const unused = GALLERY_IDS.filter((id) => !used.has(id));
+    const pool = unused.length > 0 ? unused : GALLERY_IDS;
+    return galleryAvatar(pool[Math.floor(Math.random() * pool.length)]!);
   }
 
   private freeSlot(): number {

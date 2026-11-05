@@ -80,9 +80,15 @@ it in the bot's settings; a save is refused if an agent changed it meanwhile.
 
 ### Avatars
 
-Upload an image (PNG, JPEG, WebP, GIF, or SVG) or pick one of 14 built-in
-avatars; it is cropped to a square and stored as a 128 px WebP. Without one, the
-emoji shows, then the first letter. App icons can only be registered at setup,
+Pick one of 16 animated avatars (Smooth or Geometric), or upload an image (PNG,
+JPEG, WebP, GIF, or SVG), which is cropped to a square and stored as a 128 px
+WebP. A pick is stored as `gallery:<id>` and drawn as inline SVG without a
+circle crop. New bots get a random animated avatar no other bot uses, while one
+is left. Without an avatar the emoji shows, then the first letter.
+
+The 14 still avatars that came before were stored as WebP data URLs. Once per
+browser profile, the app rasterizes them again and gives any bot whose stored
+image matches exactly the corresponding animated avatar; other uploads stay. App icons can only be registered at setup,
 so bots use 30 fixed icon names (`bot-0` to `bot-29`); a deleted bot's
 slot goes to the next new bot, which then also shows in old pills.
 

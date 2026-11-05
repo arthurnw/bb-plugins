@@ -4,6 +4,7 @@ import { BotAvatar, type Face } from "@arthurnw/bb-shared/composer";
 import type { botsContract } from "./bots-server";
 import { AVATAR_SIZE, botIconName, MAX_BOTS, type Bot } from "@arthurnw/bb-shared/bots";
 import { notifyBotsChanged } from "@arthurnw/bb-shared/events";
+import { LEGACY_GALLERY, legacyReassignments } from "./legacy-gallery";
 
 
 // Icons are registered once at setup, so each fixed slot reads its bot from
@@ -30,7 +31,12 @@ function SlotIcon({ slot, className }: { slot: number; className?: string }) {
 /** Keeps the slot icons current; mount once in an always-present surface. */
 export function BotIconSync() {
   const rpc = useRpc<typeof botsContract>();
-  const load = () => { rpc.call("listBots", {}).then(({ bots }) => setBots(bots), () => {}); };
+  const load = () => {
+    rpc.call("listBots", {}).then(({ bots }) => {
+      setBots(bots);
+      void migrateLegacyAvatars(bots, (botId, avatar) => rpc.call("setBotAvatar", { botId, avatar }));
+    }, () => {});
+  };
   useEffect(load, [rpc]);
   useRealtime("bots", () => {
     load();
@@ -38,6 +44,32 @@ export function BotIconSync() {
     notifyBotsChanged();
   });
   return null;
+}
+
+const MIGRATED_KEY = "bb-bots:legacy-avatars-migrated";
+let migrating = false;
+
+/**
+ * Once per browser profile, gives bots that still show a pick from the old
+ * still gallery the matching animated avatar. A pick is recognized by
+ * rasterizing the old SVGs the same way the picker did; if the browser's WebP
+ * encoder has changed since, nothing matches and the old image stays.
+ */
+async function migrateLegacyAvatars(bots: readonly Bot[], setAvatar: (botId: string, avatar: string) => Promise<unknown>) {
+  if (migrating || localStorage.getItem(MIGRATED_KEY)) return;
+  migrating = true;
+  try {
+    let failed = false;
+    if (bots.some((bot) => bot.avatar?.startsWith("data:"))) {
+      const rasterized = new Map<string, string>();
+      for (const item of LEGACY_GALLERY) {
+        try { rasterized.set(item.id, await avatarFromUrl(svgDataUrl(item.svg))); } catch { /* no match for this one */ }
+      }
+      const results = await Promise.allSettled(legacyReassignments(bots, rasterized).map(({ botId, avatar }) => setAvatar(botId, avatar)));
+      failed = results.some((result) => result.status === "rejected");
+    }
+    if (!failed) localStorage.setItem(MIGRATED_KEY, "1");
+  } finally { migrating = false; }
 }
 
 export function registerBotIcons(app: PluginAppBuilder) {

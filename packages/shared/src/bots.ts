@@ -2,6 +2,8 @@
 // bots.schema.ts and SQLite in bot-store.ts so the app bundle stays small.
 import type { ModelSelection } from "./selection.ts";
 
+export { GALLERY_IDS, galleryAvatar, galleryId, type GalleryId } from "./avatars/ids.ts";
+
 export const MAX_BOTS = 30;
 export const NAME_MAX = 40;
 export const INSTRUCTIONS_MAX = 2000;
@@ -44,7 +46,7 @@ export interface BotDraft {
 export interface Bot extends BotDraft {
   id: string;
   position: number;
-  /** A square image as a data URL, or null to show the emoji or initial. */
+  /** `gallery:<id>`, a square image as a data URL, or null to show the emoji or initial. */
   avatar: string | null;
   avatarSlot: number;
   memory: string;

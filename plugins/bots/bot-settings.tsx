@@ -9,8 +9,8 @@ import {
 import { modelSpec, sameModel, type ModelSelection } from "@arthurnw/bb-shared/selection";
 import { useProjectOptions } from "@arthurnw/bb-shared/projects";
 import { availableEnvironments } from "@arthurnw/bb-shared/composer";
-import { avatarFromFile, avatarFromUrl, BotAvatar, svgDataUrl } from "./bot-avatars";
-import { AVATAR_GALLERY } from "./avatar-gallery";
+import { AnimatedAvatar, galleryAvatar, galleryId, GEOMETRIC_AVATARS, SMOOTH_AVATARS, type GalleryAvatar } from "@arthurnw/bb-shared/avatars";
+import { avatarFromFile, BotAvatar } from "./bot-avatars";
 
 const ENVIRONMENT_LABELS: Record<BotEnvironment, string> = {
   "named-worktree": "Named worktree",
@@ -211,6 +211,7 @@ function AvatarField({ bot, emoji, name }: { bot: Bot; emoji: string; name: stri
   const rpc = useRpc<typeof botsContract>();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const picked = galleryId(bot.avatar);
   async function apply(avatar: Promise<string | null>) {
     setBusy(true);
     setError(null);
@@ -223,24 +224,39 @@ function AvatarField({ bot, emoji, name }: { bot: Bot; emoji: string; name: stri
     <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
       <BotAvatar bot={{ avatar: bot.avatar, emoji, name }} size={40} />
       <label style={{ ...button, whiteSpace: "nowrap", opacity: busy ? 0.6 : 1 }}>
-        {bot.avatar ? "Replace image…" : "Upload image…"}
+        {bot.avatar && !picked ? "Replace image…" : "Upload image…"}
         <input type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" disabled={busy} style={{ display: "none" }}
           onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ""; if (file) void apply(avatarFromFile(file)); }} />
       </label>
-      {bot.avatar && <button type="button" style={{ ...button, whiteSpace: "nowrap" }} disabled={busy} onClick={() => void apply(Promise.resolve(null))}>Remove image</button>}
-      <span style={{ ...muted, fontSize: 12 }}>{error ?? "Cropped to a square. Without an image the emoji shows, then the first letter."}</span>
+      {bot.avatar && <button type="button" style={{ ...button, whiteSpace: "nowrap" }} disabled={busy} onClick={() => void apply(Promise.resolve(null))}>{picked ? "Remove avatar" : "Remove image"}</button>}
+      <span style={{ ...muted, fontSize: 12 }}>{error ?? "Uploads are cropped to a square. Without an avatar the emoji shows, then the first letter."}</span>
     </div>
-    <div role="group" aria-label="Built-in avatars" style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-      {AVATAR_GALLERY.map((item) => (
-        <button key={item.id} type="button" title={item.label} aria-label={`Use the ${item.label} avatar`} disabled={busy}
-          onClick={() => void apply(avatarFromUrl(svgDataUrl(item.svg)))}
-          style={{ ...plain, padding: 3, borderRadius: 8, border: "1px solid transparent", lineHeight: 0 }}
-          onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--border)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.borderColor = "transparent"; }}>
-          <img src={svgDataUrl(item.svg)} alt="" width={28} height={28} />
-        </button>
-      ))}
+    <AvatarGroup label="Smooth" items={SMOOTH_AVATARS} picked={picked} busy={busy} onPick={(item) => void apply(Promise.resolve(galleryAvatar(item.id)))} />
+    <AvatarGroup label="Geometric" items={GEOMETRIC_AVATARS} picked={picked} busy={busy} onPick={(item) => void apply(Promise.resolve(galleryAvatar(item.id)))} />
     </div>
+  );
+}
+
+function AvatarGroup({ label, items, picked, busy, onPick }: {
+  label: string; items: readonly GalleryAvatar[]; picked: string | null; busy: boolean; onPick: (item: GalleryAvatar) => void;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <span style={{ ...muted, fontSize: 12 }}>{label}</span>
+      <div role="group" aria-label={`${label} avatars`} style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+        {items.map((item) => {
+          const current = item.id === picked;
+          return (
+            <button key={item.id} type="button" title={item.label} aria-label={`Use the ${item.label} avatar`} aria-pressed={current} disabled={busy}
+              onClick={() => onPick(item)}
+              style={{ ...plain, padding: 4, borderRadius: 8, border: `1px solid ${current ? "var(--ring, var(--primary))" : "transparent"}`, lineHeight: 0 }}
+              onMouseEnter={(e) => { if (!current) e.currentTarget.style.borderColor = "var(--border)"; }}
+              onMouseLeave={(e) => { if (!current) e.currentTarget.style.borderColor = "transparent"; }}>
+              <AnimatedAvatar id={item.id} size={32} />
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

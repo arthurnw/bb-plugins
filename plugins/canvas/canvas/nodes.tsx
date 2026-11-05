@@ -13,6 +13,7 @@ import { Icon, type IconName } from "./icons.tsx";
 import type { Note } from "../server";
 import { FRAME_COLORS, NOTE_COLORS, type FrameColor, type Grouping } from "./shared.ts";
 import type { LauncherBot } from "./bots.ts";
+import { AnimatedAvatar, galleryId } from "@arthurnw/bb-shared/avatars";
 import { ChatNode, type ChatFlowNode } from "./ChatNode.tsx";
 import { threadTarget, useArchive } from "./archive.ts";
 import { useCanvasActions, useIsFar } from "./context";
@@ -374,9 +375,11 @@ const GROUP_ICON: Record<Grouping, IconName> = {
   bot: "Bot",
 };
 
-/** The bot's image, else its emoji, else the grouping icon. */
+/** The bot's gallery avatar or image, else its emoji, else the grouping icon. */
 function BotFace({ bot, far }: { bot: LauncherBot; far: boolean }) {
   const size = far ? "size-8" : "size-5";
+  const gallery = galleryId(bot.avatar);
+  if (gallery) return <AnimatedAvatar id={gallery} className={size} />;
   if (bot.avatar) return <img src={bot.avatar} alt="" aria-hidden className={cn("shrink-0 rounded-full object-cover", size)} />;
   if (bot.emoji) return <span aria-hidden className={cn("flex shrink-0 items-center justify-center leading-none", size, far ? "text-3xl" : "text-base")}>{bot.emoji}</span>;
   return <Icon name="Bot" className={cn("shrink-0 text-muted-foreground", far ? "size-8" : "size-4")} />;

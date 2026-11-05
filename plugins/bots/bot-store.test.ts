@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { ownerOf, type BotDraft } from "@arthurnw/bb-shared/bots";
+import { GALLERY_IDS, galleryAvatar, galleryId, ownerOf, type BotDraft } from "@arthurnw/bb-shared/bots";
 import { botDraftSchema } from "@arthurnw/bb-shared/bots/schema";
 import { BotStore, MIGRATIONS, sha256, type SqlDb } from "./bot-store.ts";
 import { feedSort, groupKeys, groupThreads, moveBefore, placeThread, sortFeed, wouldCycle } from "./list-model.ts";
@@ -83,13 +83,25 @@ test("avatar slots are unique, reused after delete, and backfilled for old rows"
   assert.equal(reloaded.get(b.id)!.avatarSlot, 1);
 });
 
-test("avatars must be small image data URLs", () => {
+test("avatars must be known gallery ids or small image data URLs", () => {
   const { store } = openStore();
   const bot = store.save(undefined, draft("A"));
+  assert.equal(store.setAvatar(bot.id, "gallery:mochi").avatar, "gallery:mochi");
+  assert.throws(() => store.setAvatar(bot.id, "gallery:blue"), /built-in avatar/);
+  assert.throws(() => store.setAvatar(bot.id, "gallery:"), /built-in avatar/);
   assert.equal(store.setAvatar(bot.id, "data:image/webp;base64,AAAA").avatar, "data:image/webp;base64,AAAA");
   assert.throws(() => store.setAvatar(bot.id, "data:image/svg+xml;base64,AAAA"), /PNG, JPEG, or WebP/);
   assert.throws(() => store.setAvatar(bot.id, `data:image/png;base64,${"A".repeat(200_000)}`), /small/);
   assert.equal(store.setAvatar(bot.id, null).avatar, null);
+});
+
+test("new bots get a gallery avatar no other bot uses until every one is taken", () => {
+  const { db, store } = openStore();
+  const avatars = GALLERY_IDS.map((_, i) => store.save(undefined, draft(`Bot ${i}`)).avatar);
+  assert.deepEqual([...avatars].sort(), GALLERY_IDS.map(galleryAvatar).sort());
+  assert.ok(galleryId(store.save(undefined, draft("Extra")).avatar));
+  const reloaded = new BotStore(db as unknown as SqlDb);
+  assert.deepEqual(reloaded.list().slice(0, GALLERY_IDS.length).map((bot) => bot.avatar), avatars);
 });
 
 test("group order keeps saved keys, drops stale ones, and appends new bots then sections", () => {

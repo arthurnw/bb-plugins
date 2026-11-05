@@ -7,6 +7,7 @@ no build step, and each plugin bundles what it imports.
 | --- | --- |
 | `/bots` | `Bot` and `BotDraft`, limits, mention and draft helpers, `BOTS_PLUGIN_ID`, `TRUSTED_ORIGIN_PLUGINS` |
 | `/bots/schema` | Bots RPC contract and zod schemas (server side) |
+| `/avatars` | Animated gallery avatars: `AnimatedAvatar`, the 16 definitions, and `gallery:<id>` helpers |
 | `/events` | Window event names and `openNewThread`, `openHandoff`, `onNewThread`, `onHandoff`, `notifyBotsChanged` |
 | `/composer` | `ComposerDialog`, `ModelList`, `ModelTrigger`, `BotAvatar`, `useModelSlot`, focus and font helpers |
 | `/projects` | Project ordering, cycling, filtering, and `ProjectList` |
