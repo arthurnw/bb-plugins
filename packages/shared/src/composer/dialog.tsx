@@ -41,6 +41,8 @@ export interface ComposerDialogProps {
    * node is shown in its place (null shows nothing).
    */
   modelTrigger?: ReactNode | null;
+  /** Shown before bb's model picker, which stays visible. Ignored when `modelTrigger` is set. */
+  chip?: ReactNode;
   /** Starts the thread; the dialog then closes, and opens it or toasts for a background start. */
   submit: (request: ComposerRequest) => Promise<{ threadId: string }>;
   /** Called after a thread starts, before navigating. */
@@ -58,11 +60,11 @@ export interface ComposerDialogProps {
  */
 export function ComposerDialog({
   visible, label, placeholder, hint = true, draftKey, focusRequest, sectionRef, onClose, popupOpen = false, ready,
-  composerProps, modelTrigger, submit, onStarted, startedMessage = "Thread started", children,
+  composerProps, modelTrigger, chip, submit, onStarted, startedMessage = "Thread started", children,
 }: ComposerDialogProps) {
   const navigate = useBbNavigate();
   const [composerRoot, setComposerRoot] = useState<HTMLDivElement | null>(null);
-  const modelSlot = useModelSlot(composerRoot, modelTrigger !== undefined && modelTrigger !== null);
+  const modelSlot = useModelSlot(composerRoot, (modelTrigger ?? chip ?? null) !== null);
   // Enter opens the new thread; Cmd+Enter (Ctrl+Enter elsewhere) leaves it in the background.
   const backgroundRef = useRef(false);
   const onCloseRef = useRef(onClose);
@@ -119,7 +121,7 @@ export function ComposerDialog({
           } catch (error) { toast.error(`Could not start thread: ${String(error)}`); throw error; }
         }}
       />
-      {modelSlot && modelTrigger && createPortal(modelTrigger, modelSlot)}
+      {modelSlot && (modelTrigger ?? chip) && createPortal(modelTrigger ?? chip, modelSlot)}
       </div>}
       {children}
     </section>

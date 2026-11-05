@@ -21,7 +21,7 @@ export const AVATAR_DATA_URL = /^data:image\/(webp|png|jpeg);base64,[A-Za-z0-9+/
  * Icons can only be registered during app setup, so each bot holds one of
  * MAX_BOTS fixed icon names. A slot is reused after its bot is deleted.
  */
-export const botIconName = (slot: number) => `launcher-bot-${slot}`;
+export const botIconName = (slot: number) => `bot-${slot}`;
 
 export type PermissionMode = "accept-edits" | "auto" | "full";
 // "No project" as the bot's project covers the personal workspace.
@@ -61,15 +61,16 @@ export function filterBots(bots: readonly Bot[], query: string): Bot[] {
   return bots.filter((bot) => words.every((word) => bot.name.toLowerCase().includes(word)));
 }
 
-/** Agent-only block the Launcher adds when the user picks "No bot" for a handoff that would otherwise inherit one. */
-export const NO_BOT_TEXT = "The user started this thread without a Launcher bot.";
+/** Agent-only block added when the user picks "No bot" for a handoff that would otherwise inherit one. */
+export const NO_BOT_TEXT = "The user started this thread without a bot.";
+const LEGACY_NO_BOT_TEXT = "The user started this thread without a Launcher bot.";
 
 /** How a thread got its bot: picked with a mention, inherited, or assigned before its first turn. */
 export type BindingSource = "mention" | "inherit" | "assign";
 
 export function renderInstructions(bot: Pick<Bot, "name" | "instructions" | "memory"> & { memoryWrites?: boolean }): string {
   const parts = [
-    `# Launcher bot: ${oneLine(bot.name)}`,
+    `# Bot: ${oneLine(bot.name)}`,
     `This thread runs as the "${oneLine(bot.name)}" bot. Its instructions add to the user's and the project's instructions and do not override them.`,
   ];
   if (bot.instructions.trim()) parts.push(`## Bot instructions\n${bot.instructions.trim()}`);
@@ -119,17 +120,21 @@ export function applyMemoryChange(memory: string, change: MemoryChange): string 
 
 // Mentions reach dispatch hooks as `{ kind: "plugin", pluginId, itemId }`; the
 // host composes `itemId` as "<providerId>:<itemId>".
+/** One plugin id, or several: pills from before the Bots plugin carry `launcher`. */
+export type PluginIds = string | readonly string[];
+const hasPlugin = (ids: PluginIds, id: string | undefined) => id !== undefined && (typeof ids === "string" ? ids === id : ids.includes(id));
+
 type MentionResource = { kind: string; pluginId?: string; itemId?: string; threadId?: string };
 type InputBlock = { type: string; text?: string; mentions?: readonly { start: number; resource: MentionResource }[] };
 
-export function botMentionId(resource: MentionResource, pluginId: string): string | null {
-  if (resource.kind !== "plugin" || resource.pluginId !== pluginId || !resource.itemId) return null;
+export function botMentionId(resource: MentionResource, pluginId: PluginIds): string | null {
+  if (resource.kind !== "plugin" || !hasPlugin(pluginId, resource.pluginId) || !resource.itemId) return null;
   const prefix = `${MENTION_PROVIDER}:`;
   return resource.itemId.startsWith(prefix) ? resource.itemId.slice(prefix.length) : null;
 }
 
 /** The first bot this plugin owns that is mentioned anywhere in the message, in reading order. */
-export function findBotMention(blocks: readonly InputBlock[], pluginId: string, known: (botId: string) => boolean): string | null {
+export function findBotMention(blocks: readonly InputBlock[], pluginId: PluginIds, known: (botId: string) => boolean): string | null {
   for (const block of blocks) {
     if (block.type !== "text") continue;
     const mentions = [...(block.mentions ?? [])].sort((a, b) => a.start - b.start);
@@ -147,7 +152,7 @@ type RequestBlock = { type: string; text?: string; mentions?: { start: number; e
  * Removes every bot mention this plugin owns, with the space after it, and
  * shifts later mentions in the same block back. Other mentions are kept.
  */
-export function withoutBotMentions<B extends RequestBlock>(blocks: readonly B[], pluginId: string): B[] {
+export function withoutBotMentions<B extends RequestBlock>(blocks: readonly B[], pluginId: PluginIds): B[] {
   return blocks.map((block) => {
     if (block.type !== "text" || !block.mentions?.length) return block;
     const text = block.text ?? "";
@@ -174,7 +179,7 @@ export function withoutBotMentions<B extends RequestBlock>(blocks: readonly B[],
  * mentions that bot. Offsets of later mentions in that block shift with it.
  */
 export function withBotMention<B extends RequestBlock>(blocks: readonly B[], bot: Pick<Bot, "id" | "name" | "avatarSlot">, pluginId: string): B[] {
-  if (findBotMention(blocks as readonly InputBlock[], pluginId, (id) => id === bot.id) === bot.id) return [...blocks];
+  if (findBotMention(blocks as readonly InputBlock[], BOT_MENTION_PLUGINS, (id) => id === bot.id) === bot.id) return [...blocks];
   const label = bot.name;
   const token = `@${label}`;
   const mention = { start: 0, end: token.length, resource: { kind: "plugin", pluginId, itemId: `${MENTION_PROVIDER}:${bot.id}`, label, icon: botIconName(bot.avatarSlot) } };
@@ -191,11 +196,11 @@ export function withBotMention<B extends RequestBlock>(blocks: readonly B[], bot
 type DraftMention = { from: number; to: number; label: string; kind: string; pluginId?: string; provider?: string; id?: string; icon?: string | null };
 type Draft<M extends DraftMention> = { text: string; mentions: readonly M[] };
 
-const isOwnBot = (mention: DraftMention, pluginId: string) =>
-  mention.kind === "plugin" && mention.pluginId === pluginId && mention.provider === MENTION_PROVIDER && !!mention.id;
+const isOwnBot = (mention: DraftMention, pluginId: PluginIds) =>
+  mention.kind === "plugin" && hasPlugin(pluginId, mention.pluginId) && mention.provider === MENTION_PROVIDER && !!mention.id;
 
 /** The bot of the first bot pill in a composer draft, which is the one that binds the thread. */
-export function draftBotId(draft: Draft<DraftMention>, pluginId: string): string | null {
+export function draftBotId(draft: Draft<DraftMention>, pluginId: PluginIds): string | null {
   const first = [...draft.mentions].sort((a, b) => a.from - b.from).find((m) => isOwnBot(m, pluginId));
   return first?.id ?? null;
 }
@@ -211,7 +216,7 @@ export function draftWithBot<M extends DraftMention>(draft: Draft<M>, bot: Pick<
   for (const mention of [...draft.mentions].sort((a, b) => a.from - b.from)) {
     text += draft.text.slice(cursor, mention.from);
     cursor = mention.to;
-    if (isOwnBot(mention, pluginId)) {
+    if (isOwnBot(mention, BOT_MENTION_PLUGINS)) {
       if (draft.text[cursor] === " ") cursor++;
       continue;
     }
@@ -228,12 +233,12 @@ export function draftWithBot<M extends DraftMention>(draft: Draft<M>, bot: Pick<
 }
 
 export const hasNoBotMarker = (blocks: readonly { type: string; text?: string; visibility?: string }[]) =>
-  blocks.some((block) => block.type === "text" && block.visibility === "agent-only" && block.text === NO_BOT_TEXT);
+  blocks.some((block) => block.type === "text" && block.visibility === "agent-only" && (block.text === NO_BOT_TEXT || block.text === LEGACY_NO_BOT_TEXT));
 
 // Handoffs create a top-level thread with no parent or source id, so the
 // source is read from the first message:
 // - BB's "Continue in new thread" starts with "Continue from @thread:<id>".
-// - The Launcher's handoff starts with an @thread mention.
+// - The handoff composer starts with an @thread mention.
 const NATIVE_HANDOFF = /^\s*Continue from @thread:([A-Za-z0-9_-]+)/;
 
 export function handoffSource(blocks: readonly InputBlock[], leadingThreadMention: boolean): string | null {
@@ -271,10 +276,9 @@ export function ownerOf(lookup: OwnerLookup, thread: { id: string; parentThreadI
   return null;
 }
 
-/**
- * The plugin that owns bots. Plugin ids in mentions, RPC calls, and thread
- * origins resolve against it. Still "launcher" until bots move to their own plugin.
- */
-export const BOTS_PLUGIN_ID = "launcher";
+/** The plugin that owns bots. Plugin ids in mentions, RPC calls, and thread origins resolve against it. */
+export const BOTS_PLUGIN_ID = "bots";
 /** Plugins whose new threads the binding hook treats as started by the user's bot picker. */
 export const TRUSTED_ORIGIN_PLUGINS = ["bots", "launcher"] as const;
+/** Pills of either plugin id name a bot: Launcher inserted them before Bots existed. */
+export const BOT_MENTION_PLUGINS = TRUSTED_ORIGIN_PLUGINS;

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  applyMemoryChange, draftBotId, draftWithBot, FACT_MAX, filterBots, findBotMention, handoffSource, hasNoBotMarker, NO_BOT_TEXT, withBotMention, withoutBotMentions, INSTRUCTION_BUDGET, INSTRUCTIONS_MAX, MEMORY_MAX, MemoryError, NAME_MAX,
+  applyMemoryChange, draftBotId, draftWithBot, FACT_MAX, filterBots, findBotMention, handoffSource, hasNoBotMarker, NO_BOT_TEXT, withBotMention, withoutBotMentions, BOT_MENTION_PLUGINS, BOTS_PLUGIN_ID, INSTRUCTION_BUDGET, INSTRUCTIONS_MAX, MEMORY_MAX, MemoryError, NAME_MAX,
   renderInstructions, type Bot,
 } from "./bots.ts";
 import { memoryToolSchema } from "./bots.schema.ts";
@@ -64,7 +64,7 @@ test("withBotMention prepends one pill, shifts later mentions, and is idempotent
   const blocks = [{ type: "text", text: "@Source carry on", mentions: [{ start: 0, end: 7, resource: thread }] }];
   const [first] = withBotMention(blocks, bot, pluginId);
   assert.equal(first!.text, "@Probe @Source carry on");
-  assert.deepEqual(first!.mentions![0], { start: 0, end: 6, resource: { kind: "plugin", pluginId, itemId: "bot:b1", label: "Probe", icon: "launcher-bot-3" } });
+  assert.deepEqual(first!.mentions![0], { start: 0, end: 6, resource: { kind: "plugin", pluginId, itemId: "bot:b1", label: "Probe", icon: "bot-3" } });
   assert.equal(first!.text!.slice(first!.mentions![1]!.start, first!.mentions![1]!.end), "@Source");
   const again = withBotMention([first!], bot, pluginId);
   assert.equal(again[0]!.text, first!.text);
@@ -116,4 +116,16 @@ test("withoutBotMentions drops this plugin's bot pills and shifts the other ment
   assert.deepEqual(withoutBotMentions(keep, pluginId), keep);
   assert.equal(withoutBotMentions([{ type: "image" }], pluginId).length, 1);
   assert.equal(findBotMention(withoutBotMentions(input, pluginId), pluginId, () => true), null);
+});
+
+test("pills from either plugin id name a bot; new pills use the bots id", () => {
+  const legacy = [text("@Old go", [{ start: 0, resource: { kind: "plugin", pluginId: "launcher", itemId: "bot:b1" } }])];
+  const current = [text("@New go", [{ start: 0, resource: { kind: "plugin", pluginId: "bots", itemId: "bot:b2" } }])];
+  assert.equal(findBotMention(legacy, BOT_MENTION_PLUGINS, () => true), "b1");
+  assert.equal(findBotMention(current, BOT_MENTION_PLUGINS, () => true), "b2");
+  assert.equal(findBotMention(current, "launcher", () => true), null);
+  assert.equal(withoutBotMentions([...legacy, ...current], BOT_MENTION_PLUGINS).every((b) => !b.mentions?.length), true);
+  const [added] = withBotMention([{ type: "text", text: "hi", mentions: [] }], { id: "b", name: "B", avatarSlot: 2 }, BOTS_PLUGIN_ID);
+  assert.equal(((added as { mentions: { resource: { pluginId: string } }[] }).mentions[0])!.resource.pluginId, "bots");
+  assert.equal(hasNoBotMarker([{ type: "text", text: "The user started this thread without a Launcher bot.", visibility: "agent-only" }]), true);
 });

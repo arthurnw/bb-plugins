@@ -40,6 +40,8 @@ const threadId = z.string().min(1);
 const memoryView = z.object({ content: z.string(), sha256: z.string(), limit: z.number() });
 
 export const botsRpcContract = {
+  /** Null when the bot does not exist. */
+  getBot: { input: z.object({ botId }), output: z.object({ bot: botSchema.nullable() }) },
   listBots: { input: z.object({}), output: z.object({ bots: z.array(botSchema).max(MAX_BOTS) }) },
   /** Creates a bot when `botId` is omitted. */
   saveBot: { input: z.object({ botId: botId.optional(), bot: botDraftSchema }), output: z.object({ bot: botSchema }) },
@@ -56,10 +58,10 @@ export const botsRpcContract = {
   /** "No bot": clears the binding and stops inheritance from the parent or source. */
   detachThread: { input: z.object({ threadId }), output: z.object({ ok: z.literal(true) }) },
   threadBots: { input: z.object({}), output: z.object({ threads: z.record(z.string(), z.string()) }) },
-  /** The Launcher thread list's manual group order: "bot:<id>" and "section:<id>" keys. Unknown keys are ignored when drawn. */
+  /** The Bots thread list's manual group order: "bot:<id>" and "section:<id>" keys. Unknown keys are ignored when drawn. */
   /** The thread's bot and the instructions a session starting now would get; null fields when it has none. */
   threadBot: { input: z.object({ threadId }), output: z.object({ botId: z.string().nullable(), source: z.enum(["own", "inherited", "none", "detached"]), instructions: z.string().nullable() }) },
-  /** The built-in thread list's row preferences, so the Launcher list matches them. */
+  /** The built-in thread list's row preferences, so the Bots list matches them. */
   rowPreferences: { input: z.object({}), output: z.object({ rowActions: z.array(z.string()), showProviderIcons: z.boolean(), showRowMetadata: z.boolean(), chronologicalSort: z.string() }) },
   getListOrder: { input: z.object({}), output: z.object({ order: z.array(z.string().max(200)).max(500) }) },
   setListOrder: { input: z.object({ order: z.array(z.string().max(200)).max(500) }), output: z.object({ order: z.array(z.string()) }) },

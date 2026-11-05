@@ -59,6 +59,12 @@ export const onNewThread = (listener: (detail: NewThreadDetail | null) => boolea
 export const onHandoff = (listener: (detail: HandoffDetail) => boolean | void) =>
   onEvent<HandoffDetail>(LAUNCHER_HANDOFF_EVENT, listener);
 
+/** Bots' own dialog answers these when no Launcher handled the Launcher events. */
+export const onBotsNewThread = (listener: (detail: NewThreadDetail | null) => boolean | void) =>
+  onEvent<NewThreadDetail | null>(BOTS_NEW_THREAD_EVENT, listener);
+export const onBotsHandoff = (listener: (detail: HandoffDetail) => boolean | void) =>
+  onEvent<HandoffDetail>(BOTS_HANDOFF_EVENT, listener);
+
 export function notifyBotsChanged(): void {
   window.dispatchEvent(new Event(BOTS_CHANGED_EVENT));
 }
