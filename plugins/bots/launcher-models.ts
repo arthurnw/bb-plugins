@@ -7,21 +7,32 @@ const stateSchema = z.custom<ModelState>();
 
 /**
  * The Launcher plugin as Bots sees it. "absent" means its RPC answered 404, so
- * it is not installed or is disabled; any other failure still counts as
- * installed, with no model state. Presets and the Named worktree and Existing
+ * it is not installed or is disabled. Presets and the Named worktree and Existing
  * branch environments come from the Launcher; Bots works without them.
  */
 export type LauncherStatus =
   | { status: "loading" | "absent" }
   | { status: "present"; models: ModelState | null };
 
-export const isNotFound = (error: unknown) =>
-  (error as { status?: number } | null)?.status === 404 || /\b404\b/.test(error instanceof Error ? error.message : String(error));
+/** The server answers 404 for an unknown plugin and 503 ("not running (status: disabled)") for one that is disabled or stopped. */
+export const isAbsent = (error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error);
+  const status = (error as { status?: number } | null)?.status;
+  return status === 404 || status === 503 || /\b(404|503)\b|not running|not found|disabled/i.test(message);
+};
 
-/** Reads the Launcher's state, or maps its failure; pure so tests can simulate a missing Launcher. */
-export async function readLauncher(read: () => Promise<ModelState>): Promise<LauncherStatus> {
+/**
+ * Reads the Launcher's state, or maps its failure; pure so tests can simulate
+ * a missing Launcher. A failure that does not say the plugin is gone (a
+ * timeout, a 500) keeps the previous answer, and "absent" when there is none:
+ * offering worktree environments that may not exist is worse than hiding them.
+ */
+export async function readLauncher(read: () => Promise<ModelState>, previous: LauncherStatus = { status: "absent" }): Promise<LauncherStatus> {
   try { return { status: "present", models: await read() }; }
-  catch (error) { return isNotFound(error) ? { status: "absent" } : { status: "present", models: null }; }
+  catch (error) {
+    if (isAbsent(error)) return { status: "absent" };
+    return previous.status === "loading" ? { status: "absent" } : previous;
+  }
 }
 
 let last: LauncherStatus = { status: "loading" };
@@ -33,7 +44,7 @@ export function useLauncher(): LauncherStatus {
   useEffect(() => {
     let cancelled = false;
     const load = () => {
-      void readLauncher(() => sdk.plugins.callRpc({ pluginId: "launcher", method: "getModelState", input: {}, outputSchema: stateSchema })).then((next) => {
+      void readLauncher(() => sdk.plugins.callRpc({ pluginId: "launcher", method: "getModelState", input: {}, outputSchema: stateSchema }), last).then((next) => {
         if (cancelled) return;
         last = next;
         setState(next);
