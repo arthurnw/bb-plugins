@@ -127,7 +127,6 @@ point produces that mention:
   thread's defaults, so the earlier values come back after the send (or when
   you choose **No bot**). bb's button is hidden by its label, as in the
   overlay; if bb renames it, both buttons show.
-- **Typing** `@` and the bot's name anywhere in a new thread's first message.
 
 The bot's instructions and the `bot_memory` tool are attached when the thread's
 session starts, through `bb.agents.configure`, and a running session keeps what

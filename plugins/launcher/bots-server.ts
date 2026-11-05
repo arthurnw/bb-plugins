@@ -2,7 +2,7 @@ import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { BotStore, BotStoreError, MIGRATIONS, type SqlDb } from "./bot-store.ts";
 import {
-  applyMemoryChange, botIconName, filterBots, findBotMention, handoffSource, hasNoBotMarker, MemoryError, MEMORY_MAX, MEMORY_TOOL, MENTION_PROVIDER, ownerOf, renderInstructions,
+  applyMemoryChange, findBotMention, handoffSource, hasNoBotMarker, MemoryError, MEMORY_MAX, MEMORY_TOOL, MENTION_PROVIDER, ownerOf, renderInstructions,
 } from "@arthurnw/bb-shared/bots";
 import { botsRpcContract, memoryToolSchema } from "@arthurnw/bb-shared/bots/schema";
 
@@ -102,9 +102,11 @@ export function registerBots(bb: BbPluginApi) {
   bb.ui.registerMentionProvider({
     id: MENTION_PROVIDER,
     label: "Bots",
-    search({ query }) {
-      return filterBots(store.list(), query)
-        .map((bot) => ({ id: bot.id, title: bot.name, subtitle: "Launcher bot", icon: botIconName(bot.avatarSlot) }));
+    // Typed pills only bind in a first message and mislead elsewhere, so bots
+    // stay out of the menu. The Launcher inserts its own pills, and `resolve`
+    // still explains them and the ones in old messages.
+    search() {
+      return [];
     },
     // The bot's instructions arrive through `configure`; this only explains the pill.
     resolve(itemId) {
