@@ -139,7 +139,7 @@ export default async function plugin(bb: BbPluginApi) {
         permissionMode: request.permissionMode });
       return { threadId: thread.id };
     },
-  }, { experimental_discoverable: true, experimental_description: "Launcher model presets and thread creation; Bots reads presets from here." });
+  });
 
   const settings = bb.settings.define({
     defaultNamedWorktree: {
