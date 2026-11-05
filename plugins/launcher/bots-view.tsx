@@ -465,8 +465,7 @@ export function BotThreadList({ activeThreadId, activeProjectId, onNavigate }: {
             <Group key={key} {...groupProps(key)} groupBot={bot.id} threads={placed.get(key) ?? []} onHeaderPointerDown={headerDrag}
               title={<><BotAvatar bot={bot} size={16} /><span style={{ ...groupTitle, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bot.name}</span></>}
               actions={<button type="button" aria-label={`New thread with ${bot.name}`} title={`New thread with ${bot.name}`} style={iconButton}
-                onClick={() => quickCompose.open("new-thread", { projectId: bot.projectId ?? activeProjectId, threadId: null, botId: bot.id })}>+</button>}
-              empty="Drop a thread here to hand it off." />
+                onClick={() => quickCompose.open("new-thread", { projectId: bot.projectId ?? activeProjectId, threadId: null, botId: bot.id })}>+</button>} />
           );
         }
         const section = sections.find((item) => `section:${item.id}` === key)!;
