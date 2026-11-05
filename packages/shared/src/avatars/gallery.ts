@@ -36,7 +36,8 @@ function geoFace({ x = 48, y = 54, gap = 9, r = 4, ink = "#1b1b2a", my = 7, kx =
 }
 
 const shadow = (y = 87, rx = 26) => `<ellipse cx="48" cy="${y}" rx="${rx}" ry="3.5" fill="#000" opacity=".16"/>`;
-const badge = `<circle class="badge" cx="82" cy="16" r="9" fill="#ff5d7a" stroke="#fff" stroke-width="3"/>`;
+/** The unread dot; only shown under reduced motion. */
+export const badge = `<circle class="badge" cx="82" cy="16" r="9" fill="#ff5d7a" stroke="#fff" stroke-width="3"/>`;
 
 /** The question bubble shown while waiting; drawn last so it sits on top. */
 export const ask = (style: AvatarStyle) => style === "geo"

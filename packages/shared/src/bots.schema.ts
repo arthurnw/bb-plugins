@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AVATAR_MAX_CHARS, BOT_ENVIRONMENTS, FACT_MAX, INSTRUCTIONS_MAX, MAX_BOTS, MEMORY_MAX, NAME_MAX, STARTER_MAX, type Bot, type BotDraft } from "./bots.ts";
+import { ANIMATION_MAX_CHARS, AVATAR_MAX_CHARS, BOT_ENVIRONMENTS, FACT_MAX, INSTRUCTIONS_MAX, MAX_BOTS, MEMORY_MAX, NAME_MAX, STARTER_MAX, type Bot, type BotDraft } from "./bots.ts";
 import { selectionSchema } from "./selection.schema.ts";
 
 const permissionModeSchema = z.enum(["accept-edits", "auto", "full"]);
@@ -30,6 +30,8 @@ export const botSchema: z.ZodType<Bot, unknown> = z.object({
   memoryWrites: z.boolean(),
   memory: z.string(),
   avatar: z.string().nullable(),
+  // Defaulted so a Launcher built against this schema still reads an older Bots.
+  avatarAnimation: z.string().nullable().default(null),
   avatarSlot: z.number().int().min(0).max(MAX_BOTS - 1),
   createdAt: z.number(),
   updatedAt: z.number(),
@@ -47,8 +49,17 @@ export const botsRpcContract = {
   saveBot: { input: z.object({ botId: botId.optional(), bot: botDraftSchema }), output: z.object({ bot: botSchema }) },
   /** Threads keep their bindings; they stop receiving the bot at their next session start. */
   deleteBot: { input: z.object({ botId }), output: z.object({ deleted: z.boolean() }) },
-  /** A square data URL made by the editor, or null to remove it. */
-  setBotAvatar: { input: z.object({ botId, avatar: z.string().max(AVATAR_MAX_CHARS).nullable() }), output: z.object({ bot: botSchema }) },
+  /**
+   * A square data URL made by the editor, or null to remove it. `animation` is
+   * an animated upload as uploaded, with `avatar` its still first frame;
+   * omitting it removes any earlier one.
+   */
+  setBotAvatar: {
+    input: z.object({ botId, avatar: z.string().max(AVATAR_MAX_CHARS).nullable(), animation: z.string().max(ANIMATION_MAX_CHARS).nullable().optional() }),
+    output: z.object({ bot: botSchema }),
+  },
+  /** The animated upload behind `Bot.avatarAnimation`; null when the bot has none. */
+  getBotAvatarAnimation: { input: z.object({ botId }), output: z.object({ animation: z.string().nullable() }) },
   reorderBots: { input: z.object({ botIds: z.array(botId).max(MAX_BOTS) }), output: z.object({ bots: z.array(botSchema) }) },
   getBotMemory: { input: z.object({ botId }), output: memoryView },
   /** Rejects when `expectedSha256` does not match the stored memory. */

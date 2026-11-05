@@ -95,6 +95,40 @@ test("avatars must be known gallery ids or small image data URLs", () => {
   assert.equal(store.setAvatar(bot.id, null).avatar, null);
 });
 
+// Two-frame and one-frame 4×4 GIFs written by Pillow.
+const ANIMATED_GIF = "data:image/gif;base64,R0lGODlhBAAEAIEAAP8AAAAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQACgAAACwAAAAABAAEAAAICQABCBxIsCCAgAAh+QQBCgABACwAAAAABAAEAIEAAP8AAAAAAAAAAAAICQABCBxIsCCAgAA7";
+const STILL_GIF = "data:image/gif;base64,R0lGODdhBAAEAIEAAP8AAAAAAAAAAAAAACwAAAAABAAEAAAICQABCBxIsCCAgAA7";
+const STILL = "data:image/webp;base64,AAAA";
+
+test("an animated upload is stored apart from the bot and replaced or removed with the avatar", () => {
+  const { db, store } = openStore();
+  const bot = store.save(undefined, draft("Dancer"));
+  const set = store.setAvatar(bot.id, STILL, ANIMATED_GIF);
+  assert.equal(set.avatar, STILL);
+  assert.match(set.avatarAnimation ?? "", /^[0-9a-f]{16}$/);
+  assert.equal(store.animation(bot.id), ANIMATED_GIF);
+  const reloaded = new BotStore(db as unknown as SqlDb);
+  assert.equal(reloaded.get(bot.id)?.avatarAnimation, set.avatarAnimation);
+  assert.equal(reloaded.animation(bot.id), ANIMATED_GIF);
+  assert.equal(store.setAvatar(bot.id, "gallery:bean").avatarAnimation, null);
+  assert.equal(store.animation(bot.id), null);
+  store.setAvatar(bot.id, STILL, ANIMATED_GIF);
+  store.delete(bot.id);
+  assert.deepEqual(db.prepare("SELECT bot_id FROM bot_avatar_animations").all(), []);
+});
+
+test("an animated upload must be an animation within the cap, with a still frame", () => {
+  const { store } = openStore();
+  const bot = store.save(undefined, draft("Dancer"));
+  assert.throws(() => store.setAvatar(bot.id, null, ANIMATED_GIF), /still first frame/);
+  assert.throws(() => store.setAvatar(bot.id, "gallery:bean", ANIMATED_GIF), /still first frame/);
+  assert.throws(() => store.setAvatar(bot.id, STILL, STILL_GIF), /not an animated/);
+  assert.throws(() => store.setAvatar(bot.id, STILL, ANIMATED_GIF.replace("image/gif", "image/webp")), /not an animated/);
+  assert.throws(() => store.setAvatar(bot.id, STILL, "data:image/svg+xml;base64,AAAA"), /at most 1 MB/);
+  assert.throws(() => store.setAvatar(bot.id, STILL, `data:image/gif;base64,${"A".repeat(1_400_000)}`), /at most 1 MB/);
+  assert.equal(store.get(bot.id)?.avatarAnimation, null);
+});
+
 test("new bots get a gallery avatar no other bot uses until every one is taken", () => {
   const { db, store } = openStore();
   const avatars = GALLERY_IDS.map((_, i) => store.save(undefined, draft(`Bot ${i}`)).avatar);

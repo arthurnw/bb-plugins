@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { AVATAR_DATA_URL, AVATAR_MAX_CHARS, GALLERY_IDS, galleryAvatar, galleryId, MAX_BOTS, MEMORY_MAX, type BindingSource, type Bot, type BotDraft, type OwnerLookup } from "@arthurnw/bb-shared/bots";
+import { animatedImageType, ANIMATION_DATA_URL, ANIMATION_MAX_CHARS, AVATAR_DATA_URL, AVATAR_MAX_CHARS, dataUrlBytes, GALLERY_IDS, galleryAvatar, galleryId, MAX_BOTS, MEMORY_MAX, type BindingSource, type Bot, type BotDraft, type OwnerLookup } from "@arthurnw/bb-shared/bots";
 
 /** The subset of better-sqlite3 (and node:sqlite, for tests) the store uses. */
 export interface SqlDb {
@@ -28,13 +28,17 @@ export const MIGRATIONS = [
   `CREATE TABLE bot_detached (thread_id TEXT PRIMARY KEY, created_at INTEGER NOT NULL)`,
   `ALTER TABLE bots ADD COLUMN avatar TEXT`,
   `ALTER TABLE bots ADD COLUMN avatar_slot INTEGER`,
+  // Apart from `bots` so loading and listing bots never reads the animated bytes.
+  `CREATE TABLE bot_avatar_animations (bot_id TEXT PRIMARY KEY, data TEXT NOT NULL, version TEXT NOT NULL)`,
 ];
 
 export const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
 
 export class BotStoreError extends Error {}
 
-type BotRow = { id: string; position: number; draft_json: string; memory: string; avatar: string | null; avatar_slot: number | null; created_at: number; updated_at: number };
+type BotRow = { id: string; position: number; draft_json: string; memory: string; avatar: string | null; avatar_slot: number | null; created_at: number; updated_at: number;
+  /** From bot_avatar_animations. */
+  avatar_animation?: string | null };
 
 /**
  * Bots and thread bindings. SQLite is the durable copy; the maps are the read
@@ -51,6 +55,9 @@ export class BotStore implements OwnerLookup {
     this.db = db;
     this.now = now;
     const rows = db.prepare("SELECT * FROM bots").all() as BotRow[];
+    const animations = new Map((db.prepare("SELECT bot_id, version FROM bot_avatar_animations").all() as { bot_id: string; version: string }[])
+      .map((row) => [row.bot_id, row.version]));
+    for (const row of rows) row.avatar_animation = animations.get(row.id) ?? null;
     for (const row of rows) if (row.avatar_slot !== null) this.bots.set(row.id, fromRow(row, row.avatar_slot));
     // Bots created before avatars existed get a slot on first load.
     for (const row of rows) {
@@ -84,7 +91,7 @@ export class BotStore implements OwnerLookup {
     if (botId === undefined) {
       if (this.bots.size >= MAX_BOTS) throw new BotStoreError(`You can have up to ${MAX_BOTS} bots.`);
       const position = Math.max(-1, ...[...this.bots.values()].map((bot) => bot.position)) + 1;
-      const bot: Bot = { ...draft, id: randomUUID(), position, memory: "", avatar: this.freshAvatar(), avatarSlot: this.freeSlot(), createdAt: at, updatedAt: at };
+      const bot: Bot = { ...draft, id: randomUUID(), position, memory: "", avatar: this.freshAvatar(), avatarAnimation: null, avatarSlot: this.freeSlot(), createdAt: at, updatedAt: at };
       this.db.prepare("INSERT INTO bots (id, position, draft_json, memory, avatar, avatar_slot, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
         .run(bot.id, bot.position, JSON.stringify(draft), "", bot.avatar, bot.avatarSlot, at, at);
       this.bots.set(bot.id, bot);
@@ -96,15 +103,29 @@ export class BotStore implements OwnerLookup {
     return bot;
   }
 
-  setAvatar(botId: string, avatar: string | null): Bot {
+  /** `animation` is an animated upload whose still first frame is `avatar`; null removes any earlier one. */
+  setAvatar(botId: string, avatar: string | null, animation: string | null = null): Bot {
     if (avatar !== null && !galleryId(avatar) && (avatar.length > AVATAR_MAX_CHARS || !AVATAR_DATA_URL.test(avatar))) {
       throw new BotStoreError("The avatar must be a built-in avatar or a small PNG, JPEG, or WebP image.");
     }
+    if (animation !== null) checkAnimation(avatar, animation);
+    const current = this.require(botId);
     const at = this.now();
     this.db.prepare("UPDATE bots SET avatar = ?, updated_at = ? WHERE id = ?").run(avatar, at, botId);
-    const bot: Bot = { ...this.require(botId), avatar, updatedAt: at };
+    const version = animation === null ? null : sha256(animation).slice(0, 16);
+    if (version === null) this.db.prepare("DELETE FROM bot_avatar_animations WHERE bot_id = ?").run(botId);
+    else this.db.prepare("INSERT INTO bot_avatar_animations (bot_id, data, version) VALUES (?, ?, ?) ON CONFLICT(bot_id) DO UPDATE SET data = excluded.data, version = excluded.version")
+      .run(botId, animation, version);
+    const bot: Bot = { ...current, avatar, avatarAnimation: version, updatedAt: at };
     this.bots.set(botId, bot);
     return bot;
+  }
+
+  /** The bot's animated upload as a data URL, or null. */
+  animation(botId: string): string | null {
+    if (!this.get(botId)?.avatarAnimation) return null;
+    const [row] = this.db.prepare("SELECT data FROM bot_avatar_animations WHERE bot_id = ?").all(botId) as { data: string }[];
+    return row?.data ?? null;
   }
 
   /** A random gallery avatar, preferring one no other bot uses. */
@@ -124,6 +145,7 @@ export class BotStore implements OwnerLookup {
   delete(botId: string): boolean {
     if (!this.bots.has(botId)) return false;
     this.db.prepare("DELETE FROM bots WHERE id = ?").run(botId);
+    this.db.prepare("DELETE FROM bot_avatar_animations WHERE bot_id = ?").run(botId);
     this.bots.delete(botId);
     return true;
   }
@@ -204,9 +226,18 @@ export class BotStore implements OwnerLookup {
   }
 }
 
+function checkAnimation(avatar: string | null, animation: string) {
+  if (avatar === null || galleryId(avatar)) throw new BotStoreError("An animated avatar needs its still first frame.");
+  if (animation.length > ANIMATION_MAX_CHARS || !ANIMATION_DATA_URL.test(animation)) {
+    throw new BotStoreError("Animated avatars must be a GIF, WebP, or PNG of at most 1 MB.");
+  }
+  const declared = animation.slice("data:".length, animation.indexOf(";"));
+  if (animatedImageType(dataUrlBytes(animation)) !== declared) throw new BotStoreError("That file is not an animated GIF, WebP, or PNG.");
+}
+
 function fromRow(row: BotRow, avatarSlot: number): Bot {
   // Drafts saved before a field existed get its default.
   const draft = { memoryWrites: true, ...(JSON.parse(row.draft_json) as Partial<BotDraft>) } as BotDraft;
-  return { ...draft, id: row.id, position: row.position, memory: row.memory, avatar: row.avatar, avatarSlot,
+  return { ...draft, id: row.id, position: row.position, memory: row.memory, avatar: row.avatar, avatarAnimation: row.avatar_animation ?? null, avatarSlot,
     createdAt: row.created_at, updatedAt: row.updated_at };
 }

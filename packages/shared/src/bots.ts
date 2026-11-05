@@ -3,6 +3,7 @@
 import type { ModelSelection } from "./selection.ts";
 
 export { GALLERY_IDS, galleryAvatar, galleryId, type GalleryId } from "./avatars/ids.ts";
+export { animatedImageType, dataUrlBytes, type AnimationType } from "./avatars/animation.ts";
 
 export const MAX_BOTS = 30;
 export const NAME_MAX = 40;
@@ -19,6 +20,11 @@ export const MEMORY_TOOL = "bot_memory";
 export const AVATAR_MAX_CHARS = 120_000;
 export const AVATAR_SIZE = 128;
 export const AVATAR_DATA_URL = /^data:image\/(webp|png|jpeg);base64,[A-Za-z0-9+/=]+$/;
+/** Animated uploads (GIF, WebP, APNG) are kept as uploaded, up to this many bytes. */
+export const ANIMATION_MAX_BYTES = 1024 * 1024;
+/** The data URL of an ANIMATION_MAX_BYTES file, with room for its prefix. */
+export const ANIMATION_MAX_CHARS = Math.ceil(ANIMATION_MAX_BYTES / 3) * 4 + 32;
+export const ANIMATION_DATA_URL = /^data:image\/(gif|webp|png);base64,[A-Za-z0-9+/=]+$/;
 /**
  * Icons can only be registered during app setup, so each bot holds one of
  * MAX_BOTS fixed icon names. A slot is reused after its bot is deleted.
@@ -48,6 +54,11 @@ export interface Bot extends BotDraft {
   position: number;
   /** `gallery:<id>`, a square image as a data URL, or null to show the emoji or initial. */
   avatar: string | null;
+  /**
+   * Set when `avatar` is the still first frame of an animated upload: a version
+   * that changes with the file. The bytes come from `getBotAvatarAnimation`.
+   */
+  avatarAnimation: string | null;
   avatarSlot: number;
   memory: string;
   createdAt: number;

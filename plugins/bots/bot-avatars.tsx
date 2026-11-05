@@ -1,9 +1,9 @@
 import { experimental_useSidebarThreads as useSidebarThreads, useRealtime, useRpc, type PluginAppBuilder, type PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { BotAvatar, type Face } from "@arthurnw/bb-shared/composer";
-import { combinedAvatarState, type AvatarState } from "@arthurnw/bb-shared/avatars";
+import { animatedImageType, combinedAvatarState, setAnimationFetcher, type AvatarState } from "@arthurnw/bb-shared/avatars";
 import type { botsContract } from "./bots-server";
-import { AVATAR_SIZE, botIconName, MAX_BOTS, type Bot } from "@arthurnw/bb-shared/bots";
+import { ANIMATION_MAX_BYTES, AVATAR_SIZE, botIconName, MAX_BOTS, type Bot } from "@arthurnw/bb-shared/bots";
 import { notifyBotsChanged } from "@arthurnw/bb-shared/events";
 import { LEGACY_GALLERY, legacyReassignments } from "./legacy-gallery";
 
@@ -18,7 +18,7 @@ const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((listener) => listener());
 function setBots(bots: readonly Bot[]) {
   allBots = bots;
-  faces = new Map(bots.map((bot) => [bot.avatarSlot, { id: bot.id, avatar: bot.avatar, emoji: bot.emoji, name: bot.name }]));
+  faces = new Map(bots.map((bot) => [bot.avatarSlot, { id: bot.id, avatar: bot.avatar, avatarAnimation: bot.avatarAnimation, emoji: bot.emoji, name: bot.name }]));
   notify();
 }
 function setStates(next: ReadonlyMap<string, AvatarState>) {
@@ -77,6 +77,7 @@ export function BotIconSync() {
     }, () => {});
   };
   useEffect(load, [rpc]);
+  useEffect(() => setAnimationFetcher((botId) => rpc.call("getBotAvatarAnimation", { botId }).then((result) => result.animation)), [rpc]);
   useRealtime("bots", () => {
     load();
     // Canvas and the Launcher's picker listen for this to reread bots and thread bindings.
@@ -141,10 +142,31 @@ export async function avatarFromUrl(url: string): Promise<string> {
   return canvas.toDataURL("image/webp", 0.85);
 }
 
-export async function avatarFromFile(file: File): Promise<string> {
+/**
+ * A still avatar from any image. An animated GIF, WebP, or APNG is also kept as
+ * uploaded, with the still as its first frame.
+ */
+export async function avatarFromFile(file: File): Promise<{ avatar: string; animation: string | null }> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const type = animatedImageType(bytes);
+  if (type && bytes.length > ANIMATION_MAX_BYTES) {
+    throw new Error(`That animation is ${(bytes.length / 1024 / 1024).toFixed(1)} MB; animated avatars are limited to 1 MB. Export it smaller, shorter, or with fewer colors.`);
+  }
   const url = URL.createObjectURL(file);
-  try { return await avatarFromUrl(url); }
-  finally { URL.revokeObjectURL(url); }
+  try {
+    // Canvas draws an animation's first frame.
+    const avatar = await avatarFromUrl(url);
+    return { avatar, animation: type && await readDataUrl(new Blob([bytes], { type })) };
+  } finally { URL.revokeObjectURL(url); }
+}
+
+function readDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error("That file could not be read."));
+    reader.readAsDataURL(blob);
+  });
 }
 
 export { BotAvatar };

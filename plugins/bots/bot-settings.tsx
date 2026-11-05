@@ -214,27 +214,29 @@ function AvatarField({ bot, emoji, name }: { bot: Bot; emoji: string; name: stri
   const [busy, setBusy] = useState(false);
   const picked = galleryId(bot.avatar);
   const state = useBotState(bot.id);
-  async function apply(avatar: Promise<string | null>) {
+  async function apply(next: Promise<{ avatar: string | null; animation?: string | null }>) {
     setBusy(true);
     setError(null);
-    try { await rpc.call("setBotAvatar", { botId: bot.id, avatar: await avatar }); }
+    try { await rpc.call("setBotAvatar", { botId: bot.id, ...await next }); }
     catch (e) { setError(errorText(e)); }
     finally { setBusy(false); }
   }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
     <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-      <BotAvatar bot={{ avatar: bot.avatar, emoji, name }} size={40} state={state} track />
+      <BotAvatar bot={{ ...bot, emoji, name }} size={40} state={state} track />
       <label style={{ ...button, whiteSpace: "nowrap", opacity: busy ? 0.6 : 1 }}>
         {bot.avatar && !picked ? "Replace image…" : "Upload image…"}
-        <input type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" disabled={busy} style={{ display: "none" }}
+        <input type="file" accept="image/png,image/apng,image/jpeg,image/webp,image/gif,image/svg+xml" disabled={busy} style={{ display: "none" }}
           onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ""; if (file) void apply(avatarFromFile(file)); }} />
       </label>
-      {bot.avatar && <button type="button" style={{ ...button, whiteSpace: "nowrap" }} disabled={busy} onClick={() => void apply(Promise.resolve(null))}>{picked ? "Remove avatar" : "Remove image"}</button>}
-      <span style={{ ...muted, fontSize: 12 }}>{error ?? "Uploads are cropped to a square. Without an avatar the emoji shows, then the first letter."}</span>
+      {bot.avatar && <button type="button" style={{ ...button, whiteSpace: "nowrap" }} disabled={busy} onClick={() => void apply(Promise.resolve({ avatar: null }))}>{picked ? "Remove avatar" : "Remove image"}</button>}
+      <span style={{ ...muted, fontSize: 12 }}>{error ?? (bot.avatarAnimation
+        ? "Animated: plays while the bot is working, has an unread reply, or is waiting, and shows its first frame otherwise."
+        : "Uploads are cropped to a square. Animated GIF, WebP, and PNG files up to 1 MB play while the bot is busy. Without an avatar the emoji shows, then the first letter.")}</span>
     </div>
-    <AvatarGroup label="Smooth" items={SMOOTH_AVATARS} picked={picked} busy={busy} onPick={(item) => void apply(Promise.resolve(galleryAvatar(item.id)))} />
-    <AvatarGroup label="Geometric" items={GEOMETRIC_AVATARS} picked={picked} busy={busy} onPick={(item) => void apply(Promise.resolve(galleryAvatar(item.id)))} />
+    <AvatarGroup label="Smooth" items={SMOOTH_AVATARS} picked={picked} busy={busy} onPick={(item) => void apply(Promise.resolve({ avatar: galleryAvatar(item.id) }))} />
+    <AvatarGroup label="Geometric" items={GEOMETRIC_AVATARS} picked={picked} busy={busy} onPick={(item) => void apply(Promise.resolve({ avatar: galleryAvatar(item.id) }))} />
     </div>
   );
 }

@@ -141,11 +141,12 @@ export function registerBots(bb: BbPluginApi) {
       if (deleted) publish();
       return { deleted };
     },
-    setBotAvatar: ({ botId, avatar }) => {
-      const bot = store.setAvatar(botId, avatar);
+    setBotAvatar: ({ botId, avatar, animation }) => {
+      const bot = store.setAvatar(botId, avatar, animation ?? null);
       publish();
       return { bot };
     },
+    getBotAvatarAnimation: ({ botId }) => ({ animation: store.animation(botId) }),
     reorderBots: ({ botIds }) => {
       const bots = store.reorder(botIds);
       publish();
