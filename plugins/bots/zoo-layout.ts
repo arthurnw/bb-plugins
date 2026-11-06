@@ -13,14 +13,14 @@ export function rankBots<B extends { id: string }>(bots: readonly B[], states: R
 }
 
 /** The most urgent bot, the first one when every bot is idle; null with no bots. */
-export function loudest<B>(zoo: readonly ZooEntry<B>[]): ZooEntry<B> | null {
-  let best: ZooEntry<B> | null = null;
+export function loudest<E extends { state: AvatarState }>(zoo: readonly E[]): E | null {
+  let best: E | null = null;
   for (const entry of zoo) if (!best || URGENCY[entry.state] < URGENCY[best.state]) best = entry;
   return best;
 }
 
 /** Bots that need the user: waiting on a question or approval, or unread. */
-export const attentionCount = (zoo: readonly ZooEntry<unknown>[]) =>
+export const attentionCount = (zoo: readonly { state: AvatarState }[]) =>
   zoo.filter((entry) => entry.state === "waiting" || entry.state === "unread").length;
 
 /** Waiting, then unread, then working, then idle; order within a state is kept. */

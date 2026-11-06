@@ -32,7 +32,6 @@ function subscribe(listener: () => void) {
 
 export const useZooSettings = () => useSyncExternalStore(subscribe, () => settings, () => settings);
 export const useZooPlacement = () => useSyncExternalStore(subscribe, () => placement, () => placement);
-export const getZooPlacement = () => placement;
 
 export function setZooSettings(patch: Partial<ZooSettings>) {
   settings = { ...settings, ...patch };
