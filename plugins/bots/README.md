@@ -227,6 +227,18 @@ group into a collapsed **More** group at the end; **Show in list** there
 brings it back. Custom sections also get Rename and Delete. Pinned cannot be
 hidden.
 
+Dragging in All follows bb's list. Drop a row onto:
+
+- the middle of another row, to nest it there (in Custom it also takes that
+  group's section);
+- a group, to make it top-level there: in Custom it takes the section (none for
+  Threads); By project, only the thread's own project accepts it;
+- Pinned, to pin it; the top or bottom edge of a pinned row reorders Pinned.
+
+Drag a group header onto another to reorder the top level; this writes the
+built-in list's order for the current organization. Pinning, nesting, and
+filing a thread unpin or re-file it the way bb's list does.
+
 ## Develop
 
 ```sh

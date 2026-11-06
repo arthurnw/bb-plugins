@@ -45,7 +45,11 @@ export function tree(threads: readonly PluginSidebarThread[]) {
 // ("thread:<id>" for a row, a group key for a group). bb's split drag shares
 // the same pointerdown and engages only once the pointer leaves the sidebar.
 export type DragPayload = { kind: "thread"; thread: PluginSidebarThread } | { kind: "group"; key: string; label: string };
-export function useDrag(onDrop: (payload: DragPayload, target: string) => void, groupTargets = "[data-drop^='bot:'],[data-drop^='section:']") {
+/**
+ * With `edges`, a thread dragged over the top or bottom quarter of a row
+ * targets `edge:before:<id>` or `edge:after:<id>` instead of the row itself.
+ */
+export function useDrag(onDrop: (payload: DragPayload, target: string) => void, groupTargets = "[data-drop^='bot:'],[data-drop^='section:']", edges = false) {
   const [drag, setDrag] = useState<{ payload: DragPayload; x: number; y: number } | null>(null);
   const [over, setOver] = useState<string | null>(null);
   const suppressClick = useRef(false);
@@ -58,7 +62,14 @@ export function useDrag(onDrop: (payload: DragPayload, target: string) => void, 
     let started = false;
     const targetAt = (x: number, y: number) => {
       const selector = payload.kind === "group" ? groupTargets : "[data-drop]";
-      return document.elementFromPoint(x, y)?.closest<HTMLElement>(selector)?.dataset.drop ?? null;
+      const element = document.elementFromPoint(x, y)?.closest<HTMLElement>(selector);
+      const drop = element?.dataset.drop ?? null;
+      if (!edges || !element || !drop?.startsWith("thread:")) return drop;
+      const rect = element.getBoundingClientRect();
+      const id = drop.slice("thread:".length);
+      if (y < rect.top + rect.height / 4) return `edge:before:${id}`;
+      if (y > rect.bottom - rect.height / 4) return `edge:after:${id}`;
+      return drop;
     };
     const finish = () => {
       window.removeEventListener("pointermove", move);
@@ -153,6 +164,8 @@ export function ThreadRow({ thread, depth, childCount, renderChildren, groupBot 
   const bot = botId && botId !== groupBot ? context.bots.find((item) => item.id === botId) : undefined;
   const leadingBot = context.leadingAvatar ? bot : undefined;
   const dropping = context.over === `thread:${thread.id}`;
+  const edge = context.over === `edge:before:${thread.id}` ? "inset 0 2px 0 var(--ring, var(--primary))"
+    : context.over === `edge:after:${thread.id}` ? "inset 0 -2px 0 var(--ring, var(--primary))" : undefined;
   const ours = context.startDrag(thread);
   const [hover, setHover] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -165,7 +178,7 @@ export function ThreadRow({ thread, depth, childCount, renderChildren, groupBot 
           onPointerDown={(event) => { split.splitProps.onPointerDown?.(event); ours(event); }}
           onClick={(event) => { if (event.metaKey || event.ctrlKey || event.shiftKey) return; event.preventDefault(); context.onOpen(thread); }}
           style={{ ...rowStyle, paddingLeft: 8 + depth * 14, background: dropping ? "var(--accent)" : active ? "var(--accent)" : "transparent",
-            outline: dropping ? "2px solid var(--ring, var(--primary))" : "none", outlineOffset: -2 }}>
+            outline: dropping ? "2px solid var(--ring, var(--primary))" : "none", outlineOffset: -2, boxShadow: edge }}>
           {leadingBot ? (
             <span title={leadingBot.name} style={iconSlot}><BotAvatar bot={leadingBot} size={16} state={threadAvatarState(thread)} /></span>
           ) : context.preferences.showProviderIcons && (

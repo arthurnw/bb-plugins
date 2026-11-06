@@ -5,13 +5,16 @@ import {
   experimental_Icon as Icon,
   experimental_useProviders as useProviders,
   experimental_useSidebarThreads as useSidebarThreads,
+  useSdk,
   type PluginSidebarThread,
 } from "@get-bb/plugin-sdk/app";
 import { useMemo, useState, type ReactNode } from "react";
+import { toast } from "sonner";
 import type { Bot } from "@arthurnw/bb-shared/bots";
+import { planDrop, reorderGroups, type DropAction } from "./all-drop";
 import { organizeAll, splitHidden, type AllGroup, type AllItem, type AllNode } from "./all-model";
 import { GroupMenu, OrganizeMenu } from "./all-menus";
-import { chevron, Group, groupTitle, iconSlot, NewSection, PAGE, plainButton, rowStyle, ThreadRow, type RowContext } from "./list-parts";
+import { chevron, DragGhost, errorText, Group, groupTitle, iconSlot, NewSection, PAGE, plainButton, rowStyle, ThreadRow, useDrag, type DragPayload, type RowContext } from "./list-parts";
 import { useThreadListPreferences, type ThreadListPrefs } from "./thread-list-prefs";
 
 type Thread = PluginSidebarThread;
@@ -52,7 +55,7 @@ function ItemRow({ item, depth, context }: { item: AllItem<Thread>; depth: numbe
     : <EnvironmentRow item={item} depth={depth} context={context} />;
 }
 
-const noDrag = () => () => {};
+const GROUP_TARGETS = "section[data-drop]";
 
 // Kept across remounts, like bb's list: the open thread's unread state when it
 // was opened, and the parents expanded while grouping by read status.
@@ -95,8 +98,43 @@ export function AllView({ activeThreadId, bots, threadBots, onOpen, header }: {
     readStatusExpanded = expanded.includes(id) ? expanded.filter((item) => item !== id) : [...expanded, id];
     setExpanded(readStatusExpanded);
   };
+  const sdk = useSdk();
+  const threadsById = useMemo(() => new Map(sidebar.threads.map((thread) => [thread.id, thread])), [sidebar.threads]);
+  const run = async (actions: readonly DropAction[]) => {
+    try {
+      for (const action of actions) {
+        if (action.kind === "pin") await sdk.threads.pin({ threadId: action.threadId });
+        else if (action.kind === "unpin") await sdk.threads.unpin({ threadId: action.threadId });
+        else if (action.kind === "reorderPinned") {
+          await sdk.threads.reorderPinned({ threadId: action.threadId, previousThreadId: action.previousThreadId, nextThreadId: action.nextThreadId });
+        } else {
+          const { kind: _, ...update } = action;
+          await sdk.threads.update(update);
+        }
+      }
+    } catch (error) {
+      toast.error(errorText(error));
+    }
+  };
+  const onDrop = (payload: DragPayload, target: string) => {
+    if (payload.kind === "group") {
+      const change = reorderGroups(prefs, groups.map((group) => group.key), payload.key, target);
+      if (change) set(change.key, change.value);
+      return;
+    }
+    const plan = planDrop({ thread: payload.thread, target, groups, threadsById, mode: prefs.organizationMode,
+      personalProjectId: sidebar.projects.find((project) => project.isPersonal)?.id ?? null });
+    if (plan.kind === "rejected") { if (plan.reason !== "already-child") toast.error(plan.reason); }
+    else if (plan.kind === "apply") void run(plan.actions);
+  };
+  const dragState = useDrag(onDrop, GROUP_TARGETS, true);
+  const open = (thread: Thread) => {
+    if (dragState.suppressClick.current) { dragState.suppressClick.current = false; return; }
+    onOpen(thread);
+  };
   const context: ItemContext = {
-    activeThreadId, over: null, bots, threadBots, providers, onOpen, startDrag: noDrag, preferences: prefs, leadingAvatar: true,
+    activeThreadId, over: dragState.over, bots, threadBots, providers, onOpen: open, startDrag: (thread) => dragState.start({ kind: "thread", thread }),
+    preferences: prefs, leadingAvatar: true,
     collapsedThreads: prefs.groupByReadStatus ? readStatusCollapsed : collapsedThreads,
     toggleThread: prefs.groupByReadStatus ? toggleReadStatusParent : (id) => toggleIn("collapsedThreads", id),
     collapsedEnvironments, toggleEnvironment: (id) => toggleIn("collapsedEnvironments", id),
@@ -113,7 +151,8 @@ export function AllView({ activeThreadId, bots, threadBots, onOpen, header }: {
   const renderGroup = (group: AllGroup<Thread>) => {
     const section = group.kind === "section" ? sidebar.sections.find((item) => item.id === group.entityId) : undefined;
     return (
-      <Group key={group.key} dropKey={group.key} over={null} {...collapse(group)} roots={group.roots}
+      <Group key={group.key} dropKey={group.key} over={dragState.over} {...collapse(group)} roots={group.roots}
+        onHeaderPointerDown={dragState.start({ kind: "group", key: group.key, label: group.title })}
         title={<span style={{ ...groupTitle, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{group.title}</span>}
         actions={group.kind !== "pinned" && <GroupMenu title={group.title} groupKey={group.key} section={section} prefs={prefs} set={set} />}
         empty={group.kind === "pinned" || group.kind === "threads" ? undefined : "No threads"}
@@ -124,7 +163,7 @@ export function AllView({ activeThreadId, bots, threadBots, onOpen, header }: {
 
   if (sidebar.status === "loading") return <div style={{ padding: 12, fontSize: 12, color: "var(--muted-foreground)" }}>Loading…</div>;
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: "4px 4px 16px" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: "4px 4px 16px", userSelect: dragState.drag ? "none" : undefined }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingRight: 4 }}>
         {header}
         <OrganizeMenu prefs={prefs} set={set} />
@@ -147,6 +186,7 @@ export function AllView({ activeThreadId, bots, threadBots, onOpen, header }: {
         </button>
       )}
       {prefs.organizationMode === "chronological" && <NewSection onCreated={() => {}} />}
+      <DragGhost drag={dragState.drag} />
     </div>
   );
 }
