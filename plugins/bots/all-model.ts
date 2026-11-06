@@ -226,6 +226,49 @@ function projectResolver<T extends AllThread>(threads: readonly T[]) {
 
 export const NO_MACHINE = "no-machine";
 
+/** Whether worktree rows are on: By read status turns them off; "auto" means every organization but Custom. */
+export function groupsByEnvironment(prefs: Pick<AllPrefs, "groupByReadStatus" | "environmentGrouping" | "organizationMode">): boolean {
+  if (prefs.groupByReadStatus) return false;
+  return prefs.environmentGrouping === "auto" ? prefs.organizationMode !== "chronological" : prefs.environmentGrouping;
+}
+
+/** Writes for Groups → By environment: turning it on also turns off By read status, as in bb's menu. */
+export function toggleEnvironmentGrouping(prefs: Pick<AllPrefs, "groupByReadStatus" | "environmentGrouping" | "organizationMode">): Partial<AllPrefs> {
+  return groupsByEnvironment(prefs) ? { environmentGrouping: false } : { environmentGrouping: true, groupByReadStatus: false };
+}
+
+export const SORT_FIELDS = [
+  { sort: "updated", label: "Updated at", natural: "descending" },
+  { sort: "created", label: "Created at", natural: "descending" },
+  { sort: "alpha", label: "Alphabetical", natural: "ascending" },
+] as const;
+
+/** The direction a sort field shows, resolving "default" to the field's natural direction. */
+export function shownDirection(sort: AllPrefs["chronologicalSort"], direction: AllPrefs["sortDirection"]): "ascending" | "descending" {
+  if (direction !== "default") return direction;
+  return sort === "alpha" ? "ascending" : "descending";
+}
+
+/** Picking the current sort field flips its direction; picking another starts at that field's natural direction. */
+export function pickSort(prefs: Pick<AllPrefs, "chronologicalSort" | "sortDirection">, sort: (typeof SORT_FIELDS)[number]["sort"]): Pick<AllPrefs, "chronologicalSort" | "sortDirection"> {
+  const current = prefs.chronologicalSort === "none" ? "updated" : prefs.chronologicalSort;
+  if (current !== sort) return { chronologicalSort: sort, sortDirection: SORT_FIELDS.find((field) => field.sort === sort)!.natural };
+  return { chronologicalSort: sort, sortDirection: shownDirection(sort, prefs.sortDirection) === "ascending" ? "descending" : "ascending" };
+}
+
+/** Toggles Active or Archived; at least one stays selected. */
+export function toggleLifecycle(current: AllPrefs["threadLifecycles"], lifecycle: "active" | "archived"): AllPrefs["threadLifecycles"] {
+  if (!current.includes(lifecycle)) return [...current, lifecycle];
+  return current.length > 1 ? current.filter((item) => item !== lifecycle) : current;
+}
+
+/** Splits groups into those shown and those moved into More. Pinned never hides; unknown keys are ignored. */
+export function splitHidden<G extends { key: string }>(groups: readonly G[], hiddenGroups: readonly string[]): { shown: G[]; hidden: G[] } {
+  const hidden = new Set(hiddenGroups);
+  const isHidden = (group: G) => group.key !== "pinned" && hidden.has(group.key);
+  return { shown: groups.filter((group) => !isHidden(group)), hidden: groups.filter(isHidden) };
+}
+
 /**
  * Groups in bb's order for the chosen organization:
  * - Custom: Pinned, custom sections, and Threads in `manualSectionOrder`. A
@@ -242,7 +285,7 @@ export const NO_MACHINE = "no-machine";
 export function organizeAll<T extends AllThread>({ threads, prefs, sections, projects, hosts, readOverride = null }: OrganizeInput<T>): AllGroup<T>[] {
   const visible = threads.filter((thread) => shown(thread, prefs.threadLifecycles));
   const mode = prefs.organizationMode;
-  const groupEnvironments = !prefs.groupByReadStatus && (prefs.environmentGrouping === "auto" ? mode !== "chronological" : prefs.environmentGrouping);
+  const groupEnvironments = groupsByEnvironment(prefs);
   const sorted = compareThreads<T>(prefs.chronologicalSort, prefs.sortDirection);
   const unread = (thread: T) => unreadRoot(readOverride?.threadId === thread.id ? { ...thread, isUnread: readOverride.isUnread } : thread);
   const compare: Compare<T> = prefs.groupByReadStatus ? (a, b) => Number(unread(b)) - Number(unread(a)) || sorted(a, b) : sorted;

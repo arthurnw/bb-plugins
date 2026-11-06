@@ -218,6 +218,15 @@ collapses it in bb's list too. A change made in bb's list, another window, or
 thread shows its bot's avatar, in that thread's state, in place of the
 provider icon, even when provider icons are off.
 
+The **Organize** button beside the toggle (All only) has bb's options:
+organization, Groups (By environment, By read status), Rows (Provider icons,
+and Metadata while the `threadRowMetadata` experiment is on), Sort by (pick
+the current field again to reverse it), and Filter (Active, Archived, at
+least one). Each group's **⋯** menu has **Hide from list**, which moves the
+group into a collapsed **More** group at the end; **Show in list** there
+brings it back. Custom sections also get Rename and Delete. Pinned cannot be
+hidden.
+
 ## Develop
 
 ```sh

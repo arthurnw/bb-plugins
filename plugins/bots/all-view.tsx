@@ -9,8 +9,9 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import { useMemo, useState, type ReactNode } from "react";
 import type { Bot } from "@arthurnw/bb-shared/bots";
-import { organizeAll, type AllGroup, type AllItem, type AllNode } from "./all-model";
-import { chevron, Group, groupTitle, iconSlot, NewSection, PAGE, plainButton, rowStyle, SectionActions, ThreadRow, type RowContext } from "./list-parts";
+import { organizeAll, splitHidden, type AllGroup, type AllItem, type AllNode } from "./all-model";
+import { GroupMenu, OrganizeMenu } from "./all-menus";
+import { chevron, Group, groupTitle, iconSlot, NewSection, PAGE, plainButton, rowStyle, ThreadRow, type RowContext } from "./list-parts";
 import { useThreadListPreferences, type ThreadListPrefs } from "./thread-list-prefs";
 
 type Thread = PluginSidebarThread;
@@ -57,6 +58,7 @@ const noDrag = () => () => {};
 // was opened, and the parents expanded while grouping by read status.
 let opened: { threadId: string; isUnread: boolean } | null = null;
 let readStatusExpanded: readonly string[] = [];
+let moreOpen = false;
 
 /** While grouping by read status, the open thread keeps its place until another thread opens. */
 function readOverrideFor(activeThreadId: string | null, threads: readonly Thread[]) {
@@ -75,6 +77,8 @@ export function AllView({ activeThreadId, bots, threadBots, onOpen, header }: {
   const sidebar = useSidebarThreads({ experimental_lifecycles: prefs.threadLifecycles });
   const { providers } = useProviders();
   const [expanded, setExpanded] = useState(readStatusExpanded);
+  const [showMore, setShowMore] = useState(moreOpen);
+  const toggleMore = () => { moreOpen = !showMore; setShowMore(moreOpen); };
   const readOverride = prefs.groupByReadStatus ? readOverrideFor(activeThreadId, sidebar.threads) : null;
   const groups = useMemo(() => organizeAll({
     threads: sidebar.threads, prefs, sections: sidebar.sections, projects: sidebar.projects, hosts: sidebar.experimental_hosts ?? [], readOverride,
@@ -105,21 +109,37 @@ export function AllView({ activeThreadId, bots, threadBots, onOpen, header }: {
   };
   const archived = sidebar.experimental_archived;
 
+  const { shown, hidden } = splitHidden(groups, prefs.hiddenGroups);
+  const renderGroup = (group: AllGroup<Thread>) => {
+    const section = group.kind === "section" ? sidebar.sections.find((item) => item.id === group.entityId) : undefined;
+    return (
+      <Group key={group.key} dropKey={group.key} over={null} {...collapse(group)} roots={group.roots}
+        title={<span style={{ ...groupTitle, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{group.title}</span>}
+        actions={group.kind !== "pinned" && <GroupMenu title={group.title} groupKey={group.key} section={section} prefs={prefs} set={set} />}
+        empty={group.kind === "pinned" || group.kind === "threads" ? undefined : "No threads"}
+        limit={group.kind === "pinned" || group.kind === "section" ? undefined : PAGE}
+        renderRoot={(item) => <ItemRow key={itemKey(item)} item={item} depth={0} context={context} />} />
+    );
+  };
+
   if (sidebar.status === "loading") return <div style={{ padding: 12, fontSize: 12, color: "var(--muted-foreground)" }}>Loading…</div>;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: "4px 4px 16px" }}>
-      {header}
-      {groups.map((group) => {
-        const section = group.kind === "section" ? sidebar.sections.find((item) => item.id === group.entityId) : undefined;
-        return (
-          <Group key={group.key} dropKey={group.key} over={null} {...collapse(group)} roots={group.roots}
-            title={<span style={{ ...groupTitle, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{group.title}</span>}
-            actions={section && <SectionActions section={section} />}
-            empty={group.kind === "pinned" || group.kind === "threads" ? undefined : "No threads"}
-            limit={group.kind === "pinned" || group.kind === "section" ? undefined : PAGE}
-            renderRoot={(item) => <ItemRow key={itemKey(item)} item={item} depth={0} context={context} />} />
-        );
-      })}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingRight: 4 }}>
+        {header}
+        <OrganizeMenu prefs={prefs} set={set} />
+      </div>
+      {shown.map(renderGroup)}
+      {hidden.length > 0 && (
+        <section aria-label="More">
+          <button type="button" aria-expanded={showMore} onClick={toggleMore}
+            style={{ ...plainButton, ...groupTitle, display: "flex", alignItems: "center", gap: 6, padding: "6px 8px 2px" }}>
+            <Icon name="MoreHorizontal" className="size-3.5" aria-hidden />More
+            <span style={{ fontSize: 11, fontWeight: 400 }}>{showMore ? "▾" : `${hidden.length} ▸`}</span>
+          </button>
+          {showMore && <div style={{ paddingLeft: 8 }}>{hidden.map(renderGroup)}</div>}
+        </section>
+      )}
       {archived?.hasNextPage && (
         <button type="button" disabled={archived.isFetchingNextPage} onClick={() => void archived.fetchNextPage()}
           style={{ ...plainButton, padding: "4px 8px", fontSize: 12, color: "var(--muted-foreground)" }}>

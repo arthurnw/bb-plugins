@@ -253,35 +253,43 @@ export function ThreadGroup({ threads, groupBot = null, context, ...props }: Omi
   );
 }
 
-export function SectionActions({ section }: { section: PluginSidebarSection }) {
+/** Inline rename field for a custom section. */
+export function SectionRename({ section, onDone }: { section: PluginSidebarSection; onDone: () => void }) {
   const sdk = useSdk();
-  const [mode, setMode] = useState<"menu" | "rename" | "delete" | null>(null);
   const [name, setName] = useState(section.name);
-  const run = (operation: Promise<unknown>) => operation.then(() => setMode(null), (error) => toast.error(errorText(error)));
-  if (mode === "rename") {
-    return (
-      <input autoFocus value={name} aria-label="Section name" onChange={(e) => setName(e.target.value)} onBlur={() => setMode(null)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && name.trim()) void run(sdk.threadSections.update({ id: section.id, name: name.trim() }));
-          else if (e.key === "Escape") setMode(null);
-        }}
-        style={{ width: 120, fontSize: 12, padding: "1px 4px", border: "1px solid var(--border)", borderRadius: 4, background: "transparent", color: "var(--foreground)" }} />
-    );
-  }
-  if (mode === "delete") {
-    return (
-      <>
-        <button type="button" style={smallButton} onClick={() => void run(sdk.threadSections.delete({ id: section.id }))}>Delete</button>
-        <button type="button" style={smallButton} onClick={() => setMode(null)}>Cancel</button>
-      </>
-    );
-  }
+  return (
+    <input autoFocus value={name} aria-label="Section name" onChange={(e) => setName(e.target.value)} onBlur={onDone}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && name.trim()) sdk.threadSections.update({ id: section.id, name: name.trim() }).then(onDone, (error) => toast.error(errorText(error)));
+        else if (e.key === "Escape") onDone();
+      }}
+      style={{ width: 120, fontSize: 12, padding: "1px 4px", border: "1px solid var(--border)", borderRadius: 4, background: "transparent", color: "var(--foreground)" }} />
+  );
+}
+
+/** Inline Delete / Cancel confirmation for a custom section. */
+export function SectionDelete({ section, onDone }: { section: PluginSidebarSection; onDone: () => void }) {
+  const sdk = useSdk();
+  return (
+    <>
+      <button type="button" style={smallButton} title="Its threads move to Threads"
+        onClick={() => sdk.threadSections.delete({ id: section.id }).then(onDone, (error) => toast.error(errorText(error)))}>Delete</button>
+      <button type="button" style={smallButton} onClick={onDone}>Cancel</button>
+    </>
+  );
+}
+
+export function SectionActions({ section }: { section: PluginSidebarSection }) {
+  const [mode, setMode] = useState<"menu" | "rename" | "delete" | null>(null);
+  const done = () => setMode(null);
+  if (mode === "rename") return <SectionRename section={section} onDone={done} />;
+  if (mode === "delete") return <SectionDelete section={section} onDone={done} />;
   if (mode === "menu") {
     return (
       <>
-        <button type="button" style={smallButton} onClick={() => { setName(section.name); setMode("rename"); }}>Rename</button>
+        <button type="button" style={smallButton} onClick={() => setMode("rename")}>Rename</button>
         <button type="button" style={smallButton} title="Its threads move to Threads" onClick={() => setMode("delete")}>Delete</button>
-        <button type="button" style={smallButton} aria-label="Close" onClick={() => setMode(null)}>×</button>
+        <button type="button" style={smallButton} aria-label="Close" onClick={done}>×</button>
       </>
     );
   }

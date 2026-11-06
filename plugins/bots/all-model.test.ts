@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { compareThreads, organizeAll as organize, topLevelOrder, type AllItem, type AllPrefs, type AllThread, type OrganizeInput } from "./all-model.ts";
+import { compareThreads, groupsByEnvironment, organizeAll as organize, pickSort, shownDirection, splitHidden, toggleEnvironmentGrouping, toggleLifecycle, topLevelOrder, type AllItem, type AllPrefs, type AllThread, type OrganizeInput } from "./all-model.ts";
 
 let clock = 0;
 const thread = (id: string, over: Partial<AllThread> = {}): AllThread => {
@@ -208,4 +208,36 @@ test("by read status: the open thread keeps the unread state it had when opened"
   const rows = (readOverride: OrganizeInput<AllThread>["readOverride"]) => ids(organizeAll({ threads, readOverride, prefs: prefs({ groupByReadStatus: true }) }).at(-1)!.roots);
   assert.deepEqual(rows(null), ["other", "opened"]);
   assert.deepEqual(rows({ threadId: "opened", isUnread: true }), ["opened", "other"]);
+});
+
+test("hidden groups move to More in list order; Pinned never hides; unknown keys do nothing", () => {
+  const groups = [{ key: "pinned" }, { key: "section:a" }, { key: "section:b" }, { key: "threads" }];
+  const { shown, hidden } = splitHidden(groups, ["threads", "pinned", "section:a", "section:gone"]);
+  assert.deepEqual(shown.map((group) => group.key), ["pinned", "section:b"]);
+  assert.deepEqual(hidden.map((group) => group.key), ["section:a", "threads"]);
+});
+
+test("picking a sort field starts at its natural direction; picking it again flips it", () => {
+  assert.deepEqual(pickSort({ chronologicalSort: "updated", sortDirection: "default" }, "alpha"), { chronologicalSort: "alpha", sortDirection: "ascending" });
+  assert.deepEqual(pickSort({ chronologicalSort: "alpha", sortDirection: "ascending" }, "created"), { chronologicalSort: "created", sortDirection: "descending" });
+  assert.deepEqual(pickSort({ chronologicalSort: "updated", sortDirection: "default" }, "updated"), { chronologicalSort: "updated", sortDirection: "ascending" });
+  assert.deepEqual(pickSort({ chronologicalSort: "alpha", sortDirection: "default" }, "alpha"), { chronologicalSort: "alpha", sortDirection: "descending" });
+  assert.deepEqual(pickSort({ chronologicalSort: "none", sortDirection: "default" }, "updated"), { chronologicalSort: "updated", sortDirection: "ascending" });
+  assert.equal(shownDirection("created", "default"), "descending");
+});
+
+test("the lifecycle filter keeps at least one selected", () => {
+  assert.deepEqual(toggleLifecycle(["active"], "archived"), ["active", "archived"]);
+  assert.deepEqual(toggleLifecycle(["active", "archived"], "active"), ["archived"]);
+  assert.deepEqual(toggleLifecycle(["archived"], "archived"), ["archived"]);
+});
+
+test("By environment shows the effective setting; turning it on turns off By read status", () => {
+  const base = { organizationMode: "chronological" as const, environmentGrouping: "auto" as const, groupByReadStatus: false };
+  assert.equal(groupsByEnvironment(base), false);
+  assert.equal(groupsByEnvironment({ ...base, organizationMode: "project" }), true);
+  assert.equal(groupsByEnvironment({ ...base, environmentGrouping: true, groupByReadStatus: true }), false);
+  assert.deepEqual(toggleEnvironmentGrouping(base), { environmentGrouping: true, groupByReadStatus: false });
+  assert.deepEqual(toggleEnvironmentGrouping({ ...base, organizationMode: "project" }), { environmentGrouping: false });
+  assert.deepEqual(toggleEnvironmentGrouping({ ...base, environmentGrouping: true, groupByReadStatus: true }), { environmentGrouping: true, groupByReadStatus: false });
 });
