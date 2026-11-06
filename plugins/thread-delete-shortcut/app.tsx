@@ -1,11 +1,26 @@
-import { useState } from "react";
-import { definePluginApp } from "@get-bb/plugin-sdk/app";
+import { useEffect, useState } from "react";
+import { definePluginApp, useRpc } from "@get-bb/plugin-sdk/app";
 import type { PluginPendingInteractionProps } from "@get-bb/plugin-sdk";
+import type { rpcContract } from "./server.js";
 
 type DeletePrompt = {
   threadTitle: string;
   hasChildren: boolean;
 };
+
+type DeleteRpcClient = ReturnType<typeof useRpc<typeof rpcContract>>;
+let deleteRpc: DeleteRpcClient | null = null;
+
+function CommandRuntime() {
+  const rpc = useRpc<typeof rpcContract>();
+  useEffect(() => {
+    deleteRpc = rpc;
+    return () => {
+      if (deleteRpc === rpc) deleteRpc = null;
+    };
+  }, [rpc]);
+  return null;
+}
 
 function ConfirmDelete({
   interaction,
@@ -60,6 +75,18 @@ function ConfirmDelete({
 }
 
 export default definePluginApp((app) => {
+  app.commands.register({
+    id: "delete-current",
+    title: "Thread Delete: delete current thread",
+    defaultShortcut: { key: "Backspace", mod: true, shift: true },
+    isAvailable: ({ threadId }) => threadId !== null,
+    run: async ({ threadId }) => {
+      if (threadId === null) return;
+      if (deleteRpc === null) throw new Error("Thread Delete is still starting; try again.");
+      await deleteRpc.call("deleteCurrent", { threadId });
+    },
+  });
+  app.slots.experimental_appOverlay({ id: "command-runtime", component: CommandRuntime });
   app.slots.pendingInteraction({
     id: "confirm-delete",
     component: ConfirmDelete,

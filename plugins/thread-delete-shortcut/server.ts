@@ -1,4 +1,5 @@
-import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
+import { z } from "zod";
 
 const RENDERER_ID = "confirm-delete";
 
@@ -7,7 +8,56 @@ type DeletePrompt = {
   hasChildren: boolean;
 };
 
+export const rpcContract = defineRpcContract({
+  deleteCurrent: {
+    input: z.object({ threadId: z.string().min(1) }),
+    output: z.object({ deleted: z.boolean() }),
+  },
+});
+
+async function deleteCurrent(
+  bb: BbPluginApi,
+  threadId: string,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const thread = await bb.sdk.threads.get({ threadId });
+  const cascade = await bb.sdk.threads.experimental_listCascade({
+    threadIds: [threadId],
+    action: "delete",
+  });
+  const hasChildren = (cascade.threads[0]?.cascadeThreadIds.length ?? 0) > 1;
+  const prompt: DeletePrompt = {
+    threadTitle: thread.title ?? "Untitled thread",
+    hasChildren,
+  };
+
+  const answer = await bb.ui.requestInput(
+    {
+      threadId,
+      rendererId: RENDERER_ID,
+      title: "Delete thread permanently?",
+      payload: prompt,
+      timeoutMs: 60_000,
+    },
+    { signal },
+  );
+
+  if (answer.outcome !== "submitted" || answer.value !== true) return false;
+
+  await bb.sdk.threads.delete({
+    threadId,
+    childThreadsConfirmed: true,
+  });
+  return true;
+}
+
 export default async function plugin(bb: BbPluginApi) {
+  bb.rpc.register(rpcContract, {
+    deleteCurrent: async ({ threadId }, context) => ({
+      deleted: await deleteCurrent(bb, threadId, context.experimental_signal),
+    }),
+  });
+
   bb.cli.register({
     name: "thread-delete-shortcut",
     summary: "Delete the focused thread after confirmation",
@@ -42,37 +92,11 @@ export default async function plugin(bb: BbPluginApi) {
       }
 
       try {
-        const thread = await bb.sdk.threads.get({ threadId });
-        const cascade = await bb.sdk.threads.experimental_listCascade({
-          threadIds: [threadId],
-          action: "delete",
-        });
-        const hasChildren = (cascade.threads[0]?.cascadeThreadIds.length ?? 0) > 1;
-        const prompt: DeletePrompt = {
-          threadTitle: thread.title ?? "Untitled thread",
-          hasChildren,
+        const deleted = await deleteCurrent(bb, threadId, context.signal);
+        return {
+          exitCode: 0,
+          stdout: deleted ? `Deleted thread ${threadId}.` : "Deletion cancelled.",
         };
-
-        const answer = await bb.ui.requestInput(
-          {
-            threadId,
-            rendererId: RENDERER_ID,
-            title: "Delete thread permanently?",
-            payload: prompt,
-            timeoutMs: 60_000,
-          },
-          { signal: context.signal },
-        );
-
-        if (answer.outcome !== "submitted" || answer.value !== true) {
-          return { exitCode: 0, stdout: "Deletion cancelled." };
-        }
-
-        await bb.sdk.threads.delete({
-          threadId,
-          childThreadsConfirmed: true,
-        });
-        return { exitCode: 0, stdout: `Deleted thread ${threadId}.` };
       } catch (error) {
         return {
           exitCode: 1,
