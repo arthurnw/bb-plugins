@@ -28,6 +28,8 @@ Manage bots in Settings → Bots.
 - **Avatar in thread panes**: a thread with a bot shows the bot's avatar at
   96 px in a corner of its pane, with the thread's own state. The corner is set
   in the bot's settings.
+- **Bot zoo**: every bot's avatar in a draggable card, or in a strip along the
+  bottom of the open right panel. Off by default; turn it on in Settings → Bots.
 
 A thread belongs to a bot when its first message carries a bot pill (the
 composers insert it), or when it inherits one from its parent, fork source, or
@@ -137,6 +139,32 @@ browser profile, the app rasterizes them again and gives any bot whose stored
 image matches exactly the corresponding animated avatar; other uploads stay. App icons can only be registered at setup,
 so bots use 30 fixed icon names (`bot-0` to `bot-29`); a deleted bot's
 slot goes to the next new bot, which then also shows in old pills.
+
+### Bot zoo
+
+Settings → Bots has two per-device checkboxes: **Show bot zoo** (off by
+default) and **Dock to the right panel when it's open** (on by default). The zoo
+shows every bot in Bots order with its combined state; idle bots are dimmed,
+and a bot with a thread in a visible pane gets a ring. Hovering a bot shows its
+live thread counts by state, such as "Planner · 1 waiting, 2 working". Clicking
+it opens a menu of its live threads, most urgent first, and **New thread with**
+the bot. The zoo hides when there are no bots or the window is narrower than
+46rem.
+
+Floating, the zoo is a card. Drag it from anywhere (4 px starts a drag) or
+focus it and use the arrow keys (8 px, 32 px with Shift). It is held at an
+offset from the nearest window corner, saved per device, snaps to a 16 px
+inset when dropped within 24 px of it, and stays on screen when the window
+shrinks. The "–" button collapses it to the most urgent bot, with a badge
+counting bots that are waiting or unread; click that avatar to expand.
+
+Docked, the zoo is a strip with no header that wraps to more rows as the
+panel narrows. The floating card keeps its position meanwhile and returns there
+when the panel closes. Docking uses bb's DOM, which is not a public API: the
+right panel is `[data-panel-id^="thread-detail-secondary-panel"]` (with
+`-pane-N` in split layouts), which is width 0 while closed, and the strip is
+added as the last child of its `aside`, a flex column. If those change, the zoo
+stays floating.
 
 ### Thread list
 
