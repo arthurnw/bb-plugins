@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CARD_H, CARD_W, arrangeGroup, autoLayout, facingSides, frameBounds, placeNew, type LayoutThread } from "./layout.ts";
+import { CARD_H, CARD_W, FRAME_GAP, FRAME_HEADER, arrangeGroup, autoLayout, facingSides, frameBounds, placeNew, type LayoutThread, type Point } from "./layout.ts";
 
 const thread = (id: string, group: string, extra: Partial<LayoutThread> = {}): LayoutThread => ({
   id,
@@ -43,6 +43,24 @@ test("autoLayout keeps groups apart and never overlaps cards", () => {
   }
   // The most recently active group comes first.
   assert.ok(autoLayout(threads).get("b1")!.x < autoLayout(threads).get("a1")!.x);
+});
+
+test("autoLayout leaves headroom above each row of frames", () => {
+  // Seven one-card groups wrap into two rows.
+  const threads = Array.from({ length: 7 }, (_, index) => thread(`t${index}`, `g${index}`, { latestAttentionAt: 7 - index }));
+  const flat = autoLayout(threads);
+  const raised = autoLayout(threads, undefined, 84);
+  const tops = (positions: Map<string, Point>) => [...new Set([...positions.values()].map((point) => point.y))];
+  const lefts = (positions: Map<string, Point>) => [...positions.values()].map((point) => point.x);
+  const [first, second] = tops(flat);
+  assert.equal(tops(flat).length, 2);
+  // The frame's top is its first card's top less the header and padding.
+  assert.equal(first! - FRAME_HEADER - 24, 0);
+  const frameHeight = CARD_H + 24 * 2 + FRAME_HEADER;
+  assert.equal(second! - first!, frameHeight + FRAME_GAP);
+  assert.deepEqual(tops(raised), [first! + 84, second! + 84 * 2]);
+  assert.deepEqual(lefts(raised), lefts(flat));
+  assert.deepEqual(autoLayout(threads, undefined, 0), flat);
 });
 
 test("autoLayout survives parent cycles", () => {

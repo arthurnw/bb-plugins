@@ -40,7 +40,7 @@ import { cn } from "@/lib/utils";
 import type { Arrangement, Layout, Note, PinnedChat, rpcContract } from "../server";
 import { CanvasActionsContext, type CanvasActions } from "./context";
 import { Icon, type IconName } from "./icons.tsx";
-import { CARD_H, CARD_W, DEFAULT_ARRANGE, FRAME_GAP, arrangeGroup, autoLayout, frameBounds, placeNew, type ArrangeOptions, type Point, type Rect } from "./layout.ts";
+import { CARD_H, CARD_W, DEFAULT_ARRANGE, FIGURE_RISE, FRAME_GAP, arrangeGroup, autoLayout, frameBounds, placeNew, type ArrangeOptions, type Point, type Rect } from "./layout.ts";
 import { DIRECTION_KEYS, nearestInDirection, nearestTo, type Direction, type NavItem } from "./nav.ts";
 import { nodeTypes, type CanvasNode } from "./nodes";
 import { matchesShortcut, shortcutLabel, useArchive, useArchiveShortcut } from "./archive.ts";
@@ -54,6 +54,7 @@ import { edgeTypes } from "./TetherEdge.tsx";
 import { Triage, needsAttention } from "./Triage.tsx";
 import { GROUPINGS, LAYOUT_CHANGED, emptyLayout, type ArrangeStyle, type Grouping } from "./shared.ts";
 import { BUCKETS, BUCKET_LABEL, age, bucketOf, type Bucket } from "./status.ts";
+import { combinedAvatarState, liveThread, remeasureAvatars, type AvatarState } from "@arthurnw/bb-shared/avatars";
 import { openNewThread } from "@arthurnw/bb-shared/events";
 import { availableGroupings, effectiveGrouping, rebound } from "./bots.ts";
 import { sendThreadToBot, useLauncherBots } from "./launcher.ts";
@@ -433,6 +434,18 @@ function CanvasInner() {
   const bots = launcher.status === "ready" ? launcher.bots : null;
   const threadBots = launcher.status === "ready" ? launcher.threadBots : null;
   const botsById = useMemo(() => new Map((bots ?? []).map((bot) => [bot.id, bot])), [bots]);
+  // Each bot's combined state over its live threads, as in the Bots panel:
+  // child threads and threads filed in other frames count too.
+  const botStates = useMemo(() => {
+    const byBot = new Map<string, PluginSidebarThread[]>();
+    for (const thread of sidebar.threads) {
+      const botId = threadBots?.[thread.id];
+      if (botId && liveThread(thread)) byBot.set(botId, [...(byBot.get(botId) ?? []), thread]);
+    }
+    return new Map([...byBot].map(([botId, list]): [string, AvatarState] => [botId, combinedAvatarState(list)]));
+  }, [sidebar.threads, threadBots]);
+  // Bot frames leave room above them for the figure standing on their corner.
+  const headroom = grouping === "bot" ? FIGURE_RISE : 0;
   const projectNames = useMemo(
     () => new Map(sidebar.projects.map((project) => [project.id, project.isPersonal ? "Personal" : project.name])),
     [sidebar.projects],
@@ -624,12 +637,12 @@ function CanvasInner() {
     const noteRects = arrangement.notes.map((note) => ({ x: note.x, y: note.y, width: note.width, height: note.height }));
     const placed =
       stored.size === 0 && arrangement.notes.length === 0
-        ? autoLayout(layoutThreads)
+        ? autoLayout(layoutThreads, undefined, headroom)
         : placeNew(layoutThreads, stored, noteRects);
     setPositions(Object.fromEntries(placed));
     const fresh = [...placed].filter(([id]) => !stored.has(id));
     if (fresh.length > 0 && sidebar.status === "ready") save(Object.fromEntries(fresh));
-  }, [layout, arrangement, layoutThreads, sidebar.status, save, grouping, botsReady]);
+  }, [layout, arrangement, layoutThreads, sidebar.status, save, grouping, botsReady, headroom]);
 
   // A thread placed before the Launcher recorded its bot sits in the wrong
   // frame; drop its spot in the bot grouping so it is placed again.
@@ -695,7 +708,7 @@ function CanvasInner() {
     if (empty.length === 0) return populated;
     const slot = frameBounds([{ x: 0, y: 0 }])!;
     const left = populated.length === 0 ? 0 : Math.min(...populated.map((frame) => frame.bounds.x));
-    const top = populated.length === 0 ? 0 : Math.max(...populated.map((frame) => frame.bounds.y + frame.bounds.height)) + FRAME_GAP;
+    const top = populated.length === 0 ? headroom : Math.max(...populated.map((frame) => frame.bounds.y + frame.bounds.height)) + FRAME_GAP + headroom;
     return [
       ...populated,
       ...empty.map((group, index) => ({
@@ -705,7 +718,7 @@ function CanvasInner() {
         bounds: { ...slot, ...(arrangement.positions[`frame:${group.key}`] ?? { x: left + index * (slot.width + FRAME_GAP), y: top }) },
       })),
     ];
-  }, [topLevel, groups, positions, cardHeight, grouping, sidebar.sections, sidebar.projects, bots, arrangement.positions]);
+  }, [topLevel, groups, positions, cardHeight, grouping, sidebar.sections, sidebar.projects, bots, arrangement.positions, headroom]);
 
   /** Files a thread under a section and lets the canvas re-place it there. */
   const moveToSection = useCallback(
@@ -770,6 +783,7 @@ function CanvasInner() {
           sectionId: group.sectionId,
           botId: group.botId,
           bot: group.botId === null ? null : (botsById.get(group.botId) ?? null),
+          botState: (group.botId !== null && botStates.get(group.botId)) || "idle",
           name: group.name,
           count: members.length,
           attention: members
@@ -863,7 +877,7 @@ function CanvasInner() {
       });
     }
     return result;
-  }, [compact, threadsById, topLevel, forest, folded, cardHeight, rootOf, frames, positions, notes, chats, focusedChat, chatFocusRequests, settledZoom, selectedId, groups, buckets, hidden, query, now, grouping, layout?.frameColors, botsById]);
+  }, [compact, threadsById, topLevel, forest, folded, cardHeight, rootOf, frames, positions, notes, chats, focusedChat, chatFocusRequests, settledZoom, selectedId, groups, buckets, hidden, query, now, grouping, layout?.frameColors, botsById, botStates]);
 
   // React Flow owns transient state (measured size, selection, drag); merge
   // it into each rebuild.
@@ -1378,11 +1392,11 @@ function CanvasInner() {
 
   const autoArrange = useCallback(() => {
     record();
-    const next = Object.fromEntries(autoLayout(layoutThreads, arrangeOptions));
+    const next = Object.fromEntries(autoLayout(layoutThreads, arrangeOptions, headroom));
     setPositions(next);
     save(next, true);
     requestAnimationFrame(fitAll);
-  }, [layoutThreads, save, fitAll, record, arrangeOptions]);
+  }, [layoutThreads, save, fitAll, record, arrangeOptions, headroom]);
 
   /** Rearranges one frame's cards in place with the configured layout. */
   const arrangeFrame = useCallback(
@@ -1750,6 +1764,9 @@ function CanvasInner() {
             onNodesChange={onNodesChange}
             onNodeDragStart={onNodeDragStart}
             onNodeDragStop={onNodeDragStop}
+            // Pans, zooms, and drags move the figures by CSS transform, which the eye tracker can't see.
+            onNodeDrag={remeasureAvatars}
+            onMove={remeasureAvatars}
             onSelectionEnd={onSelectionEnd}
             onNodeClick={(event, node) => {
               if (node.type !== "thread") return;

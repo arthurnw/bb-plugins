@@ -31,6 +31,9 @@ const GAP_Y = 20;
 const FRAME_PAD = 24;
 export const FRAME_HEADER = 44;
 export const FRAME_GAP = 96;
+/** A bot frame's figure: its bottom meets the header's bottom, so it rises FIGURE_RISE above the frame. */
+export const FIGURE_SIZE = 128;
+export const FIGURE_RISE = FIGURE_SIZE - FRAME_HEADER;
 const ROW_MAX_WIDTH = 2600;
 
 /** Parent links within one group, falling back to the fork source. */
@@ -152,6 +155,8 @@ function treeCells(threads: readonly LayoutThread[]): Map<string, { col: number;
 export function autoLayout(
   threads: readonly LayoutThread[],
   options: ArrangeOptions = DEFAULT_ARRANGE,
+  /** Room left above each row of frames, for figures that rise above them. */
+  headroom = 0,
 ): Map<string, Point> {
   const byGroup = new Map<string, LayoutThread[]>();
   for (const thread of threads) {
@@ -163,7 +168,7 @@ export function autoLayout(
 
   const result = new Map<string, Point>();
   let x = 0;
-  let y = 0;
+  let y = headroom;
   let rowHeight = 0;
   for (const list of groups) {
     const block = layoutGroup(list, options);
@@ -171,7 +176,7 @@ export function autoLayout(
     const frameHeight = block.height + FRAME_PAD * 2 + FRAME_HEADER;
     if (x > 0 && x + frameWidth > ROW_MAX_WIDTH) {
       x = 0;
-      y += rowHeight + FRAME_GAP;
+      y += rowHeight + FRAME_GAP + headroom;
       rowHeight = 0;
     }
     for (const [id, point] of block.positions) {

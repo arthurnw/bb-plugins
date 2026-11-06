@@ -8,6 +8,8 @@ export interface LauncherBot {
   emoji: string;
   /** A square image as a data URL. */
   avatar: string | null;
+  /** The animated upload's version; the bytes come from Bots' getBotAvatarAnimation. */
+  avatarAnimation: string | null;
 }
 
 /** "loading" until the first read; "unavailable" when Bots isn't installed or running. */

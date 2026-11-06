@@ -13,12 +13,12 @@ import { Icon, type IconName } from "./icons.tsx";
 import type { Note } from "../server";
 import { FRAME_COLORS, NOTE_COLORS, type FrameColor, type Grouping } from "./shared.ts";
 import type { LauncherBot } from "./bots.ts";
-import { AnimatedAvatar, galleryId } from "@arthurnw/bb-shared/avatars";
+import { BotAvatar, type AvatarState } from "@arthurnw/bb-shared/avatars";
 import { ChatNode, type ChatFlowNode } from "./ChatNode.tsx";
 import { threadTarget, useArchive } from "./archive.ts";
 import { useCanvasActions, useIsFar } from "./context";
 import { CHILD_ROW_H } from "./children.ts";
-import { CARD_H, CARD_W, FRAME_HEADER } from "./layout.ts";
+import { CARD_H, CARD_W, FIGURE_SIZE, FRAME_HEADER } from "./layout.ts";
 import { BUCKET_LABEL, type Bucket } from "./status.ts";
 
 export type ThreadNodeData = {
@@ -61,6 +61,8 @@ export type FrameNodeData = {
   /** The Launcher bot, in the bot grouping; null for threads without one. */
   botId: string | null;
   bot: LauncherBot | null;
+  /** The bot's combined state over its live threads; idle without a bot. */
+  botState: AvatarState;
   name: string;
   count: number;
   attention: number;
@@ -375,14 +377,23 @@ const GROUP_ICON: Record<Grouping, IconName> = {
   bot: "Bot",
 };
 
-/** The bot's gallery avatar or image, else its emoji, else the grouping icon. */
-function BotFace({ bot, far }: { bot: LauncherBot; far: boolean }) {
-  const size = far ? "size-8" : "size-5";
-  const gallery = galleryId(bot.avatar);
-  if (gallery) return <AnimatedAvatar id={gallery} className={size} />;
-  if (bot.avatar) return <img src={bot.avatar} alt="" aria-hidden className={cn("shrink-0 rounded-full object-cover", size)} />;
-  if (bot.emoji) return <span aria-hidden className={cn("flex shrink-0 items-center justify-center leading-none", size, far ? "text-3xl" : "text-base")}>{bot.emoji}</span>;
-  return <Icon name="Bot" className={cn("shrink-0 text-muted-foreground", far ? "size-8" : "size-4")} />;
+const FIGURE_INSET = 16;
+
+/**
+ * The bot standing on the frame's top-left corner, its feet on the header's
+ * bottom edge. It scales with the canvas like the frame. Clicks pass through
+ * to the header.
+ */
+function BotFigure({ bot, state }: { bot: LauncherBot; state: AvatarState }) {
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute flex"
+      style={{ left: FIGURE_INSET, bottom: `calc(100% - ${FRAME_HEADER}px)`, width: FIGURE_SIZE, height: FIGURE_SIZE }}
+    >
+      <BotAvatar bot={bot} size={FIGURE_SIZE} state={state} track />
+    </div>
+  );
 }
 
 const headerButton =
@@ -405,15 +416,14 @@ export const FrameNode = memo(function FrameNode({ data, selected }: NodeProps<F
   return (
     <div
       style={{ width: data.width, height: data.height }}
-      className={cn("rounded-xl border-2", FRAME_TINT[data.color], selected && "ring-2 ring-ring")}
+      className={cn("relative rounded-xl border-2", FRAME_TINT[data.color], selected && "ring-2 ring-ring")}
     >
+      {data.bot ? <BotFigure bot={data.bot} state={data.botState} /> : null}
       <div
-        style={{ height: FRAME_HEADER }}
+        style={{ height: FRAME_HEADER, paddingLeft: data.bot ? FIGURE_INSET + FIGURE_SIZE + 8 : undefined }}
         className="flex cursor-grab items-center gap-2 px-4 active:cursor-grabbing"
       >
-        {data.bot ? (
-          <BotFace bot={data.bot} far={far} />
-        ) : (
+        {data.bot ? null : (
           <Icon name={GROUP_ICON[data.grouping]} className={cn("shrink-0 text-muted-foreground", far ? "size-8" : "size-4")} />
         )}
         {renaming ? (
