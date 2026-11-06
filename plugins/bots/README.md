@@ -207,15 +207,16 @@ and each section's **⋯** (Rename, Delete) use bb's sections. Quick actions wit
 a submenu are left to the **⋯** menu. Drag needs this list: bb's own rows carry
 no drag data.
 
-**All** draws bb's regular list itself: Pinned (with the children of pinned
-threads), bb's custom sections, and Threads, in the built-in list's order and
-sort. It reads the built-in list's preferences and writes changes back, so
-collapsing a group here collapses it in bb's list too. A change made in bb's
-list, another window, or `bb thread-list prefs` shows up when this window next
-regains focus. A bot thread shows its bot's avatar, in that thread's state, in
-place of the provider icon, even when provider icons are off. The All view
-supports the Custom organization only for now; By project and By machine show
-as Custom.
+**All** draws bb's regular list itself, in the built-in list's organization,
+order, and sort: By project (one group per project, personal threads under
+Threads), Custom (Pinned, bb's custom sections, and Threads), or By machine.
+Pinned holds pinned threads and their children. Worktree grouping, By read
+status, and every group's collapse state follow the built-in list's settings.
+All reads those settings and writes changes back, so collapsing a group here
+collapses it in bb's list too. A change made in bb's list, another window, or
+`bb thread-list prefs` shows up when this window next regains focus. A bot
+thread shows its bot's avatar, in that thread's state, in place of the
+provider icon, even when provider icons are off.
 
 ## Develop
 

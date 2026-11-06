@@ -131,7 +131,7 @@ export interface RowContext {
   providers: ReturnType<typeof useProviders>["providers"];
   onOpen: (thread: PluginSidebarThread) => void;
   startDrag: (thread: PluginSidebarThread) => (event: ReactPointerEvent) => void;
-  collapsedThreads: ReadonlySet<string>;
+  collapsedThreads: { has(id: string): boolean };
   toggleThread: (id: string) => void;
   preferences: RowPreferences;
   /** A bot thread's avatar replaces its provider icon, shown even when provider icons are off. */
@@ -313,10 +313,10 @@ export function Divider() {
   return <div role="separator" style={{ height: 0, margin: "4px 0", borderTop: "1px solid color-mix(in srgb, var(--border) 60%, transparent)" }} />;
 }
 
-const iconSlot: CSSProperties = { width: 16, height: 16, flex: "none", display: "inline-flex", alignItems: "center", justifyContent: "center", marginTop: 1 };
-const rowStyle: CSSProperties = { display: "flex", alignItems: "flex-start", gap: 8, padding: "5px 8px", borderRadius: 6, fontSize: 13, color: "var(--foreground)", textDecoration: "none", cursor: "pointer" };
+export const iconSlot: CSSProperties = { width: 16, height: 16, flex: "none", display: "inline-flex", alignItems: "center", justifyContent: "center", marginTop: 1 };
+export const rowStyle: CSSProperties = { display: "flex", alignItems: "flex-start", gap: 8, padding: "5px 8px", borderRadius: 6, fontSize: 13, color: "var(--foreground)", textDecoration: "none", cursor: "pointer" };
 export const plainButton: CSSProperties = { border: "none", background: "transparent", color: "var(--foreground)", cursor: "pointer", padding: 0, textAlign: "left", fontSize: 13 };
-const chevron: CSSProperties = { ...plainButton, color: "var(--muted-foreground)", fontSize: 11, padding: "0 4px", alignSelf: "center" };
+export const chevron: CSSProperties = { ...plainButton, color: "var(--muted-foreground)", fontSize: 11, padding: "0 4px", alignSelf: "center" };
 export const iconButton: CSSProperties = { ...plainButton, padding: "0 6px", borderRadius: 4, color: "var(--muted-foreground)", fontSize: 15, lineHeight: "18px" };
 const hoverButton: CSSProperties = { ...plainButton, width: 22, height: 20, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 4, color: "var(--muted-foreground)" };
 const smallButton: CSSProperties = { ...plainButton, padding: "0 4px", fontSize: 11, color: "var(--muted-foreground)" };
