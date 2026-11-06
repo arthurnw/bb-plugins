@@ -5,6 +5,7 @@ import { registerBotThreadAction } from "./bot-thread-action";
 import { registerBotThreadInfo } from "./bot-thread-info";
 import { BotThreadList } from "./bots-view";
 import { registerFallbackDialog } from "./fallback-dialog";
+import { registerPaneAvatar } from "./pane-avatar";
 import { BotChip, BOT_POPUP_ID, BotPopup } from "./native-bot";
 
 export default definePluginApp((app) => {
@@ -12,6 +13,7 @@ export default definePluginApp((app) => {
   registerBotThreadAction(app);
   registerBotThreadInfo(app);
   registerFallbackDialog(app);
+  registerPaneAvatar(app);
   app.slots.experimental_threadList({
     id: "bots", title: "Bots", description: "Bots and custom sections in one order you arrange. Drag a thread onto a bot to hand it off, onto a thread to nest it, or onto a section to file it.",
     component: ({ activeThreadId, activeProjectId, onNavigate }) =>
