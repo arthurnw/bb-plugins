@@ -2,7 +2,7 @@ import {
   experimental_ProviderIcon as ProviderIcon, experimental_ProviderModelPicker as ProviderModelPicker, experimental_useProviders as useProviders,
 } from "@get-bb/plugin-sdk/app";
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
-import { BotAvatar } from "./bot-avatar.tsx";
+import { BotAvatar } from "../avatars/bot-avatar.tsx";
 import type { AvatarState } from "../avatars/state.ts";
 import { filterPresets, findPreset, MAX_PRESETS, modelSpec, providerLabel, sameModel, type ModelPreset, type ModelSelection } from "../selection.ts";
 import { botLabel, filterBots, type Bot } from "../bots.ts";

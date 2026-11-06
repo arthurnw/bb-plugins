@@ -1,7 +1,6 @@
 import { experimental_useSidebarThreads as useSidebarThreads, useRealtime, useRpc, type PluginAppBuilder, type PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { BotAvatar, type Face } from "@arthurnw/bb-shared/composer";
-import { animatedImageType, combinedAvatarState, setAnimationFetcher, type AvatarState } from "@arthurnw/bb-shared/avatars";
+import { animatedImageType, BotAvatar, combinedAvatarState, liveThread, setAnimationFetcher, type AvatarState, type Face } from "@arthurnw/bb-shared/avatars";
 import type { botsContract } from "./bots-server";
 import { ANIMATION_MAX_BYTES, AVATAR_SIZE, botIconName, MAX_BOTS, type Bot } from "@arthurnw/bb-shared/bots";
 import { notifyBotsChanged } from "@arthurnw/bb-shared/events";
@@ -53,9 +52,6 @@ export function useThreadBots(): Record<string, string> {
   useRealtime("bots", load);
   return threads;
 }
-
-/** Archived and hidden threads do not count toward a bot's state. */
-export const liveThread = (thread: PluginSidebarThread) => !thread.isArchived && !thread.isHidden;
 
 /** Keeps the slot icons and bot states current; mount once in an always-present surface. */
 export function BotIconSync() {

@@ -1,4 +1,4 @@
-export { BotAvatar, type Face } from "./bot-avatar.tsx";
+export { BotAvatar, type Face } from "../avatars/bot-avatar.tsx";
 export { ComposerDialog, hasDraft, type ComposerDialogProps, type ComposerRequest } from "./dialog.tsx";
 export { availableEnvironments, checkoutOn, environmentFor, EXISTING_BRANCH_PROVIDER, handoffPrompt, NAMED_WORKTREE_PROVIDER, reuseOrCheckout } from "./environment.ts";
 export { createFocusRegistry } from "./focus-field.ts";

@@ -24,3 +24,6 @@ export function combinedAvatarState(threads: Iterable<StateThread>): AvatarState
   }
   return AVATAR_STATES[best]!;
 }
+
+/** Archived and hidden threads do not count toward a bot's state. */
+export const liveThread = (thread: { isArchived: boolean; isHidden: boolean }) => !thread.isArchived && !thread.isHidden;

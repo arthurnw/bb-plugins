@@ -30,6 +30,16 @@ function kick() {
   requestAnimationFrame(loop);
 }
 
+/**
+ * Drops cached positions. Call when avatars move without a scroll or resize,
+ * such as a CSS-transformed canvas that pans, zooms, or drags. While the
+ * pointer is followed, the eyes re-aim at once.
+ */
+export function remeasureAvatars() {
+  invalidate();
+  if (following) kick();
+}
+
 function onPointerMove(event: PointerEvent) {
   if (reducedMotion?.matches) return;
   pointerX = event.clientX;

@@ -1,9 +1,9 @@
 import type { CSSProperties } from "react";
 import type { Bot } from "../bots.ts";
-import { AnimatedAvatar } from "../avatars/animated-avatar.tsx";
-import { GALLERY_PREFIX, galleryId } from "../avatars/ids.ts";
-import type { AvatarState } from "../avatars/state.ts";
-import { UploadedAvatar } from "../avatars/uploaded-avatar.tsx";
+import { AnimatedAvatar } from "./animated-avatar.tsx";
+import { GALLERY_PREFIX, galleryId } from "./ids.ts";
+import type { AvatarState } from "./state.ts";
+import { UploadedAvatar } from "./uploaded-avatar.tsx";
 
 /** `id` and `avatarAnimation` let an animated upload play. */
 export type Face = Pick<Bot, "avatar" | "emoji" | "name"> & Partial<Pick<Bot, "id" | "avatarAnimation">>;
