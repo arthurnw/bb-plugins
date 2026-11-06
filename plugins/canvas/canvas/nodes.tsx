@@ -453,12 +453,18 @@ export const FrameNode = memo(function FrameNode({ data, selected }: NodeProps<F
         )}
         {far || renaming ? null : (
           <>
-            <span className="shrink-0 text-xs text-muted-foreground">
-              {data.count} thread{data.count === 1 ? "" : "s"}
-            </span>
+            {/* A figure leaves the header little room, so its frame drops the count and shortens the chip to keep the name readable. */}
+            {data.bot ? null : (
+              <span className="shrink-0 text-xs text-muted-foreground">
+                {data.count} thread{data.count === 1 ? "" : "s"}
+              </span>
+            )}
             {data.attention > 0 ? (
-              <span className="shrink-0 rounded-full bg-amber-500/20 px-1.5 text-xs font-medium text-amber-700 dark:text-amber-300">
-                {data.attention} need{data.attention === 1 ? "s" : ""} you
+              <span
+                title={data.bot ? `${data.attention} need${data.attention === 1 ? "s" : ""} you` : undefined}
+                className="shrink-0 rounded-full bg-amber-500/20 px-1.5 text-xs font-medium text-amber-700 dark:text-amber-300"
+              >
+                {data.bot ? data.attention : `${data.attention} need${data.attention === 1 ? "s" : ""} you`}
               </span>
             ) : null}
             <span className="nodrag ml-auto flex shrink-0 items-center gap-1">
