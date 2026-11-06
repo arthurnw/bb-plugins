@@ -33,7 +33,7 @@ const thread = (id: string, originPluginId: string) => ({ id, status: "pending",
 
 test("a first message with a bots or launcher pill binds the thread", () => {
   const { store, dispatch } = fakeBb();
-  const bot = store.save(undefined, { name: "B", emoji: "", instructions: "", starterPrompt: "", model: null, permissionMode: null, environment: null, projectId: null, memoryWrites: true });
+  const bot = store.save(undefined, { name: "B", emoji: "", instructions: "", starterPrompt: "", model: null, permissionMode: null, environment: null, projectId: null, memoryWrites: true, avatarCorner: "top-right" });
   dispatch({ thread: thread("t1", "launcher"), input: { blocks: [pill("bots", bot.id)] } });
   dispatch({ thread: thread("t2", "launcher"), input: { blocks: [pill("launcher", bot.id)] } });
   dispatch({ thread: thread("t3", "someone-else"), input: { blocks: [{ type: "text", text: "plain", mentions: [] }] } });
@@ -51,14 +51,14 @@ test("No bot from a trusted origin detaches; from another plugin it does not", (
 
 test("the mention provider lists nothing but still explains pills", () => {
   const { store, mention } = fakeBb();
-  const bot = store.save(undefined, { name: "B", emoji: "", instructions: "", starterPrompt: "", model: null, permissionMode: null, environment: null, projectId: null, memoryWrites: true });
+  const bot = store.save(undefined, { name: "B", emoji: "", instructions: "", starterPrompt: "", model: null, permissionMode: null, environment: null, projectId: null, memoryWrites: true, avatarCorner: "top-right" });
   assert.deepEqual(mention.search(), []);
   assert.match(mention.resolve(bot.id).context, /"B" bot/);
 });
 
 test("getBot returns the bot or null", () => {
   const { store, rpc } = fakeBb();
-  const bot = store.save(undefined, { name: "B", emoji: "", instructions: "", starterPrompt: "", model: null, permissionMode: null, environment: null, projectId: null, memoryWrites: true });
+  const bot = store.save(undefined, { name: "B", emoji: "", instructions: "", starterPrompt: "", model: null, permissionMode: null, environment: null, projectId: null, memoryWrites: true, avatarCorner: "top-right" });
   assert.equal((rpc.getBot!({ botId: bot.id } as never) as { bot: { id: string } }).bot.id, bot.id);
   assert.deepEqual(rpc.getBot!({ botId: "nope" } as never), { bot: null });
 });

@@ -3,8 +3,8 @@ import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } 
 import type { botsContract } from "./bots-server";
 import { useLauncher, useLauncherModelState } from "./launcher-models";
 import {
-  BOT_ENVIRONMENTS, INSTRUCTIONS_MAX, MAX_BOTS, MEMORY_MAX, NAME_MAX, STARTER_MAX,
-  type Bot, type BotDraft, type BotEnvironment, type PermissionMode,
+  AVATAR_CORNERS, BOT_ENVIRONMENTS, botDraft, DEFAULT_AVATAR_CORNER, INSTRUCTIONS_MAX, MAX_BOTS, MEMORY_MAX, NAME_MAX, STARTER_MAX,
+  type AvatarCorner, type Bot, type BotDraft, type BotEnvironment, type PermissionMode,
 } from "@arthurnw/bb-shared/bots";
 import { modelSpec, sameModel, type ModelSelection } from "@arthurnw/bb-shared/selection";
 import { useProjectOptions } from "@arthurnw/bb-shared/projects";
@@ -17,14 +17,15 @@ const ENVIRONMENT_LABELS: Record<BotEnvironment, string> = {
   "existing-branch": "Existing branch / PR",
   checkout: "Project checkout",
 };
+const CORNER_LABELS: Record<AvatarCorner, string> = {
+  "top-left": "Top left", "top-right": "Top right", "bottom-left": "Bottom left", "bottom-right": "Bottom right", off: "Off",
+};
 const PERMISSION_LABELS: Record<PermissionMode, string> = { "accept-edits": "Accept edits", auto: "Auto", full: "Full access" };
 const KEEP = "";
 // Without Launcher presets, bb's picker starts from the first available provider and reports a real model once loaded.
 const startingModel = (providerId: string): ModelSelection => ({ providerId, model: "", reasoningLevel: "medium", serviceTier: "default" });
 
 const errorText = (e: unknown) => e instanceof Error ? e.message : String(e);
-const toDraft = ({ name, emoji, instructions, starterPrompt, model, permissionMode, environment, projectId, memoryWrites }: Bot): BotDraft =>
-  ({ name, emoji, instructions, starterPrompt, model, permissionMode, environment, projectId, memoryWrites });
 const sameDraft = (a: BotDraft, b: BotDraft) => JSON.stringify(a) === JSON.stringify(b);
 
 export function BotSettings() {
@@ -56,7 +57,7 @@ export function BotSettings() {
     let n = 1;
     while (taken.has(n === 1 ? "new bot" : `new bot ${n}`)) n++;
     const { bot } = await rpc.call("saveBot", { bot: { name: n === 1 ? "New bot" : `New bot ${n}`, emoji: "", instructions: "", starterPrompt: "",
-      model: null, permissionMode: null, environment: null, projectId: null, memoryWrites: true } });
+      model: null, permissionMode: null, environment: null, projectId: null, memoryWrites: true, avatarCorner: DEFAULT_AVATAR_CORNER } });
     setEditing(bot.id);
   });
 
@@ -106,13 +107,16 @@ function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<unknown>
   const { providers } = useProviders();
   const firstProvider = providers.find((provider) => provider.available)?.id ?? providers[0]?.id ?? "";
   const projects = useProjectOptions();
-  const saved = toDraft(bot);
+  const saved = botDraft(bot);
   const [draft, setDraft] = useState<BotDraft>(saved);
   const [template, setTemplate] = useState<ModelSelection | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dirty = !sameDraft(draft, saved);
   const set = <K extends keyof BotDraft>(key: K, value: BotDraft[K]) => setDraft((current) => ({ ...current, [key]: value }));
+
+  // The context row's chip saves the corner directly; follow it so an open editor does not read as changed.
+  useEffect(() => { setDraft((current) => ({ ...current, avatarCorner: bot.avatarCorner })); }, [bot.avatarCorner]);
 
   // A newly chosen model starts from the Launcher's last model or first preset when it is installed.
   useEffect(() => {
@@ -124,7 +128,7 @@ function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<unknown>
     setError(null);
     try {
       const { bot: next } = await rpc.call("saveBot", { botId: bot.id, bot: { ...draft, name: draft.name.trim() } });
-      setDraft(toDraft(next));
+      setDraft(botDraft(next));
       await onSaved();
     } catch (e) { setError(errorText(e)); }
     finally { setBusy(false); }
@@ -180,6 +184,12 @@ function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<unknown>
               const available = availableEnvironments(launcherPresent).includes(env);
               return (available || draft.environment === env) && <option key={env} value={env}>{ENVIRONMENT_LABELS[env]}{available ? "" : " (needs Launcher)"}</option>;
             })}
+          </select>
+        </Field>
+        <Field label="Avatar in thread panes">
+          <select value={draft.avatarCorner} style={select} aria-label="Avatar in thread panes"
+            onChange={(e) => set("avatarCorner", e.target.value as AvatarCorner)}>
+            {AVATAR_CORNERS.map((corner) => <option key={corner} value={corner}>{CORNER_LABELS[corner]}</option>)}
           </select>
         </Field>
         <Field label="Project">

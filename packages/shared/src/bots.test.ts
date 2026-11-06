@@ -1,10 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  applyMemoryChange, draftBotId, draftWithBot, FACT_MAX, filterBots, findBotMention, handoffSource, hasNoBotMarker, NO_BOT_TEXT, withBotMention, withoutBotMentions, BOT_MENTION_PLUGINS, BOTS_PLUGIN_ID, INSTRUCTION_BUDGET, INSTRUCTIONS_MAX, MEMORY_MAX, MemoryError, NAME_MAX,
+  applyMemoryChange, botDraft, draftBotId, draftWithBot, FACT_MAX, filterBots, findBotMention, handoffSource, hasNoBotMarker, NO_BOT_TEXT, withBotMention, withoutBotMentions, BOT_MENTION_PLUGINS, BOTS_PLUGIN_ID, INSTRUCTION_BUDGET, INSTRUCTIONS_MAX, MEMORY_MAX, MemoryError, NAME_MAX,
   renderInstructions, type Bot,
 } from "./bots.ts";
-import { memoryToolSchema } from "./bots.schema.ts";
+import { botSchema, memoryToolSchema } from "./bots.schema.ts";
 
 test("instructions fit the budget at maximum lengths", () => {
   const text = renderInstructions({ name: "N".repeat(NAME_MAX), instructions: "i".repeat(INSTRUCTIONS_MAX), memory: "m".repeat(MEMORY_MAX) });
@@ -128,4 +128,12 @@ test("pills from either plugin id name a bot; new pills use the bots id", () => 
   const [added] = withBotMention([{ type: "text", text: "hi", mentions: [] }], { id: "b", name: "B", avatarSlot: 2 }, BOTS_PLUGIN_ID);
   assert.equal(((added as { mentions: { resource: { pluginId: string } }[] }).mentions[0])!.resource.pluginId, "bots");
   assert.equal(hasNoBotMarker([{ type: "text", text: "The user started this thread without a Launcher bot.", visibility: "agent-only" }]), true);
+});
+
+test("a bot from an older Bots without avatarCorner reads as top-right; botDraft keeps the corner", () => {
+  const bot = botSchema.parse({ id: "b", position: 0, name: "B", emoji: "", instructions: "", starterPrompt: "", model: null, permissionMode: null,
+    environment: null, projectId: null, memoryWrites: true, memory: "", avatar: null, avatarSlot: 0, createdAt: 1, updatedAt: 1 });
+  assert.equal(bot.avatarCorner, "top-right");
+  assert.equal(botDraft({ ...bot, avatarCorner: "bottom-right" }).avatarCorner, "bottom-right");
+  assert.equal("memory" in botDraft(bot), false);
 });

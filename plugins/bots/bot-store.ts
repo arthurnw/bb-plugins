@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { animatedImageType, ANIMATION_DATA_URL, ANIMATION_MAX_CHARS, AVATAR_DATA_URL, AVATAR_MAX_CHARS, dataUrlBytes, GALLERY_IDS, galleryAvatar, galleryId, MAX_BOTS, MEMORY_MAX, type BindingSource, type Bot, type BotDraft, type OwnerLookup } from "@arthurnw/bb-shared/bots";
+import { animatedImageType, ANIMATION_DATA_URL, ANIMATION_MAX_CHARS, AVATAR_DATA_URL, AVATAR_MAX_CHARS, dataUrlBytes, GALLERY_IDS, galleryAvatar, galleryId, MAX_BOTS, MEMORY_MAX, type BindingSource, type Bot, type BotDraft, DEFAULT_AVATAR_CORNER, type OwnerLookup } from "@arthurnw/bb-shared/bots";
 
 /** The subset of better-sqlite3 (and node:sqlite, for tests) the store uses. */
 export interface SqlDb {
@@ -237,7 +237,7 @@ function checkAnimation(avatar: string | null, animation: string) {
 
 function fromRow(row: BotRow, avatarSlot: number): Bot {
   // Drafts saved before a field existed get its default.
-  const draft = { memoryWrites: true, ...(JSON.parse(row.draft_json) as Partial<BotDraft>) } as BotDraft;
+  const draft = { memoryWrites: true, avatarCorner: DEFAULT_AVATAR_CORNER, ...(JSON.parse(row.draft_json) as Partial<BotDraft>) } as BotDraft;
   return { ...draft, id: row.id, position: row.position, memory: row.memory, avatar: row.avatar, avatarAnimation: row.avatar_animation ?? null, avatarSlot,
     createdAt: row.created_at, updatedAt: row.updated_at };
 }

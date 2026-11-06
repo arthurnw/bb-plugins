@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ANIMATION_MAX_CHARS, AVATAR_MAX_CHARS, BOT_ENVIRONMENTS, FACT_MAX, INSTRUCTIONS_MAX, MAX_BOTS, MEMORY_MAX, NAME_MAX, STARTER_MAX, type Bot, type BotDraft } from "./bots.ts";
+import { ANIMATION_MAX_CHARS, AVATAR_CORNERS, AVATAR_MAX_CHARS, BOT_ENVIRONMENTS, DEFAULT_AVATAR_CORNER, FACT_MAX, INSTRUCTIONS_MAX, MAX_BOTS, MEMORY_MAX, NAME_MAX, STARTER_MAX, type Bot, type BotDraft } from "./bots.ts";
 import { selectionSchema } from "./selection.schema.ts";
 
 const permissionModeSchema = z.enum(["accept-edits", "auto", "full"]);
@@ -14,6 +14,7 @@ export const botDraftSchema: z.ZodType<BotDraft, unknown> = z.object({
   environment: z.enum(BOT_ENVIRONMENTS).nullable().default(null),
   projectId: z.string().min(1).nullable().default(null),
   memoryWrites: z.boolean().default(true),
+  avatarCorner: z.enum(AVATAR_CORNERS).default(DEFAULT_AVATAR_CORNER),
 });
 
 export const botSchema: z.ZodType<Bot, unknown> = z.object({
@@ -28,6 +29,8 @@ export const botSchema: z.ZodType<Bot, unknown> = z.object({
   environment: z.enum(BOT_ENVIRONMENTS).nullable(),
   projectId: z.string().nullable(),
   memoryWrites: z.boolean(),
+  // Defaulted, like avatarAnimation, so a Launcher built against this schema still reads an older Bots.
+  avatarCorner: z.enum(AVATAR_CORNERS).default(DEFAULT_AVATAR_CORNER),
   memory: z.string(),
   avatar: z.string().nullable(),
   // Defaulted so a Launcher built against this schema still reads an older Bots.

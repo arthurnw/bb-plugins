@@ -185,3 +185,25 @@ test("old drafts default to writable memory", () => {
   db.prepare("UPDATE bots SET draft_json = ? WHERE id = ?").run(JSON.stringify({ ...legacy, memory: undefined }), bot.id);
   assert.equal(new BotStore(db as unknown as SqlDb).get(bot.id)!.memoryWrites, true);
 });
+
+test("the pane avatar corner defaults to top-right, saves, and reloads", () => {
+  const { db, store } = openStore();
+  const bot = store.save(undefined, draft("Corner"));
+  assert.equal(bot.avatarCorner, "top-right");
+  assert.equal(store.save(bot.id, draft("Corner", { avatarCorner: "bottom-left" })).avatarCorner, "bottom-left");
+  assert.equal(new BotStore(db as unknown as SqlDb).get(bot.id)!.avatarCorner, "bottom-left");
+  store.save(bot.id, draft("Corner", { avatarCorner: "off" }));
+  assert.equal(new BotStore(db as unknown as SqlDb).get(bot.id)!.avatarCorner, "off");
+});
+
+test("old drafts default the pane avatar corner to top-right", () => {
+  const { db, store } = openStore();
+  const bot = store.save(undefined, draft("Old", { avatarCorner: "top-left" }));
+  const { avatarCorner: _, ...legacy } = bot;
+  db.prepare("UPDATE bots SET draft_json = ? WHERE id = ?").run(JSON.stringify({ ...legacy, memory: undefined }), bot.id);
+  assert.equal(new BotStore(db as unknown as SqlDb).get(bot.id)!.avatarCorner, "top-right");
+});
+
+test("drafts accept only the five corners", () => {
+  assert.throws(() => draft("Bad", { avatarCorner: "middle" as BotDraft["avatarCorner"] }));
+});

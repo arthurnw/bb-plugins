@@ -35,6 +35,10 @@ export type PermissionMode = "accept-edits" | "auto" | "full";
 // "No project" as the bot's project covers the personal workspace.
 export const BOT_ENVIRONMENTS = ["named-worktree", "existing-branch", "checkout"] as const;
 export type BotEnvironment = (typeof BOT_ENVIRONMENTS)[number];
+/** Where the bot's avatar floats in the panes of its threads, or "off". */
+export const AVATAR_CORNERS = ["top-left", "top-right", "bottom-left", "bottom-right", "off"] as const;
+export type AvatarCorner = (typeof AVATAR_CORNERS)[number];
+export const DEFAULT_AVATAR_CORNER: AvatarCorner = "top-right";
 
 /** What the user edits. Null fields keep the composer's current value. */
 export interface BotDraft {
@@ -48,6 +52,7 @@ export interface BotDraft {
   projectId: string | null;
   /** Off: agents can still read memory, but `bot_memory` refuses changes. */
   memoryWrites: boolean;
+  avatarCorner: AvatarCorner;
 }
 export interface Bot extends BotDraft {
   id: string;
@@ -64,6 +69,10 @@ export interface Bot extends BotDraft {
   createdAt: number;
   updatedAt: number;
 }
+
+/** The editable fields of a saved bot. */
+export const botDraft = ({ name, emoji, instructions, starterPrompt, model, permissionMode, environment, projectId, memoryWrites, avatarCorner }: Bot): BotDraft =>
+  ({ name, emoji, instructions, starterPrompt, model, permissionMode, environment, projectId, memoryWrites, avatarCorner });
 
 /** Text for places that cannot show the avatar icon. */
 export const botLabel = (bot: Pick<Bot, "emoji" | "name">) => bot.emoji ? `${bot.emoji} ${bot.name}` : bot.name;
