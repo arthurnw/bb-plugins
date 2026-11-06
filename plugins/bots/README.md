@@ -25,6 +25,8 @@ Manage bots in Settings → Bots.
   marked "needs Launcher".
 - **`bot_memory` tool**: agents read and append facts shared by every thread
   that uses the bot.
+- **Avatar in thread panes**: a thread with a bot shows the bot's avatar at
+  96 px in a corner of its pane, with the thread's own state.
 
 A thread belongs to a bot when its first message carries a bot pill (the
 composers insert it), or when it inherits one from its parent, fork source, or
@@ -104,6 +106,29 @@ motion the still stays, with the same badge and bubble as the animated avatars.
 The animated bytes live in their own table and are left out of `listBots`; the
 Bots app fetches them with `getBotAvatarAnimation` the first time a bot
 animates. Other plugins (the Launcher, Canvas) show the still.
+
+#### In thread panes
+
+Each thread pane that shows a thread with a bot (its own or inherited) draws
+the bot's avatar at 96 px in the corner set by the bot's **Avatar in thread
+panes** field: Top right (the default, also for bots saved before the field
+existed), Top left, Bottom right, Bottom left, or Off. The context row above
+the composer shows a small chip with the bot's icon and an arrow; clicking it
+moves the avatar to the next corner (clockwise, then off) and saves that on the
+bot. The avatar shows the thread's own state, with a running turn ahead of
+unread because the pane is showing the thread. Its eyes follow the pointer.
+Clicks pass through it to the chat, and it fades while the pointer is over it.
+Bottom corners sit beside the composer when the pane is wide enough, and above
+it otherwise.
+
+Which pane shows which thread comes from bb (`useSidebarSplitLayout`, else the
+route's thread), so the avatar stays while a question or approval card replaces
+the composer and its context row. Placement uses bb's DOM, which is not a public
+API: `[data-split-pane-id]`, `[data-thread-window]` (the chat column), and
+`[data-app-composer]`. If those change, avatars stop showing or bottom corners
+overlap the composer; nothing else depends on them. Positions are measured when
+a pane or its composer resizes, the window resizes, or panes change, not while a
+turn streams.
 
 The 14 still avatars that came before were stored as WebP data URLs. Once per
 browser profile, the app rasterizes them again and gives any bot whose stored
