@@ -26,12 +26,14 @@ import type { Bot } from "@arthurnw/bb-shared/bots";
 import { openNewThread } from "@arthurnw/bb-shared/events";
 import { BotAvatar, useBots, useBotStates, useThreadBots } from "./bot-avatars";
 import {
-  anchorFromRect, attentionCount, botSummary, cardColumns, clamp, loudest, rankBots, rectFromAnchor, snap, threadsByUrgency,
-  type Point, type Size,
+  anchorFromRect, attentionCount, botSummary, cardColumns, clamp, INSET, loudest, rankBots, rectFromAnchor, snap, threadsByUrgency,
+  type FloatingStyle, type Point, type Size,
 } from "./zoo-layout";
 import { setZooPlacement, useZooPlacement, useZooSettings } from "./zoo-settings";
 
 const CARD_FACE = 44;
+/** The floating strip wraps past this width, about eleven bots per row. */
+const FLOATING_STRIP_MAX = 560;
 const STRIP_FACE = 40;
 const COLLAPSED_FACE = 48;
 const DRAG_THRESHOLD = 4;
@@ -250,7 +252,8 @@ function ZooStrip({ aside, entries }: { aside: Element; entries: Entry[] }) {
   );
 }
 
-function ZooCard({ entries }: { entries: Entry[] }) {
+/** Floating, as a card with a header and grid, or as a strip like the docked one; both drag and collapse alike. */
+function ZooCard({ entries, shape }: { entries: Entry[]; shape: FloatingStyle }) {
   const { anchor, collapsed } = useZooPlacement();
   const view = useViewport();
   const card = useRef<HTMLDivElement | null>(null);
@@ -324,6 +327,10 @@ function ZooCard({ entries }: { entries: Entry[] }) {
   const loud = loudest(entries);
   const attention = attentionCount(entries);
   const columns = cardColumns(entries.length);
+  const collapseControl = (
+    <button type="button" data-zoo-nodrag="" aria-label="Collapse the bot zoo" title="Collapse"
+      onClick={() => { menu.close(); setZooPlacement({ collapsed: true }); }} style={collapseButton}>–</button>
+  );
   const style: CSSProperties = {
     ...cardBox, left: point?.left ?? 0, top: point?.top ?? 0, visibility: point ? "visible" : "hidden",
     cursor: live ? "grabbing" : "default", padding: collapsed ? 6 : 8,
@@ -344,13 +351,19 @@ function ZooCard({ entries }: { entries: Entry[] }) {
             </button>
           )
         ) : (
-          <>
+          shape === "strip" ? (
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, maxWidth: Math.min(FLOATING_STRIP_MAX, view.width - 2 * INSET - 16) }}>
+              {entries.map((entry) => (
+                <ZooFace key={entry.bot.id} entry={entry} size={STRIP_FACE} menuOpen={menu.openBotId === entry.bot.id} onToggleMenu={menu.toggle(entry.bot.id)} />
+              ))}
+              {collapseControl}
+            </div>
+          ) : <>
             <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 2px 6px 4px", fontSize: 12, userSelect: "none" }}>
               <span style={{ flex: 1, fontWeight: 600 }}>
                 Bots{attention > 0 && <span style={{ fontWeight: 400, color: "var(--muted-foreground)" }}> · {attention} need you</span>}
               </span>
-              <button type="button" data-zoo-nodrag="" aria-label="Collapse the bot zoo" title="Collapse"
-                onClick={() => { menu.close(); setZooPlacement({ collapsed: true }); }} style={collapseButton}>–</button>
+              {collapseControl}
             </div>
             <div style={{ display: "grid", gridTemplateColumns: `repeat(${columns}, auto)`, gap: 2, justifyContent: "start" }}>
               {entries.map((entry) => (
@@ -366,19 +379,19 @@ function ZooCard({ entries }: { entries: Entry[] }) {
   );
 }
 
-function ZooBody({ dock }: { dock: boolean }) {
+function ZooBody({ dock, shape }: { dock: boolean; shape: FloatingStyle }) {
   const bots = useBots();
   const wide = useWideWindow();
   const aside = useRightPanel(dock && wide);
   const entries = useEntries(bots);
   if (!wide || !bots?.length) return null;
-  return aside ? <ZooStrip key="strip" aside={aside} entries={entries} /> : <ZooCard key="card" entries={entries} />;
+  return aside ? <ZooStrip key="strip" aside={aside} entries={entries} /> : <ZooCard key="card" entries={entries} shape={shape} />;
 }
 
 /** Mounted once as an app overlay; renders nothing until the zoo is turned on in Bots settings. */
 function Zoo() {
-  const { enabled, dockToPanel } = useZooSettings();
-  return enabled ? <ZooBody dock={dockToPanel} /> : null;
+  const { enabled, dockToPanel, floatingStyle } = useZooSettings();
+  return enabled ? <ZooBody dock={dockToPanel} shape={floatingStyle} /> : null;
 }
 
 export function registerZoo(app: PluginAppBuilder) {
@@ -389,7 +402,8 @@ const popupBox: CSSProperties = {
   background: "var(--popover, var(--background))", color: "var(--popover-foreground, var(--foreground))", border: "1px solid var(--border)",
   borderRadius: 8, boxShadow: "0 8px 24px rgb(0 0 0 / 0.18)", fontSize: 13,
 };
-const cardBox: CSSProperties = { ...popupBox, position: "fixed", borderRadius: 12, pointerEvents: "auto", outline: "none", touchAction: "none" };
+// max-content: a fixed box near the right edge would otherwise shrink to the room left of it and wrap.
+const cardBox: CSSProperties = { ...popupBox, position: "fixed", width: "max-content", borderRadius: 12, pointerEvents: "auto", outline: "none", touchAction: "none" };
 const faceButton: CSSProperties = { display: "inline-flex", padding: 4, border: "none", borderRadius: 10, cursor: "pointer", transition: "opacity 150ms ease" };
 const collapseButton: CSSProperties = {
   width: 20, height: 20, padding: 0, border: "none", borderRadius: 4, background: "transparent", color: "var(--muted-foreground)", cursor: "pointer", fontSize: 14, lineHeight: "20px",

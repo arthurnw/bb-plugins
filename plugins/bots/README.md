@@ -142,8 +142,9 @@ slot goes to the next new bot, which then also shows in old pills.
 
 ### Bot zoo
 
-Settings → Bots has two per-device checkboxes: **Show bot zoo** (off by
-default) and **Dock to the right panel when it's open** (on by default). The zoo
+Settings → Bots has three per-device settings: **Show bot zoo** (off by
+default), **Dock to the right panel when it's open** (on by default), and
+**Floating style**, Card (the default) or Strip. The zoo
 shows every bot in Bots order with its combined state; idle bots are dimmed,
 and a bot with a thread in a visible pane gets a ring. Hovering a bot shows its
 live thread counts by state, such as "Planner · 1 waiting, 2 working". Clicking
@@ -151,15 +152,17 @@ it opens a menu of its live threads, most urgent first, and **New thread with**
 the bot. The zoo hides when there are no bots or the window is narrower than
 46rem.
 
-Floating, the zoo is a card. Drag it from anywhere (4 px starts a drag) or
-focus it and use the arrow keys (8 px, 32 px with Shift). It is held at an
+Floating, the zoo is a card with a header and a grid, or a strip with no
+header that wraps past 560 px. Drag either one from anywhere (4 px starts a
+drag), or focus it and use the arrow keys (8 px, 32 px with Shift). It is held at an
 offset from the nearest window corner, saved per device, snaps to a 16 px
 inset when dropped within 24 px of it, and stays on screen when the window
-shrinks. The "–" button collapses it to the most urgent bot, with a badge
+shrinks. The "–" button (in the card's header, or at the end of the strip)
+collapses it to the most urgent bot, with a badge
 counting bots that are waiting or unread; click that avatar to expand.
 
 Docked, the zoo is a strip with no header that wraps to more rows as the
-panel narrows. The floating card keeps its position meanwhile and returns there
+panel narrows, whatever the floating style. The floating zoo keeps its position meanwhile and returns there
 when the panel closes. Docking uses bb's DOM, which is not a public API: the
 right panel is `[data-panel-id^="thread-detail-secondary-panel"]` (with
 `-pane-N` in split layouts), which is width 0 while closed, and the strip is

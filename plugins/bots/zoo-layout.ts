@@ -99,13 +99,19 @@ export function rectFromAnchor(anchor: Anchor, size: Size, viewport: Size): Poin
 
 // Stored per device in localStorage; anything unreadable falls back to defaults.
 
-export interface ZooSettings { enabled: boolean; dockToPanel: boolean }
+export const FLOATING_STYLES = ["card", "strip"] as const;
+export type FloatingStyle = (typeof FLOATING_STYLES)[number];
+export interface ZooSettings { enabled: boolean; dockToPanel: boolean; floatingStyle: FloatingStyle }
 export interface ZooPlacement { anchor: Anchor; collapsed: boolean }
 
-export const DEFAULT_SETTINGS: ZooSettings = { enabled: false, dockToPanel: true };
+export const DEFAULT_SETTINGS: ZooSettings = { enabled: false, dockToPanel: true, floatingStyle: "card" };
 export const DEFAULT_PLACEMENT: ZooPlacement = { anchor: DEFAULT_ANCHOR, collapsed: false };
 
-const settingsSchema = z.object({ enabled: z.boolean().catch(DEFAULT_SETTINGS.enabled), dockToPanel: z.boolean().catch(DEFAULT_SETTINGS.dockToPanel) });
+const settingsSchema = z.object({
+  enabled: z.boolean().catch(DEFAULT_SETTINGS.enabled),
+  dockToPanel: z.boolean().catch(DEFAULT_SETTINGS.dockToPanel),
+  floatingStyle: z.enum(FLOATING_STYLES).catch(DEFAULT_SETTINGS.floatingStyle),
+});
 const placementSchema = z.object({
   anchor: z.object({ h: z.enum(["left", "right"]), v: z.enum(["top", "bottom"]), dx: z.number().min(0), dy: z.number().min(0) }).catch(DEFAULT_ANCHOR),
   collapsed: z.boolean().catch(false),

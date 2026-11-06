@@ -12,6 +12,7 @@ import { availableEnvironments } from "@arthurnw/bb-shared/composer";
 import { AnimatedAvatar, galleryAvatar, galleryId, GEOMETRIC_AVATARS, SMOOTH_AVATARS, type GalleryAvatar } from "@arthurnw/bb-shared/avatars";
 import { avatarFromFile, BotAvatar, useBotState, useBotStates } from "./bot-avatars";
 import { setZooSettings, useZooSettings } from "./zoo-settings";
+import { FLOATING_STYLES, type FloatingStyle } from "./zoo-layout";
 
 const ENVIRONMENT_LABELS: Record<BotEnvironment, string> = {
   "named-worktree": "Named worktree",
@@ -21,6 +22,7 @@ const ENVIRONMENT_LABELS: Record<BotEnvironment, string> = {
 const CORNER_LABELS: Record<AvatarCorner, string> = {
   "top-left": "Top left", "top-right": "Top right", "bottom-left": "Bottom left", "bottom-right": "Bottom right", off: "Off",
 };
+const FLOATING_STYLE_LABELS: Record<FloatingStyle, string> = { card: "Card", strip: "Strip" };
 const PERMISSION_LABELS: Record<PermissionMode, string> = { "accept-edits": "Accept edits", auto: "Auto", full: "Full access" };
 const KEEP = "";
 // Without Launcher presets, bb's picker starts from the first available provider and reports a real model once loaded.
@@ -115,6 +117,13 @@ function ZooSettingsBlock() {
       <label style={{ ...row, opacity: zoo.enabled ? 1 : 0.5 }}>
         <input type="checkbox" checked={zoo.dockToPanel} disabled={!zoo.enabled} onChange={(e) => setZooSettings({ dockToPanel: e.target.checked })} />
         Dock to the right panel when it's open
+      </label>
+      <label style={{ ...row, opacity: zoo.enabled ? 1 : 0.5 }}>
+        Floating style
+        <select value={zoo.floatingStyle} disabled={!zoo.enabled} style={select}
+          onChange={(e) => setZooSettings({ floatingStyle: e.target.value as FloatingStyle })}>
+          {FLOATING_STYLES.map((style) => <option key={style} value={style}>{FLOATING_STYLE_LABELS[style]}</option>)}
+        </select>
       </label>
       <span style={{ ...muted, fontSize: 12 }}>Per device. Drag the zoo to move it.</span>
     </div>

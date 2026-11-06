@@ -87,8 +87,16 @@ test("a drop near an edge snaps to the inset; elsewhere it stays", () => {
 test("stored settings and placement fall back to defaults when unreadable", () => {
   assert.deepEqual(parseZooSettings(null), DEFAULT_SETTINGS);
   assert.deepEqual(parseZooSettings("{bad"), DEFAULT_SETTINGS);
-  assert.deepEqual(parseZooSettings('{"enabled":true}'), { enabled: true, dockToPanel: true });
+  assert.deepEqual(parseZooSettings('{"enabled":true}'), { enabled: true, dockToPanel: true, floatingStyle: "card" });
   assert.deepEqual(parseZooPlacement('{"anchor":{"h":"middle"},"collapsed":true}'), { anchor: DEFAULT_PLACEMENT.anchor, collapsed: true });
   const stored = { anchor: { h: "left", v: "top", dx: 12, dy: 34 }, collapsed: false };
   assert.deepEqual(parseZooPlacement(JSON.stringify(stored)), stored);
+});
+
+test("the floating style defaults to card and keeps a stored strip", () => {
+  assert.equal(DEFAULT_SETTINGS.floatingStyle, "card");
+  assert.equal(parseZooSettings('{"enabled":true,"dockToPanel":false}').floatingStyle, "card");
+  assert.deepEqual(parseZooSettings('{"enabled":true,"dockToPanel":false,"floatingStyle":"strip"}'), { enabled: true, dockToPanel: false, floatingStyle: "strip" });
+  // An unknown style falls back to card without losing the other settings.
+  assert.deepEqual(parseZooSettings('{"enabled":true,"dockToPanel":false,"floatingStyle":"pen"}'), { enabled: true, dockToPanel: false, floatingStyle: "card" });
 });
