@@ -8,6 +8,7 @@
     "./bots": "./src/bots.ts",
     "./bots/schema": "./src/bots.schema.ts",
     "./avatars": "./src/avatars/index.ts",
+    "./avatars/state": "./src/avatars/state.ts",
     "./events": "./src/events.ts",
     "./composer": "./src/composer/index.ts",
     "./projects": "./src/projects/index.ts",
