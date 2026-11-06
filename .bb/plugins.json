@@ -42,6 +42,10 @@
     {
       "name": "thread-cost",
       "source": "./plugins/thread-cost"
+    },
+    {
+      "name": "thread-delete-shortcut",
+      "source": "./plugins/thread-delete-shortcut"
     }
   ]
 }

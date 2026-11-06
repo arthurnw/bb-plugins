@@ -14,6 +14,7 @@
 | [launcher](plugins/launcher) | A floating new-thread composer with model presets, bots, project shortcuts, named Git worktrees, and thread handoff. |
 | [tailnet-preview](plugins/tailnet-preview) | Publishes dev servers over `tailscale serve` and opens them in the thread's in-app browser. |
 | [thread-cost](plugins/thread-cost) | Estimated API cost of each Pi, Claude Code, and Codex thread, shown in the composer footer. |
+| [thread-delete-shortcut](plugins/thread-delete-shortcut) | Adds a confirmation-gated keyboard shortcut for deleting the focused thread. |
 
 `dev/` holds test fixtures, not plugins. `dev/latency-spa` is a small page and
 server for checking tailnet-preview latency through the proxy.
