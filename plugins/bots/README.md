@@ -7,9 +7,10 @@ tool. Bots works alone and also with the [Launcher](../launcher) plugin.
 
 Manage bots in Settings → Bots.
 
-- **Thread list**: Bots | Threads views, Pinned, and Recent, with bots and
+- **Thread list**: Bots | Threads | All views, Pinned, and Recent, with bots and
   custom sections in one order you arrange. Drag a thread onto a bot to hand it
-  off.
+  off. **All** is bb's regular list with bot avatars: it shares the built-in
+  list's settings, and a bot thread's avatar replaces its provider icon.
 - **Thread menu and Info tab**: assign a bot to a thread that has not started;
   a started thread opens a handoff instead.
 - **New thread page**: a Bot chip beside bb's model button. It hides itself when
@@ -172,7 +173,7 @@ stays floating.
 ### Thread list
 
 Choose **Bots** in Settings → Appearance → Sidebar thread list. A
-**Bots | Threads** toggle at the top switches between two views.
+**Bots | Threads | All** toggle at the top switches between three views.
 
 **Bots** shows one tile per bot in your bot order (tiles never move): model,
 thread count, running and needs-you counts, memory size, and **+** for a new
@@ -205,6 +206,16 @@ Dragging toward the main area opens a split, as in bb's list. **+ New section**
 and each section's **⋯** (Rename, Delete) use bb's sections. Quick actions with
 a submenu are left to the **⋯** menu. Drag needs this list: bb's own rows carry
 no drag data.
+
+**All** draws bb's regular list itself: Pinned (with the children of pinned
+threads), bb's custom sections, and Threads, in the built-in list's order and
+sort. It reads the built-in list's preferences and writes changes back, so
+collapsing a group here collapses it in bb's list too. A change made in bb's
+list, another window, or `bb thread-list prefs` shows up when this window next
+regains focus. A bot thread shows its bot's avatar, in that thread's state, in
+place of the provider icon, even when provider icons are off. The All view
+supports the Custom organization only for now; By project and By machine show
+as Custom.
 
 ## Develop
 

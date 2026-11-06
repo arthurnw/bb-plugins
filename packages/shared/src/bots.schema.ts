@@ -75,8 +75,6 @@ export const botsRpcContract = {
   /** The Bots thread list's manual group order: "bot:<id>" and "section:<id>" keys. Unknown keys are ignored when drawn. */
   /** The thread's bot and the instructions a session starting now would get; null fields when it has none. */
   threadBot: { input: z.object({ threadId }), output: z.object({ botId: z.string().nullable(), source: z.enum(["own", "inherited", "none", "detached"]), instructions: z.string().nullable() }) },
-  /** The built-in thread list's row preferences, so the Bots list matches them. */
-  rowPreferences: { input: z.object({}), output: z.object({ rowActions: z.array(z.string()), showProviderIcons: z.boolean(), showRowMetadata: z.boolean(), chronologicalSort: z.string() }) },
   getListOrder: { input: z.object({}), output: z.object({ order: z.array(z.string().max(200)).max(500) }) },
   setListOrder: { input: z.object({ order: z.array(z.string().max(200)).max(500) }), output: z.object({ order: z.array(z.string()) }) },
 };

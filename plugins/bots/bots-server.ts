@@ -178,24 +178,6 @@ export function registerBots(bb: BbPluginApi) {
       if (!bot) return { botId: null, source: "none" as const, instructions: null };
       return { botId: bot.id, source: store.hasBinding(threadId) ? "own" as const : "inherited" as const, instructions: renderInstructions(bot) };
     },
-    async rowPreferences() {
-      const fallback = { rowActions: ["bb--core/read", "bb--core/archive"], showProviderIcons: true, showRowMetadata: true, chronologicalSort: "updated" };
-      try {
-        // The built-in thread-list plugin owns these; its RPC is not a public contract, so any mismatch falls back.
-        const { preferences } = await bb.sdk.plugins.callRpc({ pluginId: "thread-list", method: "listPreferences", input: {},
-          outputSchema: z.object({ preferences: z.record(z.string(), z.unknown()) }) });
-        const read = <T,>(key: string, schema: z.ZodType<T>, value: T) => { const parsed = schema.safeParse(preferences[key]); return parsed.success ? parsed.data : value; };
-        return {
-          rowActions: read("rowActions", z.array(z.string()).max(3), fallback.rowActions),
-          showProviderIcons: read("showProviderIcons", z.boolean(), true),
-          showRowMetadata: read("showRowMetadata", z.boolean(), true),
-          chronologicalSort: read("chronologicalSort", z.string(), "updated"),
-        };
-      } catch (error) {
-        bb.log.warn(`thread-list preferences unavailable: ${error instanceof Error ? error.message : String(error)}`);
-        return fallback;
-      }
-    },
     getListOrder: async () => ({ order: (await bb.storage.kv.get<string[]>(LIST_ORDER_KEY)) ?? [] }),
     setListOrder: async ({ order }) => {
       await bb.storage.kv.set(LIST_ORDER_KEY, order);
