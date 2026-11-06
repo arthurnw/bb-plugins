@@ -1,8 +1,8 @@
 # BB Thread Delete Shortcut
 
 Adds a keyboard-bindable command for permanently deleting the focused BB
-thread. Pressing the shortcut opens a confirmation card in the thread; only
-the **Delete permanently** button calls BB's delete API.
+thread. Pressing the shortcut opens a confirmation dialog near the top of the
+BB window; only the **Delete permanently** button calls BB's delete API.
 
 The plugin command is:
 
@@ -25,4 +25,5 @@ bb settings keyboard reset plugin:thread-delete-shortcut/delete-current
 ```
 
 The command requires an open focused thread. Child threads are included in the
-confirmation and are deleted only after explicit confirmation.
+confirmation and are deleted only after explicit confirmation. The CLI command
+uses BB's standard pending-interaction card when run from a terminal.

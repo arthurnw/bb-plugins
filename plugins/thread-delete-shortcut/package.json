@@ -22,9 +22,7 @@
     "build": "bb plugin build",
     "typecheck": "tsc"
   },
-  "dependencies": {
-    "zod": "^4.6.5"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@get-bb/plugin-sdk": "0.6.104",
     "@types/node": "^22.0.0",

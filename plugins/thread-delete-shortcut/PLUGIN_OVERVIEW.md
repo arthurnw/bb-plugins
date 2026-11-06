@@ -2,9 +2,9 @@ The Thread Delete Shortcut plugin adds a keyboard shortcut for permanently
 deleting the currently focused BB thread.
 
 Pressing the shortcut does not delete immediately. BB opens a confirmation
-card in the thread with the title, an explanation of the irreversible action,
-and explicit Cancel and Delete permanently buttons. Child threads are called
-out and are included only after confirmation.
+dialog near the top of the window with the title, an explanation of the
+irreversible action, and explicit Cancel and Delete permanently buttons. Child
+threads are called out and are included only after confirmation.
 
 The plugin registers the command
 `plugin:thread-delete-shortcut/delete-current`, so users can choose any

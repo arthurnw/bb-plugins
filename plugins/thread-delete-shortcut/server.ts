@@ -1,5 +1,4 @@
-import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
-import { z } from "zod";
+import type { BbPluginApi } from "@get-bb/plugin-sdk";
 
 const RENDERER_ID = "confirm-delete";
 
@@ -7,13 +6,6 @@ type DeletePrompt = {
   threadTitle: string;
   hasChildren: boolean;
 };
-
-export const rpcContract = defineRpcContract({
-  deleteCurrent: {
-    input: z.object({ threadId: z.string().min(1) }),
-    output: z.object({ deleted: z.boolean() }),
-  },
-});
 
 async function deleteCurrent(
   bb: BbPluginApi,
@@ -52,12 +44,6 @@ async function deleteCurrent(
 }
 
 export default async function plugin(bb: BbPluginApi) {
-  bb.rpc.register(rpcContract, {
-    deleteCurrent: async ({ threadId }, context) => ({
-      deleted: await deleteCurrent(bb, threadId, context.experimental_signal),
-    }),
-  });
-
   bb.cli.register({
     name: "thread-delete-shortcut",
     summary: "Delete the focused thread after confirmation",
