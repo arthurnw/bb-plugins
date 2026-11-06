@@ -186,18 +186,18 @@ function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<unknown>
             })}
           </select>
         </Field>
-        <Field label="Avatar in thread panes">
-          <select value={draft.avatarCorner} style={select} aria-label="Avatar in thread panes"
-            onChange={(e) => set("avatarCorner", e.target.value as AvatarCorner)}>
-            {AVATAR_CORNERS.map((corner) => <option key={corner} value={corner}>{CORNER_LABELS[corner]}</option>)}
-          </select>
-        </Field>
         <Field label="Project">
           <select value={draft.projectId ?? KEEP} style={select} aria-label="Project"
             onChange={(e) => set("projectId", e.target.value || null)}>
             <option value={KEEP}>Any</option>
             {draft.projectId && projects && !projects.some((p) => p.id === draft.projectId) && <option value={draft.projectId}>Unknown project</option>}
             {(projects ?? []).map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Avatar in thread panes">
+          <select value={draft.avatarCorner} style={select} aria-label="Avatar in thread panes"
+            onChange={(e) => set("avatarCorner", e.target.value as AvatarCorner)}>
+            {AVATAR_CORNERS.map((corner) => <option key={corner} value={corner}>{CORNER_LABELS[corner]}</option>)}
           </select>
         </Field>
       </div>
