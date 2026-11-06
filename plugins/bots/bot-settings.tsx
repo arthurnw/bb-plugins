@@ -11,6 +11,7 @@ import { useProjectOptions } from "@arthurnw/bb-shared/projects";
 import { availableEnvironments } from "@arthurnw/bb-shared/composer";
 import { AnimatedAvatar, galleryAvatar, galleryId, GEOMETRIC_AVATARS, SMOOTH_AVATARS, type GalleryAvatar } from "@arthurnw/bb-shared/avatars";
 import { avatarFromFile, BotAvatar, useBotState, useBotStates } from "./bot-avatars";
+import { setZooSettings, useZooSettings } from "./zoo-settings";
 
 const ENVIRONMENT_LABELS: Record<BotEnvironment, string> = {
   "named-worktree": "Named worktree",
@@ -67,6 +68,7 @@ export function BotSettings() {
       <p style={{ margin: 0, color: "var(--muted-foreground)" }}>
         Mention a bot with @ in a new thread's first message to start the thread as that bot. Forks and side chats of its threads inherit it. {bots.length} of {MAX_BOTS}.
       </p>
+      <ZooSettingsBlock />
       {bots.length === 0 && <p style={{ ...muted, margin: 0 }}>No bots yet.</p>}
       {bots.map((bot, index) => (
         <div key={bot.id} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 8 }}>
@@ -96,6 +98,25 @@ export function BotSettings() {
         <button type="button" style={button} disabled={bots.length >= MAX_BOTS} onClick={() => void add()}>Add bot</button>
       </div>
       {error && <p role="alert" style={alert}>{error}</p>}
+    </div>
+  );
+}
+
+function ZooSettingsBlock() {
+  const zoo = useZooSettings();
+  const row: CSSProperties = { display: "flex", alignItems: "center", gap: 6 };
+  return (
+    <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+      <span style={{ fontWeight: 500 }}>Zoo</span>
+      <label style={row}>
+        <input type="checkbox" checked={zoo.enabled} onChange={(e) => setZooSettings({ enabled: e.target.checked })} />
+        Show bot zoo
+      </label>
+      <label style={{ ...row, opacity: zoo.enabled ? 1 : 0.5 }}>
+        <input type="checkbox" checked={zoo.dockToPanel} disabled={!zoo.enabled} onChange={(e) => setZooSettings({ dockToPanel: e.target.checked })} />
+        Dock to the right panel when it's open
+      </label>
+      <span style={{ ...muted, fontSize: 12 }}>Per device. Drag the zoo to move it.</span>
     </div>
   );
 }
