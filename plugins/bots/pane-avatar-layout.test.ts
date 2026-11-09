@@ -5,22 +5,29 @@ import { cornerPlacement, paneAvatarState } from "./pane-avatar-layout.ts";
 const pane = { left: 300, top: 50, right: 1300, bottom: 900 };
 const composer = { left: 500, top: 700, right: 1100, bottom: 880 };
 
-test("top corners sit inside the pane's top edge, held to their side", () => {
-  assert.deepEqual(cornerPlacement("top-right", pane, composer), { side: "right", top: 12 });
-  assert.deepEqual(cornerPlacement("top-left", pane, composer), { side: "left", top: 12 });
+test("top corners sit just outside the composer column when there is room", () => {
+  assert.deepEqual(cornerPlacement("top-right", pane, composer), { left: 1112 - 300, top: 12 });
+  assert.deepEqual(cornerPlacement("top-left", pane, composer), { left: 500 - 12 - 96 - 300, top: 12 });
+});
+
+test("without room beside the composer, corners are held to the pane edge", () => {
+  const tight = { left: 300, top: 50, right: 800, bottom: 900 };
+  const wide = { left: 316, top: 700, right: 784, bottom: 880 };
+  assert.deepEqual(cornerPlacement("top-right", tight, wide), { left: 500 - 12 - 96, top: 12 });
+  assert.deepEqual(cornerPlacement("top-left", tight, wide), { left: 12, top: 12 });
 });
 
 test("bottom corners clear the composer only where they overlap it", () => {
   // Wide pane: the corner is beside the centered composer, so it uses the pane's bottom.
-  assert.deepEqual(cornerPlacement("bottom-right", pane, composer), { side: "right", top: 850 - 12 - 96 });
+  assert.deepEqual(cornerPlacement("bottom-right", pane, composer), { left: 812, top: 850 - 12 - 96 });
   // Narrow pane: the composer spans it, so the avatar sits above the composer.
   const narrow = { left: 300, top: 50, right: 800, bottom: 900 };
-  assert.deepEqual(cornerPlacement("bottom-left", narrow, { left: 316, top: 700, right: 784, bottom: 880 }), { side: "left", top: 650 - 12 - 96 });
+  assert.deepEqual(cornerPlacement("bottom-left", narrow, { left: 316, top: 700, right: 784, bottom: 880 }), { left: 12, top: 650 - 12 - 96 });
 });
 
 test("without a composer measured yet, bottom corners use the pane's bottom", () => {
-  assert.deepEqual(cornerPlacement("bottom-right", pane, null), { side: "right", top: 742 });
-  assert.deepEqual(cornerPlacement("bottom-left", pane, null), { side: "left", top: 742 });
+  assert.deepEqual(cornerPlacement("bottom-right", pane, null), { left: 1000 - 12 - 96, top: 742 });
+  assert.deepEqual(cornerPlacement("bottom-left", pane, null), { left: 12, top: 742 });
 });
 
 test("off and panes too small for the avatar show nothing", () => {

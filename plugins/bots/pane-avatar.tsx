@@ -9,8 +9,8 @@
 // This leans on bb's DOM, which is not a public API: `[data-split-pane-id]`
 // and `[data-thread-window]` (the pane and its chat column, a flex column the
 // host joins as a zero-height first item) and `[data-app-composer]` (the
-// bottom edge for bottom corners). If they change, avatars stop showing or
-// bottom corners overlap the composer; nothing else depends on them.
+// avatar sits beside it). If they change, avatars stop showing or
+// avatars sit in the wrong place; nothing else depends on them.
 import {
   experimental_useSidebarThreads as useSidebarThreads, useBbContext, useRealtime, useRpc, useSidebarSplitLayout,
   type PluginAppBuilder, type PluginRpcClient,
@@ -72,12 +72,11 @@ function usePaneHost(pane: Element): HTMLDivElement | null {
 }
 
 /**
- * The avatar's side and its offset from the pane's top. Only bottom corners
- * depend on measurements (the pane's height and the composer); they are taken
- * when the pane or composer resizes. Horizontal movement needs none.
+ * The avatar's offset from the pane's top-left, measured from the pane and the
+ * composer whenever either resizes.
  */
 function usePlacement(pane: Element, host: HTMLElement | null, corner: AvatarCorner, onDetached: () => void) {
-  const [placement, setPlacement] = useState<{ side: "left" | "right"; top: number } | null>(null);
+  const [placement, setPlacement] = useState<{ left: number; top: number } | null>(null);
   // The composer's last box, for bottom corners while a question card replaces it.
   const lastComposer = useRef<Box | null>(null);
   useLayoutEffect(() => {
@@ -96,7 +95,7 @@ function usePlacement(pane: Element, host: HTMLElement | null, corner: AvatarCor
       const hidden = !!pane.closest("[aria-hidden=true],[inert]");
       const paneBox = { ...box(pane.getBoundingClientRect()), top: host.getBoundingClientRect().top };
       const next = hidden ? null : cornerPlacement(corner, paneBox, lastComposer.current);
-      setPlacement((prev) => prev?.side === next?.side && prev?.top === next?.top ? prev : next);
+      setPlacement((prev) => prev?.left === next?.left && prev?.top === next?.top ? prev : next);
       // Eye tracking caches positions; the pane moved or resized.
       remeasureAvatars();
     };
@@ -132,7 +131,7 @@ function PaneAvatar({ bot, threadId, pane, onDetached }: { bot: Bot; threadId: s
   const over = usePointerOver(avatar);
   if (!host || !placement) return null;
   const style: CSSProperties = {
-    position: "absolute", top: placement.top, [placement.side]: MARGIN, width: SIZE, height: SIZE,
+    position: "absolute", top: placement.top, left: placement.left, width: SIZE, height: SIZE,
     opacity: over ? 0.12 : 1, transition: "opacity 150ms ease",
     filter: "drop-shadow(0 4px 10px rgb(0 0 0 / 0.25))",
   };

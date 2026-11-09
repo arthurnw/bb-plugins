@@ -119,21 +119,21 @@ panes** field in Settings → Bots: Top right (the default, also for bots saved
 before the field existed), Top left, Bottom right, Bottom left, or Off. The
 avatar shows the thread's own state, with a running turn ahead of unread
 because the pane is showing the thread. Its eyes follow the pointer. Clicks
-pass through it to the chat, and it fades while the pointer is over it. Bottom
-corners sit beside the composer when the pane is wide enough, and above it
-otherwise.
+pass through it to the chat, and it fades while the pointer is over it. The avatar
+sits just outside the composer column's left or right edge, so it stays near
+the chat and moves less when a sidebar or panel opens (and clear of the thread
+context card). When the pane is too narrow for that, it is held to the pane
+edge, and a bottom corner there sits above the composer.
 
 Which pane shows which thread comes from bb (`useSidebarSplitLayout`, else the
 route's thread), so the avatar stays while a question or approval card replaces
 the composer. The avatar is drawn inside the pane's chat column, in a
-zero-height element added as its first child, and held to its side by CSS, so
-it moves with the pane when the right panel opens or closes and the column
-clips it. This uses bb's DOM, which is not a public API: `[data-split-pane-id]`,
+zero-height element added as its first child, so it moves with the pane when
+the right panel opens or closes and the column clips it. This uses bb's DOM, which is not a public API: `[data-split-pane-id]`,
 `[data-thread-window]` (the chat column, a flex column), and
 `[data-app-composer]`. If those change, avatars stop showing or bottom corners
-overlap the composer; nothing else depends on them. The vertical offset of
-bottom corners is measured when the pane or composer resizes, not while a turn
-streams.
+overlap the composer; nothing else depends on them. The position is measured
+when the pane or composer resizes, not while a turn streams.
 
 The 14 still avatars that came before were stored as WebP data URLs. Once per
 browser profile, the app rasterizes them again and gives any bot whose stored
