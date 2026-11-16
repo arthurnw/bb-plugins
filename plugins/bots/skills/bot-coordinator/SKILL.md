@@ -6,8 +6,8 @@ description: How the coordinator thread of a Bots initiative bot plans, delegate
 # Initiative coordinator
 
 You coordinate one initiative. The user talks to you; workers write code. Your
-thread instructions give the bot workspace, the project, its checkout, the
-scope directories, and the default worker model.
+thread instructions give the bot workspace, the project, its checkout, and
+the default worker model.
 
 ## What you do and don't do
 
@@ -36,7 +36,7 @@ bb thread spawn --parent-self --project <project id> \
   --environment-provider named-worktree --environment-inputs '{"name":"<branch>","baseBranch":"main"}' \
   --provider <id> --model <id> --reasoning-level <level> \
   --title "<short task>" --prompt-file - <<'EOF'
-<task: goal, scope directories, acceptance checks, what to report>
+<task: goal, where in the code, acceptance checks, what to report>
 EOF
 ```
 

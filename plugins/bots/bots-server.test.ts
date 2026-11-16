@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { MIGRATIONS } from "./bot-store.ts";
-import { registerBots } from "./bots-server.ts";
+import { registerBots, spawnContract } from "./bots-server.ts";
 
 type Dispatch = (ctx: { thread: Record<string, unknown>; input: { blocks: unknown[] } }) => { action: string };
 
@@ -54,7 +54,7 @@ function fakeBb() {
   return { store, dispatch: dispatch!, rpc, mention: mention!, configure: configure!, provider: provider!, cli: cli!, spawned, updated, threads, dir };
 }
 
-const base = { name: "", emoji: "", instructions: "", starterPrompt: "", model: null, permissionMode: null, environment: null, projectId: "proj_1", avatarCorner: "top-right", scopeDirs: ["plugins/bots"], workerModel: null };
+const base = { name: "", emoji: "", instructions: "", starterPrompt: "", model: null, permissionMode: null, environment: null, projectId: "proj_1", avatarCorner: "top-right", workerModel: null };
 const request = (text: string) => ({ projectId: "proj_1", origin: "plugin", input: [{ type: "text", text, mentions: [] }], environment: { type: "project-default" } });
 
 const pill = (pluginId: string, botId: string) => ({ type: "text", text: "@B go", mentions: [{ start: 0, end: 2, resource: { kind: "plugin", pluginId, itemId: `bot:${botId}` } }] });
@@ -62,7 +62,7 @@ const thread = (id: string, originPluginId: string) => ({ id, status: "pending",
 
 test("a first message with a bots or launcher pill binds the thread", () => {
   const { store, dispatch } = fakeBb();
-  const bot = store.save(undefined, { name: "B", emoji: "", instructions: "", starterPrompt: "", model: null, permissionMode: null, environment: null, projectId: null, avatarCorner: "top-right", scopeDirs: [], workerModel: null });
+  const bot = store.save(undefined, { name: "B", emoji: "", instructions: "", starterPrompt: "", model: null, permissionMode: null, environment: null, projectId: null, avatarCorner: "top-right", workerModel: null });
   dispatch({ thread: thread("t1", "launcher"), input: { blocks: [pill("bots", bot.id)] } });
   dispatch({ thread: thread("t2", "launcher"), input: { blocks: [pill("launcher", bot.id)] } });
   dispatch({ thread: thread("t3", "someone-else"), input: { blocks: [{ type: "text", text: "plain", mentions: [] }] } });
@@ -80,14 +80,14 @@ test("No bot from a trusted origin detaches; from another plugin it does not", (
 
 test("the mention provider lists nothing but still explains pills", () => {
   const { store, mention } = fakeBb();
-  const bot = store.save(undefined, { name: "B", emoji: "", instructions: "", starterPrompt: "", model: null, permissionMode: null, environment: null, projectId: null, avatarCorner: "top-right", scopeDirs: [], workerModel: null });
+  const bot = store.save(undefined, { name: "B", emoji: "", instructions: "", starterPrompt: "", model: null, permissionMode: null, environment: null, projectId: null, avatarCorner: "top-right", workerModel: null });
   assert.deepEqual(mention.search(), []);
   assert.match(mention.resolve(bot.id).context, /"B" bot/);
 });
 
 test("getBot returns the bot or null", () => {
   const { store, rpc } = fakeBb();
-  const bot = store.save(undefined, { name: "B", emoji: "", instructions: "", starterPrompt: "", model: null, permissionMode: null, environment: null, projectId: null, avatarCorner: "top-right", scopeDirs: [], workerModel: null });
+  const bot = store.save(undefined, { name: "B", emoji: "", instructions: "", starterPrompt: "", model: null, permissionMode: null, environment: null, projectId: null, avatarCorner: "top-right", workerModel: null });
   assert.equal((rpc.getBot!({ botId: bot.id } as never) as { bot: { id: string } }).bot.id, bot.id);
   assert.deepEqual(rpc.getBot!({ botId: "nope" } as never), { bot: null });
 });
@@ -138,4 +138,10 @@ test("createInitiative refuses an empty brief", async () => {
   const { rpc, store } = fakeBb();
   await assert.rejects(rpc.createInitiative!({ request: request("  "), bot: base } as never) as Promise<unknown>, /brief/);
   assert.equal(store.list().length, 0);
+});
+
+test("createInitiative input accepts the New bot dialog's unnamed draft", () => {
+  const input = spawnContract.createInitiative.input.parse({ request: request("Ship it"), bot: base });
+  assert.equal(input.bot.name, "");
+  assert.throws(() => spawnContract.createInitiative.input.parse({ request: request("Ship it"), bot: { ...base, name: "x".repeat(200) } }));
 });

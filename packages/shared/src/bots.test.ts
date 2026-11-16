@@ -115,7 +115,6 @@ test("a bot from an older Bots reads with defaults; botDraft keeps the editable 
   assert.equal(botDraft({ ...bot, avatarCorner: "bottom-right" }).avatarCorner, "bottom-right");
   assert.equal("memory" in bot, false);
   assert.equal(bot.coordinatorThreadId, null);
-  assert.deepEqual(bot.scopeDirs, []);
-  assert.deepEqual(botDraft(bot).scopeDirs, []);
+  assert.equal(bot.workerModel, null);
   assert.equal("coordinatorThreadId" in botDraft(bot), false);
 });

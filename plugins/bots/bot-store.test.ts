@@ -172,17 +172,17 @@ test("old drafts drop memoryWrites and default the initiative fields", () => {
   const { db, store } = openStore();
   const bot = store.save(undefined, draft("Old"));
   db.prepare("UPDATE bots SET draft_json = ? WHERE id = ?").run(JSON.stringify({ name: "Old", emoji: "", instructions: "", starterPrompt: "", model: null,
-    permissionMode: null, environment: null, projectId: null, memoryWrites: false }), bot.id);
+    permissionMode: null, environment: null, projectId: null, memoryWrites: false, scopeDirs: ["old"] }), bot.id);
   const reloaded = new BotStore(db as unknown as SqlDb).get(bot.id)!;
   assert.equal("memoryWrites" in reloaded, false);
-  assert.deepEqual(reloaded.scopeDirs, []);
+  assert.equal("scopeDirs" in reloaded, false);
   assert.equal(reloaded.workerModel, null);
   assert.equal(reloaded.coordinatorThreadId, null);
 });
 
 test("coordinator, done workers, and checkout path persist", () => {
   const { db, store } = openStore();
-  const bot = store.save(undefined, draft("Initiative", { scopeDirs: ["plugins/bots"] }), galleryAvatar(GALLERY_IDS[0]!));
+  const bot = store.save(undefined, draft("Initiative"), galleryAvatar(GALLERY_IDS[0]!));
   assert.equal(bot.avatar, galleryAvatar(GALLERY_IDS[0]!));
   store.setCoordinator(bot.id, "coord", "/ws/b");
   store.setDone(bot.id, "w1", true);
@@ -194,7 +194,6 @@ test("coordinator, done workers, and checkout path persist", () => {
   assert.equal(again.coordinatorThreadId, "coord");
   assert.equal(again.workspacePath, "/ws/b");
   assert.deepEqual(again.doneThreads, ["w1"]);
-  assert.deepEqual(again.scopeDirs, ["plugins/bots"]);
   assert.equal(reloaded.coordinatedBy("coord")?.id, bot.id);
   assert.equal(reloaded.checkoutPath(bot.id), "/repo");
   assert.throws(() => store.save(undefined, draft("Upload"), "data:image/png;base64,AAAA"), /built-in avatar/);

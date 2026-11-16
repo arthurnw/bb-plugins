@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { GALLERY_IDS, galleryAvatar } from "@arthurnw/bb-shared/bots";
-import { freeAvatars, parseScopeDirs, shuffleAvatar } from "./new-bot-model.ts";
+import { freeAvatars, shuffleAvatar } from "./new-bot-model.ts";
 
 test("avatars of persona bots and live initiative bots are taken; archived ones are free", () => {
   const [a, b, c] = GALLERY_IDS;
@@ -21,8 +21,4 @@ test("shuffle avoids the current avatar and falls back to all when none are free
   assert.equal(shuffleAvatar([a!, b!], a!, () => 0), b);
   assert.equal(shuffleAvatar([a!], a!, () => 0), a);
   assert.ok(GALLERY_IDS.includes(shuffleAvatar([], null)));
-});
-
-test("scope directories are one per line without blanks or repeats", () => {
-  assert.deepEqual(parseScopeDirs(" plugins/bots \n\npackages/shared\nplugins/bots"), ["plugins/bots", "packages/shared"]);
 });

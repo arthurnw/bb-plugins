@@ -60,7 +60,7 @@ export function BotSettings() {
     let n = 1;
     while (taken.has(n === 1 ? "new bot" : `new bot ${n}`)) n++;
     const { bot } = await rpc.call("saveBot", { bot: { name: n === 1 ? "New bot" : `New bot ${n}`, emoji: "", instructions: "", starterPrompt: "",
-      model: null, permissionMode: null, environment: null, projectId: null, avatarCorner: DEFAULT_AVATAR_CORNER, scopeDirs: [], workerModel: null } });
+      model: null, permissionMode: null, environment: null, projectId: null, avatarCorner: DEFAULT_AVATAR_CORNER, workerModel: null } });
     setEditing(bot.id);
   });
 
@@ -145,7 +145,6 @@ function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<unknown>
   const dirty = !sameDraft(draft, saved);
   const set = <K extends keyof BotDraft>(key: K, value: BotDraft[K]) => setDraft((current) => ({ ...current, [key]: value }));
   const initiative = bot.coordinatorThreadId !== null;
-  const [scopeText, setScopeText] = useState(saved.scopeDirs.join("\n"));
 
   // The context row's chip saves the corner directly; follow it so an open editor does not read as changed.
   useEffect(() => { setDraft((current) => ({ ...current, avatarCorner: bot.avatarCorner })); }, [bot.avatarCorner]);
@@ -177,10 +176,6 @@ function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<unknown>
           <input value={draft.name} maxLength={NAME_MAX} onChange={(e) => set("name", e.target.value)} style={{ ...input, width: "100%", boxSizing: "border-box" }} aria-label="Name" />
         </Field>
       </div>
-      {initiative && <Field label="Scope directories" hint="One per line. Guidance for the coordinator and workers on where to look and which directories to touch; not enforced.">
-        <textarea value={scopeText} rows={3} aria-label="Scope directories" style={textarea}
-          onChange={(e) => { setScopeText(e.target.value); set("scopeDirs", e.target.value.split("\n").map((line) => line.trim()).filter(Boolean)); }} />
-      </Field>}
       {initiative && <span style={{ ...muted, fontSize: 12 }}>Workspace: <code>{bot.workspacePath ?? "not provisioned"}</code></span>}
       {!initiative && <>
       <Field label="Instructions" hint={`Added to the thread's instructions. Point at skills for method instead of repeating them. ${draft.instructions.length}/${INSTRUCTIONS_MAX}`}>

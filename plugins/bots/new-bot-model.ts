@@ -19,7 +19,3 @@ export function shuffleAvatar(free: readonly GalleryId[], current: GalleryId | n
   const from = others.length > 0 ? others : pool;
   return from[Math.floor(random() * from.length)]!;
 }
-
-/** Scope directories from the editor text: one per line, trimmed, without blanks or repeats. */
-export const parseScopeDirs = (text: string): string[] =>
-  [...new Set(text.split("\n").map((line) => line.trim()).filter(Boolean))];

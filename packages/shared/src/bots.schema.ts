@@ -1,10 +1,10 @@
 import { z } from "zod";
-import { ANIMATION_MAX_CHARS, AVATAR_CORNERS, AVATAR_MAX_CHARS, BOT_ENVIRONMENTS, BRIEF_MAX, DEFAULT_AVATAR_CORNER, INSTRUCTIONS_MAX, MAX_BOTS, NAME_MAX, SCOPE_DIRS_MAX, STARTER_MAX, type Bot, type BotDraft } from "./bots.ts";
+import { ANIMATION_MAX_CHARS, AVATAR_CORNERS, AVATAR_MAX_CHARS, BOT_ENVIRONMENTS, BRIEF_MAX, DEFAULT_AVATAR_CORNER, INSTRUCTIONS_MAX, MAX_BOTS, NAME_MAX, STARTER_MAX, type Bot, type BotDraft } from "./bots.ts";
 import { selectionSchema } from "./selection.schema.ts";
 
 const permissionModeSchema = z.enum(["accept-edits", "auto", "full"]);
 
-export const botDraftSchema: z.ZodType<BotDraft, unknown> = z.object({
+const draftFields = {
   name: z.string().trim().min(1).max(NAME_MAX),
   emoji: z.string().trim().max(16).default(""),
   instructions: z.string().max(INSTRUCTIONS_MAX).default(""),
@@ -14,9 +14,11 @@ export const botDraftSchema: z.ZodType<BotDraft, unknown> = z.object({
   environment: z.enum(BOT_ENVIRONMENTS).nullable().default(null),
   projectId: z.string().min(1).nullable().default(null),
   avatarCorner: z.enum(AVATAR_CORNERS).default(DEFAULT_AVATAR_CORNER),
-  scopeDirs: z.array(z.string().trim().min(1).max(500)).max(SCOPE_DIRS_MAX).default([]),
   workerModel: selectionSchema.nullable().default(null),
-});
+};
+export const botDraftSchema: z.ZodType<BotDraft, unknown> = z.object(draftFields);
+/** A new initiative bot's draft: an empty name means "name it from the brief". */
+export const initiativeDraftSchema: z.ZodType<BotDraft, unknown> = z.object({ ...draftFields, name: z.string().trim().max(NAME_MAX).default("") });
 
 export const botSchema: z.ZodType<Bot, unknown> = z.object({
   id: z.string().min(1),
@@ -36,7 +38,6 @@ export const botSchema: z.ZodType<Bot, unknown> = z.object({
   avatarAnimation: z.string().nullable().default(null),
   avatarSlot: z.number().int().min(0).max(MAX_BOTS - 1),
   // Initiative fields are defaulted so a Launcher built against this schema still reads an older Bots.
-  scopeDirs: z.array(z.string()).default([]),
   workerModel: selectionSchema.nullable().default(null),
   coordinatorThreadId: z.string().nullable().default(null),
   workspacePath: z.string().nullable().default(null),

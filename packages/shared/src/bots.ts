@@ -12,8 +12,6 @@ export const STARTER_MAX = 2000;
 /** `PluginAgentConfiguration.instructions` is truncated past this. */
 export const INSTRUCTION_BUDGET = 4096;
 export const MENTION_PROVIDER = "bot";
-/** Scope directories an initiative bot suggests to its workers. */
-export const SCOPE_DIRS_MAX = 20;
 export const BRIEF_MAX = 20_000;
 /** A 128 px WebP is 5–20 KB as a data URL; this leaves room for PNG fallbacks. */
 export const AVATAR_MAX_CHARS = 120_000;
@@ -50,8 +48,6 @@ export interface BotDraft {
   environment: BotEnvironment | null;
   projectId: string | null;
   avatarCorner: AvatarCorner;
-  /** Initiative bots: directories workers should look in and touch. Guidance only. */
-  scopeDirs: string[];
   /** Initiative bots: the default model for workers; null leaves it to the coordinator. */
   workerModel: ModelSelection | null;
 }
@@ -80,8 +76,8 @@ export interface Bot extends BotDraft {
 }
 
 /** The editable fields of a saved bot. */
-export const botDraft = ({ name, emoji, instructions, starterPrompt, model, permissionMode, environment, projectId, avatarCorner, scopeDirs, workerModel }: Bot): BotDraft =>
-  ({ name, emoji, instructions, starterPrompt, model, permissionMode, environment, projectId, avatarCorner, scopeDirs, workerModel });
+export const botDraft = ({ name, emoji, instructions, starterPrompt, model, permissionMode, environment, projectId, avatarCorner, workerModel }: Bot): BotDraft =>
+  ({ name, emoji, instructions, starterPrompt, model, permissionMode, environment, projectId, avatarCorner, workerModel });
 
 export const isInitiative = (bot: Pick<Bot, "coordinatorThreadId">): boolean => bot.coordinatorThreadId !== null;
 

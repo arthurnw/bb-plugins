@@ -7,7 +7,7 @@ import {
   BOT_MENTION_PLUGINS, BOTS_PLUGIN_ID, BRIEF_MAX, findBotMention, handoffSource, hasNoBotMarker, MENTION_PROVIDER, NO_BOT_TEXT, ownerOf, renderInstructions,
   TRUSTED_ORIGIN_PLUGINS, withBotMention, withoutBotMentions, type Bot,
 } from "@arthurnw/bb-shared/bots";
-import { botDraftSchema, botsRpcContract } from "@arthurnw/bb-shared/bots/schema";
+import { botsRpcContract, initiativeDraftSchema } from "@arthurnw/bb-shared/bots/schema";
 import { GUARD_FILE, GUARD_SCRIPT, guardSettings } from "./guard-script.ts";
 import { COORDINATOR_KICKOFF, COORDINATOR_SKILL, coordinatorInstructions, nameFromBrief, roleOf, workerInstructions, WORKSPACE_PROVIDER, type ThreadRole } from "./initiative.ts";
 
@@ -28,7 +28,7 @@ export const spawnContract = defineRpcContract({
    * bot's first worker.
    */
   createInitiative: {
-    input: z.object({ request: z.custom<NewThreadRequest>(), bot: botDraftSchema, avatar: z.string().max(200).optional(),
+    input: z.object({ request: z.custom<NewThreadRequest>(), bot: initiativeDraftSchema, avatar: z.string().max(200).optional(),
       promoteThreadId: z.string().min(1).optional() }),
     output: z.object({ threadId: z.string(), botId: z.string() }),
   },

@@ -278,8 +278,8 @@ function checkAnimation(avatar: string | null, animation: string) {
 
 function fromRow(row: BotRow, avatarSlot: number): Bot {
   // Drafts saved before a field existed get its default.
-  const { memoryWrites: _dropped, ...saved } = JSON.parse(row.draft_json) as Partial<BotDraft> & { memoryWrites?: boolean };
-  const draft = { avatarCorner: DEFAULT_AVATAR_CORNER, scopeDirs: [], workerModel: null, ...saved } as BotDraft;
+  const { memoryWrites: _memory, scopeDirs: _scope, ...saved } = JSON.parse(row.draft_json) as Partial<BotDraft> & { memoryWrites?: boolean; scopeDirs?: string[] };
+  const draft = { avatarCorner: DEFAULT_AVATAR_CORNER, workerModel: null, ...saved } as BotDraft;
   return { ...draft, id: row.id, position: row.position, avatar: row.avatar, avatarAnimation: row.avatar_animation ?? null, avatarSlot,
     coordinatorThreadId: row.coordinator_thread_id ?? null, workspacePath: row.workspace_path ?? null, doneThreads: row.done_threads ?? [],
     createdAt: row.created_at, updatedAt: row.updated_at };

@@ -46,9 +46,6 @@ export function nameFromBrief(brief: string, taken: readonly string[]): string {
 const modelFlags = (model: ModelSelection) =>
   `--provider ${model.providerId} --model ${model.model} --reasoning-level ${model.reasoningLevel}${model.serviceTier && model.serviceTier !== "default" ? ` --service-tier ${model.serviceTier}` : ""}`;
 
-const scopeLine = (bot: Pick<Bot, "scopeDirs">) =>
-  bot.scopeDirs.length > 0 ? bot.scopeDirs.map((dir) => `\`${oneLine(dir)}\``).join(", ") : "(none set: the whole project)";
-
 export interface CoordinatorContext {
   projectId: string;
   projectName: string;
@@ -66,7 +63,6 @@ export function coordinatorInstructions(bot: Bot, context: CoordinatorContext): 
     `- Bot workspace (your working directory, the only place you write files): \`${workspace}\``,
     `- State files: \`${workspace}/tracker.md\` (current state) and \`${workspace}/log.md\` (history). Read tracker.md before anything else. If it does not exist, your first task is writing it from the brief.`,
     `- Project: ${oneLine(context.projectName)} (\`${context.projectId}\`)${context.checkoutPath ? `; checkout at \`${context.checkoutPath}\` (read it at \`origin/main\`; never edit it)` : ""}.`,
-    `- Scope directories (guidance for you and workers): ${scopeLine(bot)}.`,
     bot.workerModel
       ? `- Default worker model: \`${modelFlags(bot.workerModel)}\`. Use another model or Launcher preset when a task calls for it.`
       : "- Default worker model: the project's default. Pick a model per task when it matters.",
@@ -86,7 +82,6 @@ export function workerInstructions(bot: Bot): string {
     "- Report to your parent (the coordinator) when you are done, blocked, or failed. bb sends your final response to it; make that response the report.",
     "- If the user steered you directly, say in your report what they asked and what you changed.",
     `- Don't write the bot's state files${bot.workspacePath ? ` in \`${bot.workspacePath}\`` : ""}; only the coordinator does.`,
-    `- Scope directories: ${scopeLine(bot)}.`,
   ];
   return lines.join("\n");
 }
