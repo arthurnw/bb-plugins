@@ -294,7 +294,8 @@ export function registerBots(bb: BbPluginApi) {
       try {
         const thread = await bb.sdk.threads.spawn({
           ...request, input, projectId,
-          ...(model ? { providerId: model.providerId, model: model.model, reasoningLevel: model.reasoningLevel, serviceTier: model.serviceTier,
+          // The composer's session options belong to its own provider; a chosen coordinator model drops them.
+          ...(model ? { providerId: model.providerId, model: model.model, reasoningLevel: model.reasoningLevel, serviceTier: model.serviceTier, sessionOptions: undefined,
             executionInputSources: { ...request.executionInputSources, providerId: "explicit", model: "explicit", reasoningLevel: "explicit", serviceTier: "explicit" } } : {}),
           environment: { type: "provider", environmentProviderId: WORKSPACE_PROVIDER, inputs: { botId: bot.id } },
         });
