@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { animatedImageType, ANIMATION_DATA_URL, ANIMATION_MAX_CHARS, AVATAR_DATA_URL, AVATAR_MAX_CHARS, dataUrlBytes, GALLERY_IDS, galleryAvatar, galleryId, MAX_BOTS, MEMORY_MAX, type BindingSource, type Bot, type BotDraft, DEFAULT_AVATAR_CORNER, type OwnerLookup } from "@arthurnw/bb-shared/bots";
+import { animatedImageType, ANIMATION_DATA_URL, ANIMATION_MAX_CHARS, AVATAR_DATA_URL, AVATAR_MAX_CHARS, dataUrlBytes, GALLERY_IDS, galleryAvatar, galleryId, MAX_BOTS, type BindingSource, type Bot, type BotDraft, DEFAULT_AVATAR_CORNER, type OwnerLookup } from "@arthurnw/bb-shared/bots";
 
 /** The subset of better-sqlite3 (and node:sqlite, for tests) the store uses. */
 export interface SqlDb {
@@ -30,15 +30,23 @@ export const MIGRATIONS = [
   `ALTER TABLE bots ADD COLUMN avatar_slot INTEGER`,
   // Apart from `bots` so loading and listing bots never reads the animated bytes.
   `CREATE TABLE bot_avatar_animations (bot_id TEXT PRIMARY KEY, data TEXT NOT NULL, version TEXT NOT NULL)`,
+  // Initiative bots. `memory` stays unused: bot memory was removed.
+  `ALTER TABLE bots ADD COLUMN coordinator_thread_id TEXT`,
+  `ALTER TABLE bots ADD COLUMN workspace_path TEXT`,
+  `CREATE TABLE bot_done (thread_id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, created_at INTEGER NOT NULL)`,
+  `ALTER TABLE bots ADD COLUMN checkout_path TEXT`,
 ];
 
 export const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
 
 export class BotStoreError extends Error {}
 
-type BotRow = { id: string; position: number; draft_json: string; memory: string; avatar: string | null; avatar_slot: number | null; created_at: number; updated_at: number;
+type BotRow = { id: string; position: number; draft_json: string; avatar: string | null; avatar_slot: number | null; created_at: number; updated_at: number;
+  coordinator_thread_id: string | null; workspace_path: string | null; checkout_path: string | null;
   /** From bot_avatar_animations. */
-  avatar_animation?: string | null };
+  avatar_animation?: string | null;
+  /** From bot_done. */
+  done_threads?: string[] };
 
 /**
  * Bots and thread bindings. SQLite is the durable copy; the maps are the read
@@ -47,6 +55,8 @@ type BotRow = { id: string; position: number; draft_json: string; memory: string
 export class BotStore implements OwnerLookup {
   private bots = new Map<string, Bot>();
   private bindings = new Map<string, string>();
+  /** Bot id → its project's checkout path, recorded when the workspace is provisioned. */
+  private checkouts = new Map<string, string>();
   private detachedThreads = new Set<string>();
   private db: SqlDb;
   private now: () => number;
@@ -58,7 +68,13 @@ export class BotStore implements OwnerLookup {
     const animations = new Map((db.prepare("SELECT bot_id, version FROM bot_avatar_animations").all() as { bot_id: string; version: string }[])
       .map((row) => [row.bot_id, row.version]));
     for (const row of rows) row.avatar_animation = animations.get(row.id) ?? null;
+    const done = new Map<string, string[]>();
+    for (const row of db.prepare("SELECT thread_id, bot_id FROM bot_done").all() as { thread_id: string; bot_id: string }[]) {
+      done.set(row.bot_id, [...(done.get(row.bot_id) ?? []), row.thread_id]);
+    }
+    for (const row of rows) row.done_threads = done.get(row.id) ?? [];
     for (const row of rows) if (row.avatar_slot !== null) this.bots.set(row.id, fromRow(row, row.avatar_slot));
+    for (const row of rows) if (row.checkout_path) this.checkouts.set(row.id, row.checkout_path);
     // Bots created before avatars existed get a slot on first load.
     for (const row of rows) {
       if (row.avatar_slot !== null) continue;
@@ -84,14 +100,17 @@ export class BotStore implements OwnerLookup {
     return bot;
   }
 
-  save(botId: string | undefined, draft: BotDraft): Bot {
+  /** `avatar` overrides the random pick for a new bot. */
+  save(botId: string | undefined, draft: BotDraft, avatar?: string): Bot {
     const clash = this.list().find((bot) => bot.id !== botId && bot.name.toLowerCase() === draft.name.toLowerCase());
     if (clash) throw new BotStoreError(`A bot named "${clash.name}" already exists.`);
     const at = this.now();
     if (botId === undefined) {
       if (this.bots.size >= MAX_BOTS) throw new BotStoreError(`You can have up to ${MAX_BOTS} bots.`);
       const position = Math.max(-1, ...[...this.bots.values()].map((bot) => bot.position)) + 1;
-      const bot: Bot = { ...draft, id: randomUUID(), position, memory: "", avatar: this.freshAvatar(), avatarAnimation: null, avatarSlot: this.freeSlot(), createdAt: at, updatedAt: at };
+      if (avatar !== undefined && !galleryId(avatar)) throw new BotStoreError("A new bot's avatar must be a built-in avatar.");
+      const bot: Bot = { ...draft, id: randomUUID(), position, avatar: avatar ?? this.freshAvatar(), avatarAnimation: null, avatarSlot: this.freeSlot(),
+        coordinatorThreadId: null, workspacePath: null, doneThreads: [], createdAt: at, updatedAt: at };
       this.db.prepare("INSERT INTO bots (id, position, draft_json, memory, avatar, avatar_slot, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
         .run(bot.id, bot.position, JSON.stringify(draft), "", bot.avatar, bot.avatarSlot, at, at);
       this.bots.set(bot.id, bot);
@@ -146,6 +165,7 @@ export class BotStore implements OwnerLookup {
     if (!this.bots.has(botId)) return false;
     this.db.prepare("DELETE FROM bots WHERE id = ?").run(botId);
     this.db.prepare("DELETE FROM bot_avatar_animations WHERE bot_id = ?").run(botId);
+    this.db.prepare("DELETE FROM bot_done WHERE bot_id = ?").run(botId);
     this.bots.delete(botId);
     return true;
   }
@@ -162,19 +182,40 @@ export class BotStore implements OwnerLookup {
     return this.list();
   }
 
-  memory(botId: string) {
-    const { memory } = this.require(botId);
-    return { content: memory, sha256: sha256(memory), limit: MEMORY_MAX };
+  /** Makes a bot an initiative bot run by `threadId`. */
+  setCoordinator(botId: string, threadId: string, workspacePath: string): Bot {
+    const current = this.require(botId);
+    const at = this.now();
+    this.db.prepare("UPDATE bots SET coordinator_thread_id = ?, workspace_path = ?, updated_at = ? WHERE id = ?").run(threadId, workspacePath, at, botId);
+    const bot: Bot = { ...current, coordinatorThreadId: threadId, workspacePath, updatedAt: at };
+    this.bots.set(botId, bot);
+    return bot;
   }
 
-  setMemory(botId: string, content: string, expectedSha256: string) {
-    const bot = this.require(botId);
-    if (sha256(bot.memory) !== expectedSha256) throw new BotStoreError("Memory changed since it was read. Read it again and retry.");
-    if (content.length > MEMORY_MAX) throw new BotStoreError(`Memory is limited to ${MEMORY_MAX} characters.`);
-    const at = this.now();
-    this.db.prepare("UPDATE bots SET memory = ?, updated_at = ? WHERE id = ?").run(content, at, botId);
-    this.bots.set(botId, { ...bot, memory: content, updatedAt: at });
-    return this.memory(botId);
+  checkoutPath(botId: string): string | null {
+    return this.checkouts.get(botId) ?? null;
+  }
+  setCheckoutPath(botId: string, path: string) {
+    this.require(botId);
+    this.db.prepare("UPDATE bots SET checkout_path = ? WHERE id = ?").run(path, botId);
+    this.checkouts.set(botId, path);
+  }
+
+  /** The initiative bot whose coordinator is `threadId`. */
+  coordinatedBy(threadId: string): Bot | null {
+    for (const bot of this.bots.values()) if (bot.coordinatorThreadId === threadId) return bot;
+    return null;
+  }
+
+  /** Marks a worker finished (or not); the thread list collapses finished ones. */
+  setDone(botId: string, threadId: string, done: boolean): Bot {
+    const current = this.require(botId);
+    if (done) this.db.prepare("INSERT OR IGNORE INTO bot_done (thread_id, bot_id, created_at) VALUES (?, ?, ?)").run(threadId, botId, this.now());
+    else this.db.prepare("DELETE FROM bot_done WHERE thread_id = ?").run(threadId);
+    const rest = current.doneThreads.filter((id) => id !== threadId);
+    const bot: Bot = { ...current, doneThreads: done ? [...rest, threadId] : rest };
+    this.bots.set(botId, bot);
+    return bot;
   }
 
   /** A binding to a deleted bot reads as no binding, so configure returns nothing for it. */
@@ -237,7 +278,9 @@ function checkAnimation(avatar: string | null, animation: string) {
 
 function fromRow(row: BotRow, avatarSlot: number): Bot {
   // Drafts saved before a field existed get its default.
-  const draft = { memoryWrites: true, avatarCorner: DEFAULT_AVATAR_CORNER, ...(JSON.parse(row.draft_json) as Partial<BotDraft>) } as BotDraft;
-  return { ...draft, id: row.id, position: row.position, memory: row.memory, avatar: row.avatar, avatarAnimation: row.avatar_animation ?? null, avatarSlot,
+  const { memoryWrites: _dropped, ...saved } = JSON.parse(row.draft_json) as Partial<BotDraft> & { memoryWrites?: boolean };
+  const draft = { avatarCorner: DEFAULT_AVATAR_CORNER, scopeDirs: [], workerModel: null, ...saved } as BotDraft;
+  return { ...draft, id: row.id, position: row.position, avatar: row.avatar, avatarAnimation: row.avatar_animation ?? null, avatarSlot,
+    coordinatorThreadId: row.coordinator_thread_id ?? null, workspacePath: row.workspace_path ?? null, doneThreads: row.done_threads ?? [],
     createdAt: row.created_at, updatedAt: row.updated_at };
 }

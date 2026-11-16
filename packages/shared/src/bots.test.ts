@@ -1,28 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  applyMemoryChange, botDraft, draftBotId, draftWithBot, FACT_MAX, filterBots, findBotMention, handoffSource, hasNoBotMarker, NO_BOT_TEXT, withBotMention, withoutBotMentions, BOT_MENTION_PLUGINS, BOTS_PLUGIN_ID, INSTRUCTION_BUDGET, INSTRUCTIONS_MAX, MEMORY_MAX, MemoryError, NAME_MAX,
+  botDraft, draftBotId, draftWithBot, filterBots, findBotMention, handoffSource, hasNoBotMarker, NO_BOT_TEXT, withBotMention, withoutBotMentions, BOT_MENTION_PLUGINS, BOTS_PLUGIN_ID, INSTRUCTION_BUDGET, INSTRUCTIONS_MAX, NAME_MAX,
   renderInstructions, type Bot,
 } from "./bots.ts";
-import { botSchema, memoryToolSchema } from "./bots.schema.ts";
+import { botSchema } from "./bots.schema.ts";
 
 test("instructions fit the budget at maximum lengths", () => {
-  const text = renderInstructions({ name: "N".repeat(NAME_MAX), instructions: "i".repeat(INSTRUCTIONS_MAX), memory: "m".repeat(MEMORY_MAX) });
+  const text = renderInstructions({ name: "N".repeat(NAME_MAX), instructions: "i".repeat(INSTRUCTIONS_MAX) });
   assert.ok(text.length <= INSTRUCTION_BUDGET, `${text.length} > ${INSTRUCTION_BUDGET}`);
-  assert.match(renderInstructions({ name: "W", instructions: "", memory: "" }), /## Bot memory\n\(empty\)/);
-});
-
-test("memory changes: append dedupes, forget matches a line, overwrite and the cap", () => {
-  let memory = applyMemoryChange("", { action: "append", fact: "Prefers  short PRs" });
-  assert.equal(memory, "- Prefers short PRs");
-  assert.equal(applyMemoryChange(memory, { action: "append", fact: "- prefers short prs" }), memory);
-  memory = applyMemoryChange(memory, { action: "append", fact: "Uses pnpm" });
-  assert.equal(applyMemoryChange(memory, { action: "forget", fact: "prefers short PRs" }), "- Uses pnpm");
-  assert.throws(() => applyMemoryChange(memory, { action: "forget", fact: "nope" }), MemoryError);
-  assert.throws(() => applyMemoryChange("", { action: "append", fact: "x".repeat(FACT_MAX + 1) }), MemoryError);
-  const full = Array.from({ length: 21 }, (_, i) => `- ${"f".repeat(82)}${i}`).join("\n");
-  assert.throws(() => applyMemoryChange(full, { action: "append", fact: "one more" }), /condense/);
-  assert.equal(applyMemoryChange(full, { action: "overwrite", content: "  - condensed \n" }), "- condensed");
+  assert.doesNotMatch(renderInstructions({ name: "W", instructions: "" }), /memory/i);
 });
 
 const pluginId = "launcher";
@@ -51,11 +38,6 @@ test("handoff source: BB's native prefix, or a leading thread mention from the L
   assert.equal(handoffSource([launcher], false), null);
   const later = text("see @t", [{ start: 4, resource: { kind: "thread", threadId: "thr_3" } }]);
   assert.equal(handoffSource([later], true), null);
-});
-
-test("the memory tool schema is a plain object", () => {
-  assert.deepEqual(memoryToolSchema.parse({ action: "read" }), { action: "read" });
-  assert.throws(() => memoryToolSchema.parse({ action: "delete" }));
 });
 
 test("withBotMention prepends one pill, shifts later mentions, and is idempotent", () => {
@@ -100,10 +82,6 @@ test("draftWithBot swaps the bot pill, keeps other mentions in place, and adds t
 });
 
 
-test("read-only memory is marked in the instructions", () => {
-  assert.match(renderInstructions({ name: "W", instructions: "", memory: "- a", memoryWrites: false }), /## Bot memory \(read-only\)/);
-});
-
 test("withoutBotMentions drops this plugin's bot pills and shifts the other mentions", () => {
   const bot = (id: string, label: string, start: number) => ({ start, end: start + label.length + 1, resource: { kind: "plugin", pluginId, itemId: `bot:${id}`, label } });
   const thread = { start: 16, end: 23, resource: { kind: "thread", threadId: "t" } };
@@ -130,10 +108,14 @@ test("pills from either plugin id name a bot; new pills use the bots id", () => 
   assert.equal(hasNoBotMarker([{ type: "text", text: "The user started this thread without a Launcher bot.", visibility: "agent-only" }]), true);
 });
 
-test("a bot from an older Bots without avatarCorner reads as top-right; botDraft keeps the corner", () => {
+test("a bot from an older Bots reads with defaults; botDraft keeps the editable fields", () => {
   const bot = botSchema.parse({ id: "b", position: 0, name: "B", emoji: "", instructions: "", starterPrompt: "", model: null, permissionMode: null,
     environment: null, projectId: null, memoryWrites: true, memory: "", avatar: null, avatarSlot: 0, createdAt: 1, updatedAt: 1 });
   assert.equal(bot.avatarCorner, "top-right");
   assert.equal(botDraft({ ...bot, avatarCorner: "bottom-right" }).avatarCorner, "bottom-right");
-  assert.equal("memory" in botDraft(bot), false);
+  assert.equal("memory" in bot, false);
+  assert.equal(bot.coordinatorThreadId, null);
+  assert.deepEqual(bot.scopeDirs, []);
+  assert.deepEqual(botDraft(bot).scopeDirs, []);
+  assert.equal("coordinatorThreadId" in botDraft(bot), false);
 });

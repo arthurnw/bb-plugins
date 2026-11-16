@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { GALLERY_IDS, galleryAvatar, galleryId, ownerOf, type BotDraft } from "@arthurnw/bb-shared/bots";
 import { botDraftSchema } from "@arthurnw/bb-shared/bots/schema";
-import { BotStore, MIGRATIONS, sha256, type SqlDb } from "./bot-store.ts";
+import { BotStore, MIGRATIONS, type SqlDb } from "./bot-store.ts";
 import { feedSort, groupKeys, groupThreads, moveBefore, placeThread, sortFeed, wouldCycle } from "./list-model.ts";
 
 function openStore() {
@@ -31,16 +31,6 @@ test("bot names are unique regardless of case", () => {
   const a = store.save(undefined, draft("Writer"));
   assert.throws(() => store.save(undefined, draft("writer")), /already exists/);
   assert.doesNotThrow(() => store.save(a.id, draft("WRITER")));
-});
-
-test("memory saves only against the sha it was read with", () => {
-  const { store } = openStore();
-  const bot = store.save(undefined, draft("Writer"));
-  const first = store.memory(bot.id);
-  assert.equal(first.sha256, sha256(""));
-  store.setMemory(bot.id, "- prefers short PRs", first.sha256);
-  assert.throws(() => store.setMemory(bot.id, "- stale", first.sha256), /changed since/);
-  assert.equal(store.memory(bot.id).content, "- prefers short PRs");
 });
 
 test("deleting a bot keeps its bindings but stops them resolving, and they do not inherit again", () => {
@@ -178,12 +168,36 @@ test("feed sort: stored choice, else the built-in list's sort; newest first", ()
   assert.deepEqual(sortFeed(rows, "created").map((r) => r.id), ["b", "a"]);
 });
 
-test("old drafts default to writable memory", () => {
+test("old drafts drop memoryWrites and default the initiative fields", () => {
   const { db, store } = openStore();
   const bot = store.save(undefined, draft("Old"));
-  const { memoryWrites: _, ...legacy } = bot;
-  db.prepare("UPDATE bots SET draft_json = ? WHERE id = ?").run(JSON.stringify({ ...legacy, memory: undefined }), bot.id);
-  assert.equal(new BotStore(db as unknown as SqlDb).get(bot.id)!.memoryWrites, true);
+  db.prepare("UPDATE bots SET draft_json = ? WHERE id = ?").run(JSON.stringify({ name: "Old", emoji: "", instructions: "", starterPrompt: "", model: null,
+    permissionMode: null, environment: null, projectId: null, memoryWrites: false }), bot.id);
+  const reloaded = new BotStore(db as unknown as SqlDb).get(bot.id)!;
+  assert.equal("memoryWrites" in reloaded, false);
+  assert.deepEqual(reloaded.scopeDirs, []);
+  assert.equal(reloaded.workerModel, null);
+  assert.equal(reloaded.coordinatorThreadId, null);
+});
+
+test("coordinator, done workers, and checkout path persist", () => {
+  const { db, store } = openStore();
+  const bot = store.save(undefined, draft("Initiative", { scopeDirs: ["plugins/bots"] }), galleryAvatar(GALLERY_IDS[0]!));
+  assert.equal(bot.avatar, galleryAvatar(GALLERY_IDS[0]!));
+  store.setCoordinator(bot.id, "coord", "/ws/b");
+  store.setDone(bot.id, "w1", true);
+  store.setDone(bot.id, "w2", true);
+  store.setDone(bot.id, "w2", false);
+  store.setCheckoutPath(bot.id, "/repo");
+  const reloaded = new BotStore(db as unknown as SqlDb);
+  const again = reloaded.get(bot.id)!;
+  assert.equal(again.coordinatorThreadId, "coord");
+  assert.equal(again.workspacePath, "/ws/b");
+  assert.deepEqual(again.doneThreads, ["w1"]);
+  assert.deepEqual(again.scopeDirs, ["plugins/bots"]);
+  assert.equal(reloaded.coordinatedBy("coord")?.id, bot.id);
+  assert.equal(reloaded.checkoutPath(bot.id), "/repo");
+  assert.throws(() => store.save(undefined, draft("Upload"), "data:image/png;base64,AAAA"), /built-in avatar/);
 });
 
 test("the pane avatar corner defaults to top-right, saves, and reloads", () => {

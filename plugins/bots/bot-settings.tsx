@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } 
 import type { botsContract } from "./bots-server";
 import { useLauncher, useLauncherModelState } from "./launcher-models";
 import {
-  AVATAR_CORNERS, BOT_ENVIRONMENTS, botDraft, DEFAULT_AVATAR_CORNER, INSTRUCTIONS_MAX, MAX_BOTS, MEMORY_MAX, NAME_MAX, STARTER_MAX,
+  AVATAR_CORNERS, BOT_ENVIRONMENTS, botDraft, DEFAULT_AVATAR_CORNER, INSTRUCTIONS_MAX, MAX_BOTS, NAME_MAX, STARTER_MAX,
   type AvatarCorner, type Bot, type BotDraft, type BotEnvironment, type PermissionMode,
 } from "@arthurnw/bb-shared/bots";
 import { modelSpec, sameModel, type ModelSelection } from "@arthurnw/bb-shared/selection";
@@ -60,7 +60,7 @@ export function BotSettings() {
     let n = 1;
     while (taken.has(n === 1 ? "new bot" : `new bot ${n}`)) n++;
     const { bot } = await rpc.call("saveBot", { bot: { name: n === 1 ? "New bot" : `New bot ${n}`, emoji: "", instructions: "", starterPrompt: "",
-      model: null, permissionMode: null, environment: null, projectId: null, memoryWrites: true, avatarCorner: DEFAULT_AVATAR_CORNER } });
+      model: null, permissionMode: null, environment: null, projectId: null, avatarCorner: DEFAULT_AVATAR_CORNER, scopeDirs: [], workerModel: null } });
     setEditing(bot.id);
   });
 
@@ -92,7 +92,7 @@ export function BotSettings() {
               <button type="button" aria-label={`Delete bot ${bot.name}`} onClick={() => setConfirmDelete(bot.id)} style={iconButton}>Delete</button>
             )}
           </div>
-          {confirmDelete === bot.id && <p style={{ ...muted, margin: "6px 0 0" }}>Its threads stay; they stop getting the bot's instructions and memory when their session next starts.</p>}
+          {confirmDelete === bot.id && <p style={{ ...muted, margin: "6px 0 0" }}>Its threads stay; they stop getting the bot's instructions when their session next starts.</p>}
           {editing === bot.id && <BotEditor key={bot.id} bot={bot} onSaved={load} />}
         </div>
       ))}
@@ -144,6 +144,8 @@ function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<unknown>
   const [error, setError] = useState<string | null>(null);
   const dirty = !sameDraft(draft, saved);
   const set = <K extends keyof BotDraft>(key: K, value: BotDraft[K]) => setDraft((current) => ({ ...current, [key]: value }));
+  const initiative = bot.coordinatorThreadId !== null;
+  const [scopeText, setScopeText] = useState(saved.scopeDirs.join("\n"));
 
   // The context row's chip saves the corner directly; follow it so an open editor does not read as changed.
   useEffect(() => { setDraft((current) => ({ ...current, avatarCorner: bot.avatarCorner })); }, [bot.avatarCorner]);
@@ -175,29 +177,23 @@ function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<unknown>
           <input value={draft.name} maxLength={NAME_MAX} onChange={(e) => set("name", e.target.value)} style={{ ...input, width: "100%", boxSizing: "border-box" }} aria-label="Name" />
         </Field>
       </div>
+      {initiative && <Field label="Scope directories" hint="One per line. Guidance for the coordinator and workers on where to look and which directories to touch; not enforced.">
+        <textarea value={scopeText} rows={3} aria-label="Scope directories" style={textarea}
+          onChange={(e) => { setScopeText(e.target.value); set("scopeDirs", e.target.value.split("\n").map((line) => line.trim()).filter(Boolean)); }} />
+      </Field>}
+      {initiative && <span style={{ ...muted, fontSize: 12 }}>Workspace: <code>{bot.workspacePath ?? "not provisioned"}</code></span>}
+      {!initiative && <>
       <Field label="Instructions" hint={`Added to the thread's instructions. Point at skills for method instead of repeating them. ${draft.instructions.length}/${INSTRUCTIONS_MAX}`}>
         <textarea value={draft.instructions} maxLength={INSTRUCTIONS_MAX} rows={6} onChange={(e) => set("instructions", e.target.value)} style={textarea} aria-label="Instructions" />
       </Field>
       <Field label="Starter prompt" hint="Put in an empty composer when you pick the bot, for example /skill:research.">
         <textarea value={draft.starterPrompt} maxLength={STARTER_MAX} rows={2} onChange={(e) => set("starterPrompt", e.target.value)} style={textarea} aria-label="Starter prompt" />
       </Field>
+      </>}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-        <Field label="Model">
-          <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <select value={draft.model ? "set" : KEEP} style={select} aria-label="Model"
-              onChange={(e) => set("model", e.target.value === KEEP ? null : (draft.model ?? template ?? startingModel(firstProvider)))}>
-              <option value={KEEP}>Any</option>
-              <option value="set">Specific model</option>
-            </select>
-            {draft.model && (
-              <ProviderModelPicker value={draft.model} onChange={(value) => {
-                // The picker re-reports its value while it loads; ignore those.
-                if (draft.model && sameModel(draft.model, value)) return;
-                set("model", { providerId: value.providerId, model: value.model, reasoningLevel: value.reasoningLevel, serviceTier: value.serviceTier ?? "default" });
-              }} />
-            )}
-          </span>
-        </Field>
+        <ModelField label={initiative ? "Coordinator model" : "Model"} value={draft.model} template={template ?? startingModel(firstProvider)} onChange={(value) => set("model", value)} />
+        {initiative && <ModelField label="Worker model" value={draft.workerModel} template={template ?? startingModel(firstProvider)} onChange={(value) => set("workerModel", value)} />}
+        {!initiative && <>
         <Field label="Permissions">
           <select value={draft.permissionMode ?? KEEP} style={select} aria-label="Permissions"
             onChange={(e) => set("permissionMode", (e.target.value || null) as PermissionMode | null)}>
@@ -216,6 +212,7 @@ function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<unknown>
             })}
           </select>
         </Field>
+        </>}
         <Field label="Project">
           <select value={draft.projectId ?? KEEP} style={select} aria-label="Project"
             onChange={(e) => set("projectId", e.target.value || null)}>
@@ -231,20 +228,33 @@ function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<unknown>
           </select>
         </Field>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        <span style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13 }}>
-          <Switch checked={draft.memoryWrites} onChange={(value) => set("memoryWrites", value)} labelledBy={`memory-writes-${bot.id}`} />
-          <span id={`memory-writes-${bot.id}`}>Agents can update memory</span>
-        </span>
-        <span style={{ ...muted, fontSize: 12 }}>Off keeps the saved memory and still shows it to agents; only new changes are refused.</span>
-      </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <button type="button" style={button} disabled={!dirty || busy || !draft.name.trim()} onClick={() => void save()}>Save</button>
         <button type="button" style={button} disabled={!dirty || busy} onClick={() => setDraft(saved)}>Revert</button>
         {error && <span role="alert" style={alert}>{error}</span>}
       </div>
-      <MemoryEditor botId={bot.id} memory={bot.memory} />
     </div>
+  );
+}
+
+function ModelField({ label, value, template, onChange }: { label: string; value: ModelSelection | null; template: ModelSelection; onChange: (value: ModelSelection | null) => void }) {
+  return (
+    <Field label={label}>
+      <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <select value={value ? "set" : KEEP} style={select} aria-label={label}
+          onChange={(e) => onChange(e.target.value === KEEP ? null : (value ?? template))}>
+          <option value={KEEP}>Any</option>
+          <option value="set">Specific model</option>
+        </select>
+        {value && (
+          <ProviderModelPicker value={value} onChange={(next) => {
+            // The picker re-reports its value while it loads; ignore those.
+            if (sameModel(value, next)) return;
+            onChange({ providerId: next.providerId, model: next.model, reasoningLevel: next.reasoningLevel, serviceTier: next.serviceTier ?? "default" });
+          }} />
+        )}
+      </span>
+    </Field>
   );
 }
 
@@ -302,59 +312,6 @@ function AvatarGroup({ label, items, picked, busy, onPick }: {
         })}
       </div>
     </div>
-  );
-}
-
-function MemoryEditor({ botId, memory }: { botId: string; memory: string }) {
-  const rpc = useRpc<typeof botsContract>();
-  const [loaded, setLoaded] = useState<{ content: string; sha256: string } | null>(null);
-  const [text, setText] = useState(memory);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const dirty = loaded !== null && text !== loaded.content;
-
-  const reload = useCallback(() => rpc.call("getBotMemory", { botId }).then((view) => {
-    setLoaded(view);
-    setText(view.content);
-  }, (e) => setError(errorText(e))), [rpc, botId]);
-  useEffect(() => { void reload(); }, [reload]);
-  // Agents write memory too; pick up their changes unless the user is editing.
-  useEffect(() => { if (!dirty && loaded && memory !== loaded.content) void reload(); }, [memory]);
-
-  async function save() {
-    if (!loaded) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const view = await rpc.call("saveBotMemory", { botId, content: text, expectedSha256: loaded.sha256 });
-      setLoaded(view);
-      setText(view.content);
-    } catch (e) { setError(errorText(e)); }
-    finally { setBusy(false); }
-  }
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <Field label="Memory" hint={`Facts the bot keeps across threads, one per line. Agents add to it with the bot_memory tool. ${text.length}/${MEMORY_MAX}`}>
-        <textarea value={text} maxLength={MEMORY_MAX} rows={5} onChange={(e) => setText(e.target.value)} style={textarea} aria-label="Memory" placeholder="Empty" />
-      </Field>
-      <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <button type="button" style={button} disabled={!dirty || busy} onClick={() => void save()}>Save memory</button>
-        <button type="button" style={button} disabled={!dirty || busy} onClick={() => void reload()}>Revert</button>
-        {error && <span role="alert" style={alert}>{error}</span>}
-      </span>
-    </div>
-  );
-}
-
-function Switch({ checked, onChange, labelledBy }: { checked: boolean; onChange: (value: boolean) => void; labelledBy: string }) {
-  return (
-    <button type="button" role="switch" aria-checked={checked} aria-labelledby={labelledBy} onClick={() => onChange(!checked)}
-      style={{ position: "relative", width: 32, height: 18, flex: "none", padding: 0, border: "none", borderRadius: 9, cursor: "pointer",
-        background: checked ? "var(--primary, #2563eb)" : "var(--muted, #d4d4d8)", transition: "background .15s" }}>
-      <span aria-hidden style={{ position: "absolute", top: 2, left: checked ? 16 : 2, width: 14, height: 14, borderRadius: "50%",
-        background: "var(--background, #fff)", boxShadow: "0 1px 2px rgb(0 0 0 / .25)", transition: "left .15s" }} />
-    </button>
   );
 }
 

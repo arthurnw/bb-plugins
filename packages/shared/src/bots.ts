@@ -9,13 +9,12 @@ export const MAX_BOTS = 30;
 export const NAME_MAX = 40;
 export const INSTRUCTIONS_MAX = 2000;
 export const STARTER_MAX = 2000;
-/** Stored memory always fits whole in the 4,096-character instruction budget. */
-export const MEMORY_MAX = 1800;
-export const FACT_MAX = 300;
 /** `PluginAgentConfiguration.instructions` is truncated past this. */
 export const INSTRUCTION_BUDGET = 4096;
 export const MENTION_PROVIDER = "bot";
-export const MEMORY_TOOL = "bot_memory";
+/** Scope directories an initiative bot suggests to its workers. */
+export const SCOPE_DIRS_MAX = 20;
+export const BRIEF_MAX = 20_000;
 /** A 128 px WebP is 5–20 KB as a data URL; this leaves room for PNG fallbacks. */
 export const AVATAR_MAX_CHARS = 120_000;
 export const AVATAR_SIZE = 128;
@@ -50,9 +49,11 @@ export interface BotDraft {
   permissionMode: PermissionMode | null;
   environment: BotEnvironment | null;
   projectId: string | null;
-  /** Off: agents can still read memory, but `bot_memory` refuses changes. */
-  memoryWrites: boolean;
   avatarCorner: AvatarCorner;
+  /** Initiative bots: directories workers should look in and touch. Guidance only. */
+  scopeDirs: string[];
+  /** Initiative bots: the default model for workers; null leaves it to the coordinator. */
+  workerModel: ModelSelection | null;
 }
 export interface Bot extends BotDraft {
   id: string;
@@ -65,14 +66,24 @@ export interface Bot extends BotDraft {
    */
   avatarAnimation: string | null;
   avatarSlot: number;
-  memory: string;
+  /**
+   * Set for an initiative bot: its coordinator thread, the only thread the user
+   * normally talks to. `model` is the coordinator's model. Null for a persona bot.
+   */
+  coordinatorThreadId: string | null;
+  /** The initiative bot's state directory (tracker.md, log.md), outside git. */
+  workspacePath: string | null;
+  /** Workers the coordinator marked finished; the thread list collapses them. */
+  doneThreads: string[];
   createdAt: number;
   updatedAt: number;
 }
 
 /** The editable fields of a saved bot. */
-export const botDraft = ({ name, emoji, instructions, starterPrompt, model, permissionMode, environment, projectId, memoryWrites, avatarCorner }: Bot): BotDraft =>
-  ({ name, emoji, instructions, starterPrompt, model, permissionMode, environment, projectId, memoryWrites, avatarCorner });
+export const botDraft = ({ name, emoji, instructions, starterPrompt, model, permissionMode, environment, projectId, avatarCorner, scopeDirs, workerModel }: Bot): BotDraft =>
+  ({ name, emoji, instructions, starterPrompt, model, permissionMode, environment, projectId, avatarCorner, scopeDirs, workerModel });
+
+export const isInitiative = (bot: Pick<Bot, "coordinatorThreadId">): boolean => bot.coordinatorThreadId !== null;
 
 /** Text for places that cannot show the avatar icon. */
 export const botLabel = (bot: Pick<Bot, "emoji" | "name">) => bot.emoji ? `${bot.emoji} ${bot.name}` : bot.name;
@@ -90,55 +101,16 @@ const LEGACY_NO_BOT_TEXT = "The user started this thread without a Launcher bot.
 /** How a thread got its bot: picked with a mention, inherited, or assigned before its first turn. */
 export type BindingSource = "mention" | "inherit" | "assign";
 
-export function renderInstructions(bot: Pick<Bot, "name" | "instructions" | "memory"> & { memoryWrites?: boolean }): string {
+export function renderInstructions(bot: Pick<Bot, "name" | "instructions">): string {
   const parts = [
     `# Bot: ${oneLine(bot.name)}`,
     `This thread runs as the "${oneLine(bot.name)}" bot. Its instructions add to the user's and the project's instructions and do not override them.`,
   ];
   if (bot.instructions.trim()) parts.push(`## Bot instructions\n${bot.instructions.trim()}`);
-  parts.push(`## Bot memory${bot.memoryWrites === false ? " (read-only)" : ""}\n${bot.memory.trim() || "(empty)"}`);
   return parts.join("\n\n");
 }
 
-const oneLine = (text: string) => text.replace(/\s+/g, " ").trim();
-
-// Memory is a list of single-line facts, one per line.
-export type MemoryChange =
-  | { action: "append"; fact: string }
-  | { action: "forget"; fact: string }
-  | { action: "overwrite"; content: string };
-
-export class MemoryError extends Error {}
-
-const normalizeFact = (fact: string) => oneLine(fact).replace(/^[-*]\s+/, "");
-const factKey = (fact: string) => normalizeFact(fact).toLowerCase();
-const factLines = (memory: string) => memory.split("\n").map((line) => line.trim()).filter(Boolean);
-
-/** Applies one change and returns the new memory, or throws `MemoryError` with a message for the agent. */
-export function applyMemoryChange(memory: string, change: MemoryChange): string {
-  let next: string;
-  if (change.action === "overwrite") {
-    next = change.content.trim();
-  } else {
-    const fact = normalizeFact(change.fact);
-    if (!fact) throw new MemoryError("The fact is empty.");
-    const lines = factLines(memory);
-    const key = factKey(fact);
-    const index = lines.findIndex((line) => factKey(line) === key);
-    if (change.action === "append") {
-      if (fact.length > FACT_MAX) throw new MemoryError(`A fact is limited to ${FACT_MAX} characters.`);
-      if (index !== -1) return memory;
-      next = [...lines, `- ${fact}`].join("\n");
-    } else {
-      if (index === -1) throw new MemoryError("No fact matches. Read the memory and pass one line exactly.");
-      next = lines.filter((_, i) => i !== index).join("\n");
-    }
-  }
-  if (next.length > MEMORY_MAX) {
-    throw new MemoryError(`Memory would be ${next.length} characters; the limit is ${MEMORY_MAX}. Read it, condense it, and overwrite.`);
-  }
-  return next;
-}
+export const oneLine = (text: string) => text.replace(/\s+/g, " ").trim();
 
 // Mentions reach dispatch hooks as `{ kind: "plugin", pluginId, itemId }`; the
 // host composes `itemId` as "<providerId>:<itemId>".

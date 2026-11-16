@@ -1,11 +1,14 @@
-import { defineRpcContract, type BbPluginApi, type NewThreadRequest } from "@get-bb/plugin-sdk";
+import { mkdir } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { cliCommand, defineCli, defineRpcContract, PluginCliError, type BbPluginApi, type NewThreadRequest } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { BotStore, BotStoreError, MIGRATIONS, type SqlDb } from "./bot-store.ts";
 import {
-  applyMemoryChange, BOT_MENTION_PLUGINS, BOTS_PLUGIN_ID, findBotMention, handoffSource, hasNoBotMarker, MemoryError, MEMORY_MAX, MEMORY_TOOL, MENTION_PROVIDER, NO_BOT_TEXT, ownerOf, renderInstructions,
-  TRUSTED_ORIGIN_PLUGINS, withBotMention, withoutBotMentions,
+  BOT_MENTION_PLUGINS, BOTS_PLUGIN_ID, BRIEF_MAX, findBotMention, handoffSource, hasNoBotMarker, MENTION_PROVIDER, NO_BOT_TEXT, ownerOf, renderInstructions,
+  TRUSTED_ORIGIN_PLUGINS, withBotMention, withoutBotMentions, type Bot,
 } from "@arthurnw/bb-shared/bots";
-import { botsRpcContract, memoryToolSchema } from "@arthurnw/bb-shared/bots/schema";
+import { botDraftSchema, botsRpcContract } from "@arthurnw/bb-shared/bots/schema";
+import { COORDINATOR_KICKOFF, COORDINATOR_SKILL, coordinatorInstructions, nameFromBrief, roleOf, workerInstructions, WORKSPACE_PROVIDER, type ThreadRole } from "./initiative.ts";
 
 export const botsContract = defineRpcContract(botsRpcContract);
 // Registered apart from `botsContract`: its `z.custom` request cannot be published as discoverable.
@@ -18,30 +21,59 @@ export const spawnContract = defineRpcContract({
       botId: z.string().min(1).nullable().optional() }),
     output: z.object({ threadId: z.string() }),
   },
+  /**
+   * Creates an initiative bot and starts its coordinator in the bot workspace
+   * with the composer's request as the brief. `promoteThreadId` becomes the
+   * bot's first worker.
+   */
+  createInitiative: {
+    input: z.object({ request: z.custom<NewThreadRequest>(), bot: botDraftSchema, avatar: z.string().max(200).optional(),
+      promoteThreadId: z.string().min(1).optional() }),
+    output: z.object({ threadId: z.string(), botId: z.string() }),
+  },
 });
 const trusted = (pluginId: string | null | undefined) => pluginId != null && (TRUSTED_ORIGIN_PLUGINS as readonly string[]).includes(pluginId);
 const LIST_ORDER_KEY = "list-order.v1";
 
-const MEMORY_GUIDANCE = `${MEMORY_TOOL} keeps durable facts for this thread's bot, shared by every thread that uses the bot. The memory in the thread instructions is a snapshot from session start; call action "read" for the current text and its sha256.
-- Append only facts that will matter in later threads: stable user preferences, recurring corrections, conventions the user stated. Not task progress, and nothing that belongs in the repository.
-- Never store credentials or secrets.
-- When the bot's memory is read-only, only "read" works; do not retry changes.
-- One fact per append, on one line. To remove one, call "forget" with the line as read.
-- Memory is limited to ${MEMORY_MAX} characters. When an append is refused, read, condense, and call "overwrite" with the complete text and the sha256 from that read. On a conflict, read again and merge; do not overwrite with stale text.`;
+const workspaceInputs = z.object({ botId: z.string().min(1) });
+
+/** What `bb bots role` prints, and what enforcement hooks read. */
+export function roleReport(threadId: string, role: ThreadRole | null) {
+  return {
+    threadId,
+    role: role?.kind ?? "none",
+    coordinator: role?.kind === "coordinator",
+    botId: role?.bot.id ?? null,
+    botName: role?.bot.name ?? null,
+    workspace: role && role.kind !== "persona" ? role.bot.workspacePath : null,
+  };
+}
+
+const briefText = (input: NewThreadRequest["input"]) =>
+  input.filter((block) => block.type === "text" && block.visibility !== "agent-only").map((block) => (block as { text: string }).text).join("\n");
 
 export function registerBots(bb: BbPluginApi) {
   const db = bb.storage.database();
   bb.storage.migrate(db, MIGRATIONS);
   const store = new BotStore(db as unknown as SqlDb);
   bb.log.info(`loaded ${store.list().length} bots`);
+  // Beside the plugin's data.db: <bb data>/plugins/bots/workspaces/<botId>.
+  const workspacesRoot = join(dirname((db as unknown as { name: string }).name), "workspaces");
+  const workspaceFor = (botId: string) => join(workspacesRoot, botId);
+  // Bots whose coordinator is being spawned; the dispatch hook claims the thread before its session starts.
+  const pendingCoordinators = new Set<string>();
   const publish = () => bb.realtime.publish("bots", { changedAt: Date.now() });
   const known = (botId: string) => store.get(botId) !== null;
 
   bb.agents.configure((ctx) => {
-    const botId = ownerOf(store, ctx.thread);
-    const bot = botId === null ? null : store.get(botId);
-    if (!bot) return { tools: [], skills: [] };
-    return { tools: [MEMORY_TOOL], skills: [], instructions: renderInstructions(bot) };
+    const role = roleOf(store, ctx.thread);
+    if (!role) return { tools: [], skills: [] };
+    if (role.kind === "coordinator") {
+      return { tools: [], skills: [COORDINATOR_SKILL], instructions: coordinatorInstructions(role.bot,
+        { projectId: ctx.project.id, projectName: ctx.project.name, checkoutPath: store.checkoutPath(role.bot.id) }) };
+    }
+    if (role.kind === "worker") return { tools: [], skills: [], instructions: workerInstructions(role.bot) };
+    return { tools: [], skills: [], instructions: renderInstructions(role.bot) };
   });
 
   // A binding is fixed before the first turn starts, because tools and
@@ -50,6 +82,10 @@ export function registerBots(bb: BbPluginApi) {
     const { thread } = ctx;
     if (thread.status !== "pending") return { action: "proceed" };
     const mentioned = findBotMention(ctx.input.blocks, BOT_MENTION_PLUGINS, known);
+    if (mentioned !== null && thread.originPluginId === BOTS_PLUGIN_ID && pendingCoordinators.has(mentioned)) {
+      claimCoordinator(mentioned, thread.id);
+      return { action: "proceed" };
+    }
     if (mentioned !== null) {
       if (store.binding(thread.id) !== mentioned) {
         store.bind(thread.id, mentioned, "mention");
@@ -72,45 +108,86 @@ export function registerBots(bb: BbPluginApi) {
     return { action: "proceed" };
   });
 
-  async function botForThread(threadId: string) {
-    if (store.hasBinding(threadId) || store.detached(threadId)) return store.binding(threadId);
-    return ownerOf(store, await bb.sdk.threads.get({ threadId }));
+  function claimCoordinator(botId: string, threadId: string) {
+    pendingCoordinators.delete(botId);
+    if (store.get(botId)?.coordinatorThreadId === threadId) return;
+    store.bind(threadId, botId, "assign");
+    store.setCoordinator(botId, threadId, workspaceFor(botId));
+    publish();
   }
 
-  bb.agents.registerTool({
-    name: MEMORY_TOOL,
-    description: "Read or change the memory of the bot this thread runs as.",
-    instructions: MEMORY_GUIDANCE,
-    parameters: memoryToolSchema,
-    async execute(params, ctx) {
-      const botId = await botForThread(ctx.threadId);
-      if (botId === null) return { content: [{ type: "text", text: "This thread has no bot." }], isError: true };
-      const current = store.memory(botId);
-      const fail = (text: string) => ({ content: [{ type: "text" as const, text }], isError: true });
-      const view = (memory: { content: string; sha256: string }, changed?: boolean) =>
-        JSON.stringify({ ...(changed === undefined ? {} : { changed }), content: memory.content, sha256: memory.sha256, chars: memory.content.length, limit: MEMORY_MAX });
-      if (params.action === "read") return view(current);
-      if (!store.require(botId).memoryWrites) return fail("This bot's memory is read-only. The user turned off memory updates; do not retry.");
-      try {
-        let next: string;
-        if (params.action === "overwrite") {
-          if (params.content === undefined || !params.expectedSha256) return fail("overwrite needs content and expectedSha256.");
-          if (params.expectedSha256 !== current.sha256) return fail("Memory changed since it was read. Read it again and merge.");
-          next = applyMemoryChange(current.content, { action: "overwrite", content: params.content });
-        } else {
-          if (!params.fact) return fail(`${params.action} needs a fact.`);
-          next = applyMemoryChange(current.content, { action: params.action, fact: params.fact });
-        }
-        if (next === current.content) return view(current, false);
-        const written = store.setMemory(botId, next, current.sha256);
-        publish();
-        return view(written, true);
-      } catch (error) {
-        if (error instanceof MemoryError || error instanceof BotStoreError) return fail(error.message);
-        throw error;
-      }
+  async function roleOfThread(threadId: string): Promise<ThreadRole | null> {
+    if (store.coordinatedBy(threadId) || store.hasBinding(threadId) || store.detached(threadId)) {
+      return roleOf(store, { id: threadId, parentThreadId: null, sourceThreadId: null });
+    }
+    return roleOf(store, await bb.sdk.threads.get({ threadId }));
+  }
+
+  // A persistent, non-git directory per bot that holds the coordinator's state
+  // files. It is never retired, so an archived coordinator resumes with them.
+  bb.experimental_environments.register({
+    id: WORKSPACE_PROVIDER,
+    displayName: "Bot workspace",
+    description: "An initiative bot's own directory for its coordinator's state files. Created by Bots: new bot.",
+    icon: "Bot",
+    inputs: workspaceInputs,
+    policy: { retireGraceMs: null, pathKeys: "per-thread" },
+    validate: ({ inputs }) => store.get(inputs.botId) ? { action: "accept" } : { action: "refuse", message: "That bot no longer exists." },
+    experimental_existingPath: (inputs) => workspaceFor(inputs.botId),
+    async create(context) {
+      return provisionWorkspace(context.inputs.botId, context.projectCheckout?.path ?? null);
     },
+    async restore(context) {
+      return provisionWorkspace(context.inputs.botId, context.projectCheckout?.path ?? null);
+    },
+    // Keeps the files: they are the initiative's state.
+    remove: async () => ({ status: "removed" }),
   });
+
+  async function provisionWorkspace(botId: string, checkoutPath: string | null) {
+    if (!store.get(botId)) return { status: "failed" as const, message: "That bot no longer exists." };
+    const path = workspaceFor(botId);
+    await mkdir(path, { recursive: true });
+    if (checkoutPath && store.checkoutPath(botId) !== checkoutPath) store.setCheckoutPath(botId, checkoutPath);
+    return { status: "created" as const, path, ownsPath: false, mergeBaseBranch: null };
+  }
+
+  bb.cli.register(defineCli({
+    name: "bots",
+    summary: "Initiative bots: thread roles and worker state",
+    commands: {
+      role: cliCommand({
+        summary: "Print a thread's bot role as JSON: coordinator, worker, persona, or none, with the bot workspace",
+        positionals: [{ name: "threadId", description: "Thread id; defaults to the calling thread (BB_THREAD_ID)" }],
+        async run({ positionals }, ctx) {
+          const threadId = positionals.threadId ?? ctx.threadId;
+          if (!threadId) throw new PluginCliError("Pass a thread id.", { code: "missing_thread" });
+          return { exitCode: 0, stdout: `${JSON.stringify(roleReport(threadId, await roleOfThread(threadId)))}\n` };
+        },
+      }),
+      done: cliCommand({
+        summary: "Mark a worker thread finished (merged or closed) so the thread list collapses it",
+        positionals: [{ name: "threadId", description: "The worker thread", required: true }],
+        options: { undo: { type: "boolean", description: "Mark it not finished again" } },
+        async run({ positionals, options }) {
+          const threadId = positionals.threadId!;
+          const role = await roleOfThread(threadId);
+          if (role?.kind !== "worker") throw new PluginCliError("That thread is not a worker of an initiative bot.", { code: "not_worker" });
+          store.setDone(role.bot.id, threadId, !options.undo);
+          publish();
+          return { exitCode: 0, stdout: `${options.undo ? "Reopened" : "Marked done"}: ${threadId}\n` };
+        },
+      }),
+      list: cliCommand({
+        summary: "List initiative bots with their coordinator thread and workspace",
+        async run() {
+          const rows = store.list().filter((bot) => bot.coordinatorThreadId !== null)
+            .map((bot) => ({ botId: bot.id, name: bot.name, coordinatorThreadId: bot.coordinatorThreadId, workspace: bot.workspacePath, projectId: bot.projectId }));
+          return { exitCode: 0, stdout: `${JSON.stringify(rows, null, 2)}\n` };
+        },
+      }),
+    },
+  }));
 
   bb.ui.registerMentionProvider({
     id: MENTION_PROVIDER,
@@ -152,12 +229,6 @@ export function registerBots(bb: BbPluginApi) {
       publish();
       return { bots };
     },
-    getBotMemory: ({ botId }) => store.memory(botId),
-    saveBotMemory: ({ botId, content, expectedSha256 }) => {
-      const memory = store.setMemory(botId, content.trim(), expectedSha256);
-      publish();
-      return memory;
-    },
     async assignThread({ threadId, botId }) {
       const thread = await bb.sdk.threads.get({ threadId });
       if (thread.status !== "pending") throw new BotStoreError("This thread has started; hand it off to the bot instead.");
@@ -173,10 +244,10 @@ export function registerBots(bb: BbPluginApi) {
     threadBots: () => ({ threads: store.threadBots() }),
     async threadBot({ threadId }) {
       if (store.detached(threadId)) return { botId: null, source: "detached" as const, instructions: null };
-      const botId = await botForThread(threadId);
-      const bot = botId === null ? null : store.get(botId);
-      if (!bot) return { botId: null, source: "none" as const, instructions: null };
-      return { botId: bot.id, source: store.hasBinding(threadId) ? "own" as const : "inherited" as const, instructions: renderInstructions(bot) };
+      const role = await roleOfThread(threadId);
+      if (!role) return { botId: null, source: "none" as const, instructions: null };
+      const instructions = role.kind === "persona" ? renderInstructions(role.bot) : role.kind === "worker" ? workerInstructions(role.bot) : null;
+      return { botId: role.bot.id, source: store.hasBinding(threadId) ? "own" as const : "inherited" as const, instructions };
     },
     getListOrder: async () => ({ order: (await bb.storage.kv.get<string[]>(LIST_ORDER_KEY)) ?? [] }),
     setListOrder: async ({ order }) => {
@@ -184,7 +255,7 @@ export function registerBots(bb: BbPluginApi) {
       publish();
       return { order };
     },
-  }, { experimental_discoverable: true, experimental_description: "Bots: saved launch configurations with instructions and memory." });
+  }, { experimental_discoverable: true, experimental_description: "Bots: initiative bots with a coordinator thread, and saved launch configurations." });
 
   bb.rpc.register(spawnContract, {
     async createThread({ request, placement, botId }) {
@@ -195,7 +266,52 @@ export function registerBots(bb: BbPluginApi) {
       const thread = await bb.sdk.threads.spawn({ ...request, input, ...placement });
       return { threadId: thread.id };
     },
+    async createInitiative({ request, bot: draft, avatar, promoteThreadId }) {
+      const brief = briefText(request.input);
+      if (!brief.trim()) throw new BotStoreError("Write a brief for the bot.");
+      if (brief.length > BRIEF_MAX) throw new BotStoreError(`The brief is limited to ${BRIEF_MAX} characters.`);
+      const projectId = draft.projectId ?? request.projectId;
+      const name = draft.name.trim() || nameFromBrief(brief, store.list().map((item) => item.name));
+      const bot = store.save(undefined, { ...draft, name, projectId }, avatar);
+      publish();
+      pendingCoordinators.add(bot.id);
+      const model = draft.model;
+      const input: NewThreadRequest["input"] = [
+        ...withBotMention(withoutBotMentions(request.input, BOT_MENTION_PLUGINS), bot, BOTS_PLUGIN_ID),
+        { type: "text", text: COORDINATOR_KICKOFF, mentions: [], visibility: "agent-only" },
+      ];
+      let threadId: string;
+      try {
+        const thread = await bb.sdk.threads.spawn({
+          ...request, input, projectId,
+          ...(model ? { providerId: model.providerId, model: model.model, reasoningLevel: model.reasoningLevel, serviceTier: model.serviceTier,
+            executionInputSources: { ...request.executionInputSources, providerId: "explicit", model: "explicit", reasoningLevel: "explicit", serviceTier: "explicit" } } : {}),
+          environment: { type: "provider", environmentProviderId: WORKSPACE_PROVIDER, inputs: { botId: bot.id } },
+        });
+        threadId = thread.id;
+      } catch (error) {
+        pendingCoordinators.delete(bot.id);
+        store.delete(bot.id);
+        publish();
+        throw error;
+      }
+      claimCoordinator(bot.id, threadId);
+      if (promoteThreadId) await promote(bot, threadId, promoteThreadId);
+      return { threadId, botId: bot.id };
+    },
   });
+
+  /** Makes an existing thread the bot's first worker, keeping its branch and worktree. */
+  async function promote(bot: Bot, coordinatorThreadId: string, threadId: string) {
+    store.bind(threadId, bot.id, "assign");
+    publish();
+    try {
+      await bb.sdk.threads.update({ threadId, parentThreadId: coordinatorThreadId });
+    } catch (error) {
+      // The binding still makes it a worker; the coordinator tracks it in tracker.md.
+      bb.log.warn(`could not move ${threadId} under ${coordinatorThreadId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
 
   // bb does not tell plugins when a thread is deleted, so drop rows for
   // threads that are gone once per load, in the background.
