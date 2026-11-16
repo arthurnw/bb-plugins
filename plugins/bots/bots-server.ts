@@ -25,7 +25,8 @@ export const spawnContract = defineRpcContract({
   /**
    * Creates an initiative bot and starts its coordinator in the bot workspace
    * with the composer's request as the brief. `promoteThreadId` becomes the
-   * bot's first worker.
+   * bot's first worker. A null `bot.model` takes the composer's model; a null
+   * `bot.workerModel` takes the coordinator's.
    */
   createInitiative: {
     input: z.object({ request: z.custom<NewThreadRequest>(), bot: initiativeDraftSchema, avatar: z.string().max(200).optional(),
@@ -296,7 +297,11 @@ export function registerBots(bb: BbPluginApi) {
       if (brief.length > BRIEF_MAX) throw new BotStoreError(`The brief is limited to ${BRIEF_MAX} characters.`);
       const projectId = draft.projectId ?? request.projectId;
       const name = draft.name.trim() || nameFromBrief(brief, store.list().map((item) => item.name));
-      const saved = store.save(undefined, { ...draft, name, projectId }, avatar);
+      // The composer's model picker chooses the coordinator unless the draft names one;
+      // workers default to the coordinator's model.
+      const fromComposer = { providerId: request.providerId, model: request.model, reasoningLevel: request.reasoningLevel, serviceTier: request.serviceTier ?? "default" };
+      const coordinatorModel = draft.model ?? fromComposer;
+      const saved = store.save(undefined, { ...draft, name, projectId, model: coordinatorModel, workerModel: draft.workerModel ?? coordinatorModel }, avatar);
       const bot = store.setWorkspacePath(saved.id, join(workspacesRoot, workspaceDirName(name, saved.id)));
       publish();
       pendingCoordinators.add(bot.id);

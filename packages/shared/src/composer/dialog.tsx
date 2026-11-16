@@ -9,6 +9,8 @@ type ComposerProps = ComponentProps<typeof NewThreadComposer>;
 export type ComposerRequest = Parameters<NonNullable<ComposerProps["onSubmit"]>>[0];
 
 const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
+// bb's composer labels these buttons (0.49). If a release renames them, they stay visible.
+const HIDE_ENVIRONMENT = ["Environment", "Branch"].map((label) => `[data-bb-hide-environment] button[aria-label='${label}']`).join(", ");
 
 // The SDK exposes no draft state for the embedded composer. Check the editor
 // text, then bb's persisted draft (which also covers attachments). The storage
@@ -41,6 +43,8 @@ export interface ComposerDialogProps {
    * node is shown in its place (null shows nothing).
    */
   modelTrigger?: ReactNode | null;
+  /** Hides bb's environment and branch pickers, for callers that choose the environment themselves. */
+  hideEnvironment?: boolean;
   /** Shown before bb's model picker, which stays visible. Ignored when `modelTrigger` is set. */
   chip?: ReactNode;
   /** Starts the thread; the dialog then closes, and opens it or toasts for a background start. */
@@ -60,7 +64,7 @@ export interface ComposerDialogProps {
  */
 export function ComposerDialog({
   visible, label, placeholder, hint = true, draftKey, focusRequest, sectionRef, onClose, popupOpen = false, ready,
-  composerProps, modelTrigger, chip, submit, onStarted, startedMessage = "Thread started", children,
+  composerProps, modelTrigger, hideEnvironment = false, chip, submit, onStarted, startedMessage = "Thread started", children,
 }: ComposerDialogProps) {
   const navigate = useBbNavigate();
   const [composerRoot, setComposerRoot] = useState<HTMLDivElement | null>(null);
@@ -103,8 +107,9 @@ export function ComposerDialog({
         event.stopPropagation();
         composerRoot.querySelector<HTMLFormElement>("form[data-promptbox]")?.requestSubmit();
       }}>
+      {hideEnvironment && <style>{`${HIDE_ENVIRONMENT} { display: none !important; }`}</style>}
       {modelTrigger !== undefined && <style>{`[data-bb-composer-root] ${HOST_MODEL_PICKER} { display: none !important; }`}</style>}
-      {ready && <div ref={setComposerRoot} data-bb-composer-root=""><NewThreadComposer
+      {ready && <div ref={setComposerRoot} data-bb-composer-root="" {...(hideEnvironment ? { "data-bb-hide-environment": "" } : {})}><NewThreadComposer
         {...composerProps}
         draftKey={draftKey}
         layout="document"

@@ -19,3 +19,8 @@ export function shuffleAvatar(free: readonly GalleryId[], current: GalleryId | n
   const from = others.length > 0 ? others : pool;
   return from[Math.floor(random() * from.length)]!;
 }
+
+/** Mod+Shift+K opens the worker model picker; Mod+Shift+M stays with the composer's own model picker. */
+export const isWorkerShortcut = (event: { key: string; code: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean; isComposing: boolean }, mac: boolean) =>
+  !event.isComposing && event.shiftKey && !event.altKey && (mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey)
+  && (event.code === "KeyK" || event.key.toLowerCase() === "k");

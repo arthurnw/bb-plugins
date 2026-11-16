@@ -12,11 +12,13 @@ Manage bots in Settings → Bots.
 ## Initiative bots
 
 - **New bot**: the command palette entry **Bots: new bot**, or **+** beside the
-  thread list's view toggle. The composer text is the brief; the chips under it
-  set the project, coordinator model, worker model, and avatar. Click the
-  avatar to pick one; ↻ picks a random one no active bot uses. Mod+Shift+M opens
-  the coordinator model, Mod+Shift+J the project picker, Alt+J the next
-  project. Enter creates the bot, starts the coordinator with the brief, and
+  thread list's view toggle. The composer text is the brief, and its project
+  and model pickers set the bot's project and coordinator model (Mod+Shift+M).
+  The row under it sets the worker model (Mod+Shift+K; **Same as coordinator**
+  by default, resolved when the bot is created) and the avatar: click it to
+  pick one, or the dice for a random one no active bot uses. The coordinator
+  always runs in the bot workspace, so the environment and branch pickers are
+  hidden. Enter creates the bot, starts the coordinator with the brief, and
   opens it. The bot's name comes from the brief's first line; rename it in
   Settings → Bots.
 - **Promote to bot** (thread menu): the same dialog with a mention of the

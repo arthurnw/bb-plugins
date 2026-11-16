@@ -1,19 +1,20 @@
-// The New bot dialog: bb's new-thread composer for the brief, and a row of
-// chips for the bot's project, coordinator and worker models, and avatar.
+// The New bot dialog: bb's new-thread composer for the brief, project, and
+// coordinator model, and a row under it for the worker model and avatar.
 // Enter creates the bot and opens its coordinator thread.
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { experimental_useSidebarThreads as useSidebarThreads, useRpc, type PluginAppBuilder } from "@get-bb/plugin-sdk/app";
-import { BotAvatar, checkoutOn, ComposerDialog, handoffPrompt, ModelList, modelLabel, projectShortcut } from "@arthurnw/bb-shared/composer";
-import { cycle, ProjectList, useProjectOptions } from "@arthurnw/bb-shared/projects";
+import { BotAvatar, ComposerDialog, handoffPrompt, ModelList, modelLabel } from "@arthurnw/bb-shared/composer";
+import { useProjectOptions } from "@arthurnw/bb-shared/projects";
 import { galleryAvatar, type GalleryId } from "@arthurnw/bb-shared/bots";
 import { AnimatedAvatar, GEOMETRIC_AVATARS, SMOOTH_AVATARS, type GalleryAvatar } from "@arthurnw/bb-shared/avatars";
 import type { ModelSelection } from "@arthurnw/bb-shared/selection";
 import type { spawnContract } from "./bots-server";
 import { BotIconSync, useBots } from "./bot-avatars";
 import { useLauncherModelState } from "./launcher-models";
-import { freeAvatars, shuffleAvatar } from "./new-bot-model";
+import { freeAvatars, isWorkerShortcut, shuffleAvatar } from "./new-bot-model";
 
 const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
+const WORKER_SHORTCUT = MAC ? "⌘⇧K" : "Ctrl+Shift+K";
 export const NEW_BOT_EVENT = "bb-bots:new-bot";
 
 export interface NewBotRequest {
@@ -37,7 +38,7 @@ export function openNewBot(request: NewBotRequest) {
   update({ session: same ? current : { ...request, id: nextId++ }, visible: true, focus: state.focus + 1 });
 }
 
-type Popup = "project" | "coordinator" | "worker" | "avatar";
+type Popup = "worker" | "avatar";
 
 function NewBot({ session, visible, focusRequest }: { session: Session; visible: boolean; focusRequest: number }) {
   const rpc = useRpc<typeof spawnContract>();
@@ -46,29 +47,20 @@ function NewBot({ session, visible, focusRequest }: { session: Session; visible:
   const projects = useProjectOptions();
   const launcher = useLauncherModelState();
   const [projectId, setProjectId] = useState(session.projectId);
-  const [coordinator, setCoordinator] = useState<ModelSelection | null>(null);
+  // null: the same model as the coordinator, resolved when the bot is created.
   const [worker, setWorker] = useState<ModelSelection | null>(null);
   const [avatar, setAvatar] = useState<GalleryId | null>(null);
   const [popup, setPopup] = useState<Popup | null>(null);
   const [focus, setFocus] = useState(0);
   const sectionRef = useRef<HTMLElement>(null);
-  const seeded = useRef(false);
-  const latest = useRef({ projectId, coordinator, worker, avatar });
-  latest.current = { projectId, coordinator, worker, avatar };
+  const latest = useRef({ worker, avatar });
+  latest.current = { worker, avatar };
 
   const liveThreadIds = useMemo(() => new Set(sidebar.threads.filter((thread) => thread.archivedAt === null).map((thread) => thread.id)), [sidebar.threads]);
   const free = useMemo(() => freeAvatars(bots ?? [], liveThreadIds), [bots, liveThreadIds]);
   useEffect(() => {
     if (avatar === null && bots !== null && sidebar.status !== "loading") setAvatar(shuffleAvatar(free, null));
   }, [avatar, bots, sidebar.status, free]);
-  // Both models start from the Launcher's last selection, when it is installed.
-  useEffect(() => {
-    if (seeded.current || !launcher) return;
-    seeded.current = true;
-    const start = launcher.selection ?? launcher.presets[0] ?? null;
-    setCoordinator((value) => value ?? start);
-    setWorker((value) => value ?? start);
-  }, [launcher]);
   // Promote to bot starts in the promoted thread's project.
   useEffect(() => {
     if (!session.promoteThreadId || session.projectId) return;
@@ -79,26 +71,20 @@ function NewBot({ session, visible, focusRequest }: { session: Session; visible:
   const close = () => { setPopup(null); setFocus((n) => n + 1); };
   const toggle = (next: Popup) => setPopup((value) => value === next ? null : next);
 
-  // Mod+Shift+M coordinator model, Mod+Shift+J project picker, Alt+J / Alt+Shift+J next and previous project.
   useEffect(() => {
     if (!visible) { setPopup(null); return; }
     const onKey = (event: KeyboardEvent) => {
-      const action = projectShortcut(event, MAC);
-      if (action === null || (action !== "model" && action !== "open" && action !== "next" && action !== "previous")) return;
+      if (!isWorkerShortcut(event, MAC) || !(event.target instanceof Node) || !sectionRef.current?.contains(event.target)) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      if (action === "model") { toggle("coordinator"); return; }
-      if (action === "open") { toggle("project"); return; }
-      const next = projects && cycle(projects, projectId, action === "next" ? 1 : -1);
-      if (next) setProjectId(next.id);
+      setPopup((value) => value === "worker" ? null : "worker");
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [visible, projects, projectId]);
+  }, [visible]);
 
   const presets = launcher?.presets ?? [];
   const names = launcher?.names ?? {};
-  const project = projects?.find((item) => item.id === projectId);
   const face = avatar ? { avatar: galleryAvatar(avatar), name: "", emoji: "" } : null;
 
   return <ComposerDialog
@@ -107,19 +93,18 @@ function NewBot({ session, visible, focusRequest }: { session: Session; visible:
     focusRequest={visible ? focusRequest + focus : undefined}
     placeholder="Brief for the new bot: the goal, what done looks like, and any rules"
     ready={bots !== null && projects !== null}
-    modelTrigger={null}
+    hideEnvironment
     composerProps={{
-      defaultProjectId: projectId ?? undefined,
-      defaultEnvironment: checkoutOn(null),
+      ...(projectId ? { defaultProjectId: projectId } : {}),
       initialPrompt: handoffPrompt(session.promoteThreadId ?? null, ""),
     }}
     startedMessage="Bot created"
     onStarted={() => update({ session: null, visible: false })}
     submit={async (request) => {
-      const { projectId: chosen, coordinator: model, worker: workerModel, avatar: picked } = latest.current;
+      const { worker: workerModel, avatar: picked } = latest.current;
       const { threadId } = await rpc.call("createInitiative", {
         request,
-        bot: { name: "", emoji: "", instructions: "", starterPrompt: "", model, permissionMode: null, environment: null, projectId: chosen ?? request.projectId,
+        bot: { name: "", emoji: "", instructions: "", starterPrompt: "", model: null, permissionMode: null, environment: null, projectId: null,
           avatarCorner: "top-right", workerModel },
         ...(picked ? { avatar: galleryAvatar(picked) } : {}),
         ...(session.promoteThreadId ? { promoteThreadId: session.promoteThreadId } : {}),
@@ -127,31 +112,59 @@ function NewBot({ session, visible, focusRequest }: { session: Session; visible:
       return { threadId };
     }}
   >
-    <div role="toolbar" aria-label="Bot settings" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-      <Chip label={`Project: ${project?.name ?? "choose"}`} title="Project (Mod+Shift+J)" active={popup === "project"} onClick={() => toggle("project")} />
-      <Chip label={`Coordinator: ${modelLabel(presets, coordinator, names)}`} title="Coordinator model (Mod+Shift+M)" active={popup === "coordinator"} onClick={() => toggle("coordinator")} />
-      <Chip label={`Workers: ${modelLabel(presets, worker, names)}`} active={popup === "worker"} onClick={() => toggle("worker")} />
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, marginLeft: "auto" }}>
-        <button type="button" title="Choose avatar" aria-label="Choose avatar" aria-pressed={popup === "avatar"} onMouseDown={(e) => e.preventDefault()} onClick={() => toggle("avatar")}
-          style={{ ...chip, padding: 2, lineHeight: 0, background: popup === "avatar" ? "var(--accent)" : "transparent" }}>
+    <div role="toolbar" aria-label="Bot settings" style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 4 }}>
+      <Control title={`Worker model (${WORKER_SHORTCUT})`} active={popup === "worker"} onClick={() => toggle("worker")}>
+        <span style={ellipsis}>Workers: {worker ? modelLabel(presets, worker, names) : "Same as coordinator"}</span>
+        <span aria-hidden style={{ fontSize: 10, opacity: 0.6 }}>▾</span>
+      </Control>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 2, marginLeft: "auto" }}>
+        <Control title="Choose avatar" label="Choose avatar" active={popup === "avatar"} onClick={() => toggle("avatar")} style={{ padding: 3 }}>
           {face ? <BotAvatar bot={face} size={22} track /> : <span style={{ display: "inline-block", width: 22, height: 22 }} />}
-        </button>
-        <button type="button" style={{ ...chip, padding: "3px 7px", fontSize: 14, lineHeight: 1 }} title="Random avatar" aria-label="Random avatar" onMouseDown={(e) => e.preventDefault()}
-          onClick={() => setAvatar((current) => shuffleAvatar(free, current))}>↻</button>
+        </Control>
+        <Control title="Random avatar" label="Random avatar" active={false} onClick={() => setAvatar((current) => shuffleAvatar(free, current))} style={{ padding: 5 }}>
+          <DiceIcon />
+        </Control>
       </span>
     </div>
-    {popup && <div style={{ marginTop: 8, border: "1px solid var(--border)", borderRadius: 8, background: "var(--popover, var(--background))", overflow: "hidden" }}>
-      {popup === "project" && <ProjectList selectedLabel="chosen" selectedId={projectId} onChoose={(option) => { setProjectId(option.id); close(); }} onClose={close} />}
-      {popup === "avatar" && <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 6 }}
-        onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); } }}>
+    {popup && <div style={{ marginTop: 4, border: "1px solid var(--border)", borderRadius: 8, background: "var(--popover, var(--background))", overflow: "hidden" }}
+      onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); } }}>
+      {popup === "worker" && <>
+        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { setWorker(null); close(); }}
+          style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", border: "none", borderBottom: "1px solid var(--border)", cursor: "pointer", fontSize: 13,
+            background: worker === null ? "var(--accent)" : "transparent", color: "var(--foreground)" }}>
+          Same as coordinator
+        </button>
+        <ModelList presets={presets} names={names} selection={worker} onChoose={(value, source) => { setWorker(value); if (source === "preset") close(); }} onClose={close} />
+      </>}
+      {popup === "avatar" && <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 6 }}>
         <AvatarGrid label="Smooth" items={SMOOTH_AVATARS} picked={avatar} free={free} onPick={(id) => { setAvatar(id); close(); }} />
         <AvatarGrid label="Geometric" items={GEOMETRIC_AVATARS} picked={avatar} free={free} onPick={(id) => { setAvatar(id); close(); }} />
       </div>}
-      {(popup === "coordinator" || popup === "worker") && <ModelList presets={presets} names={names} selection={popup === "coordinator" ? coordinator : worker}
-        onChoose={(value, source) => { (popup === "coordinator" ? setCoordinator : setWorker)(value); if (source === "preset") close(); }} onClose={close} />}
     </div>}
   </ComposerDialog>;
 }
+
+/** A borderless button in the style of the composer's own pickers. */
+function Control({ title, label, active, onClick, style, children }: { title: string; label?: string; active: boolean; onClick: () => void; style?: CSSProperties; children: ReactNode }) {
+  const [hover, setHover] = useState(false);
+  return <button type="button" title={title} aria-label={label} aria-pressed={active} onMouseDown={(e) => e.preventDefault()} onClick={onClick}
+    onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+    style={{ display: "inline-flex", alignItems: "center", gap: 6, maxWidth: 320, padding: "4px 8px", border: "none", borderRadius: 8, lineHeight: 1,
+      background: active || hover ? "var(--accent)" : "transparent", color: "var(--muted-foreground)", cursor: "pointer", fontSize: 13, ...style }}>
+    {children}
+  </button>;
+}
+
+/** Lucide's "dices" icon. */
+function DiceIcon() {
+  return <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <rect width="12" height="12" x="2" y="10" rx="2" ry="2" />
+    <path d="m17.92 14 3.5-3.5a2.24 2.24 0 0 0 0-3l-5-4.92a2.24 2.24 0 0 0-3 0L10 6" />
+    <path d="M6 18h.01" /><path d="M10 14h.01" /><path d="M15 6h.01" /><path d="M18 9h.01" />
+  </svg>;
+}
+
+const ellipsis: CSSProperties = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
 
 /** Avatars another active bot uses stay pickable but dimmed. */
 function AvatarGrid({ label, items, picked, free, onPick }: { label: string; items: readonly GalleryAvatar[]; picked: GalleryId | null; free: readonly GalleryId[]; onPick: (id: GalleryId) => void }) {
@@ -171,14 +184,6 @@ function AvatarGrid({ label, items, picked, free, onPick }: { label: string; ite
     </div>
   </div>;
 }
-
-function Chip({ label, title, active, onClick }: { label: string; title?: string; active: boolean; onClick: () => void }): ReactNode {
-  return <button type="button" title={title ?? label} aria-pressed={active} onMouseDown={(e) => e.preventDefault()} onClick={onClick}
-    style={{ ...chip, background: active ? "var(--accent)" : "transparent" }}>{label}</button>;
-}
-
-const chip: CSSProperties = { maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", padding: "3px 8px", border: "1px solid var(--border)", borderRadius: 999,
-  color: "var(--muted-foreground)", cursor: "pointer", fontSize: 12, background: "transparent" };
 
 function NewBotOverlay() {
   const current = useSyncExternalStore(subscribe, () => state, () => state);

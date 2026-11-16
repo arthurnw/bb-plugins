@@ -55,7 +55,7 @@ function fakeBb() {
 }
 
 const base = { name: "", emoji: "", instructions: "", starterPrompt: "", model: null, permissionMode: null, environment: null, projectId: "proj_1", avatarCorner: "top-right", workerModel: null };
-const request = (text: string) => ({ projectId: "proj_1", origin: "plugin", input: [{ type: "text", text, mentions: [] }], environment: { type: "project-default" } });
+const request = (text: string) => ({ projectId: "proj_1", origin: "plugin", providerId: "codex", model: "gpt", reasoningLevel: "medium", input: [{ type: "text", text, mentions: [] }], environment: { type: "project-default" } });
 
 const pill = (pluginId: string, botId: string) => ({ type: "text", text: "@B go", mentions: [{ start: 0, end: 2, resource: { kind: "plugin", pluginId, itemId: `bot:${botId}` } }] });
 const thread = (id: string, originPluginId: string) => ({ id, status: "pending", originPluginId, parentThreadId: null, sourceThreadId: null });
@@ -161,4 +161,17 @@ test("createInitiative keeps the bot pill out of the visible brief", async () =>
   assert.deepEqual(brief!.mentions, []);
   assert.equal(kickoff!.visibility, "agent-only");
   assert.equal(kickoff!.mentions.length, 1);
+});
+
+test("createInitiative takes the coordinator model from the composer and workers default to it", async () => {
+  const { store, rpc, spawned } = fakeBb();
+  const result = await (rpc.createInitiative!({ request: request("Ship it"), bot: base } as never) as Promise<{ botId: string }>);
+  const composer = { providerId: "codex", model: "gpt", reasoningLevel: "medium", serviceTier: "default" };
+  const bot = store.get(result.botId)!;
+  assert.deepEqual(bot.model, composer);
+  assert.deepEqual(bot.workerModel, composer);
+  assert.equal(spawned[0]!.model, "gpt");
+  const worker = { providerId: "claude-code", model: "sonnet", reasoningLevel: "low", serviceTier: "default" };
+  const second = await (rpc.createInitiative!({ request: request("Ship more"), bot: { ...base, workerModel: worker } } as never) as Promise<{ botId: string }>);
+  assert.deepEqual(store.get(second.botId)!.workerModel, worker);
 });
