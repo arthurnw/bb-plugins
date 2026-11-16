@@ -1,6 +1,5 @@
 // Initiative bots: one coordinator thread per bot, and workers below it.
 // Pure helpers, so the server and tests share them.
-import { isAbsolute, relative, resolve } from "node:path";
 import { NAME_MAX, oneLine, ownerOf, type Bot, type OwnerLookup } from "@arthurnw/bb-shared/bots";
 import type { ModelSelection } from "@arthurnw/bb-shared/selection";
 
@@ -26,12 +25,6 @@ export function roleOf(store: OwnerLookup & { get(botId: string): Bot | null; co
   const bot = botId === null ? null : store.get(botId);
   if (!bot) return null;
   return { kind: bot.coordinatorThreadId === null ? "persona" : "worker", bot };
-}
-
-/** True when `path` is `root` or inside it. Both must be absolute. */
-export function isInside(root: string, path: string): boolean {
-  const rel = relative(resolve(root), resolve(path));
-  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 }
 
 /** A bot name from the brief's first non-empty line, unique among `taken` (case-insensitive). */

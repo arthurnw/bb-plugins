@@ -14,7 +14,7 @@
     },
     "server": "./server.ts",
     "app": "./app.tsx",
-    "skills": []
+    "skills": ["skills"]
   },
   "scripts": {
     "build": "bb plugin build",

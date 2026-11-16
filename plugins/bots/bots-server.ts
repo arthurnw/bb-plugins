@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { cliCommand, defineCli, defineRpcContract, PluginCliError, type BbPluginApi, type NewThreadRequest } from "@get-bb/plugin-sdk";
 import { z } from "zod";
@@ -8,6 +8,7 @@ import {
   TRUSTED_ORIGIN_PLUGINS, withBotMention, withoutBotMentions, type Bot,
 } from "@arthurnw/bb-shared/bots";
 import { botDraftSchema, botsRpcContract } from "@arthurnw/bb-shared/bots/schema";
+import { GUARD_FILE, GUARD_SCRIPT, guardSettings } from "./guard-script.ts";
 import { COORDINATOR_KICKOFF, COORDINATOR_SKILL, coordinatorInstructions, nameFromBrief, roleOf, workerInstructions, WORKSPACE_PROVIDER, type ThreadRole } from "./initiative.ts";
 
 export const botsContract = defineRpcContract(botsRpcContract);
@@ -62,6 +63,9 @@ export function registerBots(bb: BbPluginApi) {
   const workspaceFor = (botId: string) => join(workspacesRoot, botId);
   // Bots whose coordinator is being spawned; the dispatch hook claims the thread before its session starts.
   const pendingCoordinators = new Set<string>();
+  const guardPath = join(dirname(workspacesRoot), "hooks", GUARD_FILE);
+  void mkdir(dirname(guardPath), { recursive: true }).then(() => writeFile(guardPath, GUARD_SCRIPT, { mode: 0o755 }))
+    .catch((error) => bb.log.warn(`could not write the coordinator guard: ${error instanceof Error ? error.message : String(error)}`));
   const publish = () => bb.realtime.publish("bots", { changedAt: Date.now() });
   const known = (botId: string) => store.get(botId) !== null;
 
@@ -176,6 +180,12 @@ export function registerBots(bb: BbPluginApi) {
           store.setDone(role.bot.id, threadId, !options.undo);
           publish();
           return { exitCode: 0, stdout: `${options.undo ? "Reopened" : "Marked done"}: ${threadId}\n` };
+        },
+      }),
+      hook: cliCommand({
+        summary: "Print the ~/.claude/settings.json entry for the Claude Code hook that stops coordinators editing outside their workspace",
+        async run() {
+          return { exitCode: 0, stdout: `${JSON.stringify(guardSettings(guardPath), null, 2)}\n` };
         },
       }),
       list: cliCommand({
