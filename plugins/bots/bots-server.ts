@@ -299,9 +299,11 @@ export function registerBots(bb: BbPluginApi) {
       publish();
       pendingCoordinators.add(bot.id);
       const model = draft.model;
+      // The bot's pill goes in the hidden kickoff block: the dispatch hook needs it to bind the
+      // coordinator, and in the visible brief it would repeat the name taken from the brief.
       const input: NewThreadRequest["input"] = [
-        ...withBotMention(withoutBotMentions(request.input, BOT_MENTION_PLUGINS), bot, BOTS_PLUGIN_ID),
-        { type: "text", text: COORDINATOR_KICKOFF, mentions: [], visibility: "agent-only" },
+        ...withoutBotMentions(request.input, BOT_MENTION_PLUGINS),
+        ...withBotMention([{ type: "text" as const, text: COORDINATOR_KICKOFF, mentions: [], visibility: "agent-only" as const }], bot, BOTS_PLUGIN_ID),
       ];
       let threadId: string;
       try {

@@ -151,3 +151,13 @@ test("createInitiative runs the coordinator on the composer's machine when it na
   await (rpc.createInitiative!({ request: { ...request("Ship it"), environment: { type: "host", hostId: "host_2", workspace: { type: "unmanaged", path: null } } }, bot: base } as never) as Promise<unknown>);
   assert.deepEqual((spawned[0]!.environment as { machine: unknown }).machine, { type: "existing", hostId: "host_2" });
 });
+
+test("createInitiative keeps the bot pill out of the visible brief", async () => {
+  const { rpc, spawned } = fakeBb();
+  await (rpc.createInitiative!({ request: request("Ship it"), bot: base } as never) as Promise<unknown>);
+  const [brief, kickoff] = spawned[0]!.input as { text: string; mentions: unknown[]; visibility?: string }[];
+  assert.equal(brief!.text, "Ship it");
+  assert.deepEqual(brief!.mentions, []);
+  assert.equal(kickoff!.visibility, "agent-only");
+  assert.equal(kickoff!.mentions.length, 1);
+});
