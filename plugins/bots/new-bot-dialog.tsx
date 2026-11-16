@@ -103,7 +103,7 @@ function NewBot({ session, visible, focusRequest }: { session: Session; visible:
         {face ? <BotAvatar bot={face} size={18} track /> : <span style={{ display: "inline-block", width: 18, height: 18 }} />}
       </Control>
       <Control title="Random avatar" label="Random avatar" active={false} onClick={() => setAvatar((current) => shuffleAvatar(free, current))} style={{ padding: "0 6px" }}>
-        <ShuffleIcon />
+        <Icon name="RotateCcw" aria-hidden style={{ width: 16, height: 16 }} />
       </Control>
     </span>}
     composerProps={{
@@ -151,15 +151,6 @@ function Control({ title, label, active, onClick, style, children }: { title: st
       background: active || hover ? "var(--accent)" : "transparent", color: "var(--muted-foreground)", cursor: "pointer", fontSize: 12, fontWeight: 500, ...style }}>
     {children}
   </button>;
-}
-
-/** Lucide's "shuffle", at the stroke width of bb's icons. */
-function ShuffleIcon() {
-  return <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-    <path d="m18 14 4 4-4 4" /><path d="m18 2 4 4-4 4" />
-    <path d="M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-7.6a4 4 0 0 1 3.3-1.7H22" />
-    <path d="M2 6h1.972a4 4 0 0 1 3.6 2.2" /><path d="M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" />
-  </svg>;
 }
 
 const ellipsis: CSSProperties = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
