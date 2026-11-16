@@ -37,7 +37,7 @@ function fakeBb() {
     experimental_hooks: { on: (_: string, handler: Dispatch) => { dispatch = handler; } },
     ui: { registerMentionProvider: (provider: typeof mention) => { mention = provider; } },
     rpc: { register: (_: unknown, handlers: typeof rpc) => { rpc = { ...rpc, ...handlers }; } },
-    sdk: { threads: {
+    sdk: { projects: { get: async () => ({ sources: [{ type: "local_path", hostId: "host_1", isDefault: true, path: "/repo" }] }) }, threads: {
       get: async ({ threadId }: { threadId: string }) => threads.get(threadId) ?? ({ id: threadId, parentThreadId: null, sourceThreadId: null }),
       spawn: async (request: Record<string, unknown>) => {
         spawned.push(request);
@@ -99,7 +99,7 @@ test("createInitiative starts a coordinator in the bot workspace and roles follo
   const bot = store.get(result.botId)!;
   assert.equal(bot.name, "Ship initiative bots");
   assert.equal(bot.coordinatorThreadId, result.threadId);
-  assert.deepEqual(spawned[0]!.environment, { type: "provider", environmentProviderId: "bots-workspace", inputs: { botId: bot.id } });
+  assert.deepEqual(spawned[0]!.environment, { type: "provider", environmentProviderId: "bots-workspace", inputs: { botId: bot.id }, machine: { type: "existing", hostId: "host_1" } });
   assert.equal(spawned[0]!.model, "opus");
 
   const made = await provider.create({ inputs: { botId: bot.id }, projectCheckout: { path: "/repo" } });
@@ -144,4 +144,10 @@ test("createInitiative input accepts the New bot dialog's unnamed draft", () => 
   const input = spawnContract.createInitiative.input.parse({ request: request("Ship it"), bot: base });
   assert.equal(input.bot.name, "");
   assert.throws(() => spawnContract.createInitiative.input.parse({ request: request("Ship it"), bot: { ...base, name: "x".repeat(200) } }));
+});
+
+test("createInitiative runs the coordinator on the composer's machine when it names one", async () => {
+  const { rpc, spawned } = fakeBb();
+  await (rpc.createInitiative!({ request: { ...request("Ship it"), environment: { type: "host", hostId: "host_2", workspace: { type: "unmanaged", path: null } } }, bot: base } as never) as Promise<unknown>);
+  assert.deepEqual((spawned[0]!.environment as { machine: unknown }).machine, { type: "existing", hostId: "host_2" });
 });

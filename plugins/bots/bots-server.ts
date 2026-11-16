@@ -50,6 +50,11 @@ export function roleReport(threadId: string, role: ThreadRole | null) {
   };
 }
 
+/** The machine the composer's environment names, if any. */
+const hostIn = (environment: NewThreadRequest["environment"]) =>
+  environment?.type === "host" ? environment.hostId
+    : environment?.type === "provider" && environment.machine?.type === "existing" ? environment.machine.hostId : undefined;
+
 const briefText = (input: NewThreadRequest["input"]) =>
   input.filter((block) => block.type === "text" && block.visibility !== "agent-only").map((block) => (block as { text: string }).text).join("\n");
 
@@ -147,6 +152,14 @@ export function registerBots(bb: BbPluginApi) {
     // Keeps the files: they are the initiative's state.
     remove: async () => ({ status: "removed" }),
   });
+
+  /** The machine of the project's default checkout. */
+  async function defaultHostId(projectId: string | null) {
+    if (!projectId) return undefined;
+    const { sources } = await bb.sdk.projects.get({ projectId });
+    const local = sources.filter((source) => source.type === "local_path");
+    return (local.find((source) => source.isDefault) ?? local[0])?.hostId;
+  }
 
   async function provisionWorkspace(botId: string, checkoutPath: string | null) {
     if (!store.get(botId)) return { status: "failed" as const, message: "That bot no longer exists." };
@@ -292,12 +305,14 @@ export function registerBots(bb: BbPluginApi) {
       ];
       let threadId: string;
       try {
+        const hostId = hostIn(request.environment) ?? await defaultHostId(projectId);
+        if (!hostId) throw new BotStoreError("This project has no checkout on a machine, so the bot has nowhere to run.");
         const thread = await bb.sdk.threads.spawn({
           ...request, input, projectId,
           // The composer's session options belong to its own provider; a chosen coordinator model drops them.
           ...(model ? { providerId: model.providerId, model: model.model, reasoningLevel: model.reasoningLevel, serviceTier: model.serviceTier, sessionOptions: undefined,
             executionInputSources: { ...request.executionInputSources, providerId: "explicit", model: "explicit", reasoningLevel: "explicit", serviceTier: "explicit" } } : {}),
-          environment: { type: "provider", environmentProviderId: WORKSPACE_PROVIDER, inputs: { botId: bot.id } },
+          environment: { type: "provider", environmentProviderId: WORKSPACE_PROVIDER, inputs: { botId: bot.id }, machine: { type: "existing", hostId } },
         });
         threadId = thread.id;
       } catch (error) {
