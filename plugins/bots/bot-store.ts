@@ -183,6 +183,14 @@ export class BotStore implements OwnerLookup {
   }
 
   /** Makes a bot an initiative bot run by `threadId`. */
+  setWorkspacePath(botId: string, workspacePath: string): Bot {
+    const current = this.require(botId);
+    this.db.prepare("UPDATE bots SET workspace_path = ? WHERE id = ?").run(workspacePath, botId);
+    const bot: Bot = { ...current, workspacePath };
+    this.bots.set(botId, bot);
+    return bot;
+  }
+
   setCoordinator(botId: string, threadId: string, workspacePath: string): Bot {
     const current = this.require(botId);
     const at = this.now();

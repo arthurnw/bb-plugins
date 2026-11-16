@@ -9,7 +9,7 @@ import {
 } from "@arthurnw/bb-shared/bots";
 import { botsRpcContract, initiativeDraftSchema } from "@arthurnw/bb-shared/bots/schema";
 import { GUARD_FILE, GUARD_SCRIPT, guardSettings } from "./guard-script.ts";
-import { COORDINATOR_KICKOFF, COORDINATOR_SKILL, coordinatorInstructions, nameFromBrief, roleOf, workerInstructions, WORKSPACE_PROVIDER, type ThreadRole } from "./initiative.ts";
+import { COORDINATOR_KICKOFF, COORDINATOR_SKILL, coordinatorInstructions, nameFromBrief, roleOf, workerInstructions, WORKSPACE_PROVIDER, workspaceDirName, type ThreadRole } from "./initiative.ts";
 
 export const botsContract = defineRpcContract(botsRpcContract);
 // Registered apart from `botsContract`: its `z.custom` request cannot be published as discoverable.
@@ -63,9 +63,10 @@ export function registerBots(bb: BbPluginApi) {
   bb.storage.migrate(db, MIGRATIONS);
   const store = new BotStore(db as unknown as SqlDb);
   bb.log.info(`loaded ${store.list().length} bots`);
-  // Beside the plugin's data.db: <bb data>/plugins/bots/workspaces/<botId>.
+  // Beside the plugin's data.db: <bb data>/plugins/bots/workspaces/<name>-<id prefix>.
+  // The path is fixed when the bot is created; bots from before then use their id.
   const workspacesRoot = join(dirname((db as unknown as { name: string }).name), "workspaces");
-  const workspaceFor = (botId: string) => join(workspacesRoot, botId);
+  const workspaceFor = (botId: string) => store.get(botId)?.workspacePath ?? join(workspacesRoot, botId);
   // Bots whose coordinator is being spawned; the dispatch hook claims the thread before its session starts.
   const pendingCoordinators = new Set<string>();
   const guardPath = join(dirname(workspacesRoot), "hooks", GUARD_FILE);
@@ -295,7 +296,8 @@ export function registerBots(bb: BbPluginApi) {
       if (brief.length > BRIEF_MAX) throw new BotStoreError(`The brief is limited to ${BRIEF_MAX} characters.`);
       const projectId = draft.projectId ?? request.projectId;
       const name = draft.name.trim() || nameFromBrief(brief, store.list().map((item) => item.name));
-      const bot = store.save(undefined, { ...draft, name, projectId }, avatar);
+      const saved = store.save(undefined, { ...draft, name, projectId }, avatar);
+      const bot = store.setWorkspacePath(saved.id, join(workspacesRoot, workspaceDirName(name, saved.id)));
       publish();
       pendingCoordinators.add(bot.id);
       const model = draft.model;

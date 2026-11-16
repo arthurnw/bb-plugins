@@ -104,6 +104,7 @@ test("createInitiative starts a coordinator in the bot workspace and roles follo
 
   const made = await provider.create({ inputs: { botId: bot.id }, projectCheckout: { path: "/repo" } });
   assert.equal(made.path, bot.workspacePath);
+  assert.match(made.path!, /\/workspaces\/ship-initiative-bots-[a-z0-9]{4}$/);
   assert.equal(existsSync(made.path!), true);
 
   const coordinator = configure({ thread: { id: result.threadId, parentThreadId: null, sourceThreadId: null }, project: { id: "proj_1", name: "bb-plugins" } });

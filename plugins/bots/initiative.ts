@@ -43,6 +43,20 @@ export function nameFromBrief(brief: string, taken: readonly string[]): string {
   for (let n = 2; ; n++) if (!used.has(`${base} ${n}`.toLowerCase())) return `${base} ${n}`;
 }
 
+/**
+ * A readable folder name for a bot workspace: the name's first words as a slug,
+ * plus the start of the bot id so two bots with the same name stay apart.
+ */
+export function workspaceDirName(name: string, botId: string): string {
+  let slug = "";
+  for (const word of name.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter(Boolean)) {
+    if ((slug ? `${slug}-${word}` : word).length > 40) break;
+    slug = slug ? `${slug}-${word}` : word;
+  }
+  const suffix = botId.replace(/[^a-z0-9]/gi, "").slice(0, 4).toLowerCase();
+  return slug ? `${slug}-${suffix}` : `bot-${suffix}`;
+}
+
 const modelFlags = (model: ModelSelection) =>
   `--provider ${model.providerId} --model ${model.model} --reasoning-level ${model.reasoningLevel}${model.serviceTier && model.serviceTier !== "default" ? ` --service-tier ${model.serviceTier}` : ""}`;
 

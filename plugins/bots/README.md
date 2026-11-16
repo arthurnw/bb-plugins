@@ -23,7 +23,7 @@ Manage bots in Settings → Bots.
   thread in the brief. The thread moves under the coordinator as its first
   worker and keeps its branch and worktree.
 - **Coordinator**: the bot's root thread. It runs in the bot workspace
-  (`<bb data>/plugins/bots/workspaces/<botId>/`, outside git, kept when the
+  (`<bb data>/plugins/bots/workspaces/<name>-<id prefix>/`, outside git, kept when the
   thread is archived) and gets the `bot-coordinator` skill, which covers
   delegation, review, and the `tracker.md` and `log.md` state files. It never
   edits code.
