@@ -94,6 +94,18 @@ function NewBot({ session, visible, focusRequest }: { session: Session; visible:
     placeholder="Brief for the new bot: the goal, what done looks like, and any rules"
     ready={bots !== null && projects !== null}
     hideEnvironment
+    footer={<span role="toolbar" aria-label="Bot settings" style={{ display: "inline-flex", alignItems: "center", gap: 2, minWidth: 0 }}>
+      <Control title={`Worker model (${WORKER_SHORTCUT})`} active={popup === "worker"} onClick={() => toggle("worker")}>
+        <span style={ellipsis}>Workers: {worker ? modelLabel(presets, worker, names) : "Same as coordinator"}</span>
+        <ChevronIcon />
+      </Control>
+      <Control title="Choose avatar" label="Choose avatar" active={popup === "avatar"} onClick={() => toggle("avatar")} style={{ padding: "0 4px" }}>
+        {face ? <BotAvatar bot={face} size={18} track /> : <span style={{ display: "inline-block", width: 18, height: 18 }} />}
+      </Control>
+      <Control title="Random avatar" label="Random avatar" active={false} onClick={() => setAvatar((current) => shuffleAvatar(free, current))} style={{ padding: "0 6px" }}>
+        <DiceIcon />
+      </Control>
+    </span>}
     composerProps={{
       ...(projectId ? { defaultProjectId: projectId } : {}),
       initialPrompt: handoffPrompt(session.promoteThreadId ?? null, ""),
@@ -112,20 +124,6 @@ function NewBot({ session, visible, focusRequest }: { session: Session; visible:
       return { threadId };
     }}
   >
-    <div role="toolbar" aria-label="Bot settings" style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 4 }}>
-      <Control title={`Worker model (${WORKER_SHORTCUT})`} active={popup === "worker"} onClick={() => toggle("worker")}>
-        <span style={ellipsis}>Workers: {worker ? modelLabel(presets, worker, names) : "Same as coordinator"}</span>
-        <span aria-hidden style={{ fontSize: 10, opacity: 0.6 }}>▾</span>
-      </Control>
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 2, marginLeft: "auto" }}>
-        <Control title="Choose avatar" label="Choose avatar" active={popup === "avatar"} onClick={() => toggle("avatar")} style={{ padding: 3 }}>
-          {face ? <BotAvatar bot={face} size={22} track /> : <span style={{ display: "inline-block", width: 22, height: 22 }} />}
-        </Control>
-        <Control title="Random avatar" label="Random avatar" active={false} onClick={() => setAvatar((current) => shuffleAvatar(free, current))} style={{ padding: 5 }}>
-          <DiceIcon />
-        </Control>
-      </span>
-    </div>
     {popup && <div style={{ marginTop: 4, border: "1px solid var(--border)", borderRadius: 8, background: "var(--popover, var(--background))", overflow: "hidden" }}
       onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); } }}>
       {popup === "worker" && <>
@@ -149,15 +147,22 @@ function Control({ title, label, active, onClick, style, children }: { title: st
   const [hover, setHover] = useState(false);
   return <button type="button" title={title} aria-label={label} aria-pressed={active} onMouseDown={(e) => e.preventDefault()} onClick={onClick}
     onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-    style={{ display: "inline-flex", alignItems: "center", gap: 6, maxWidth: 320, padding: "4px 8px", border: "none", borderRadius: 8, lineHeight: 1,
-      background: active || hover ? "var(--accent)" : "transparent", color: "var(--muted-foreground)", cursor: "pointer", fontSize: 13, ...style }}>
+    style={{ display: "inline-flex", alignItems: "center", gap: 4, minWidth: 0, maxWidth: 280, height: 32, padding: "0 6px", border: "none", borderRadius: 6, lineHeight: 1,
+      background: active || hover ? "var(--accent)" : "transparent", color: "var(--muted-foreground)", cursor: "pointer", fontSize: 12, fontWeight: 500, ...style }}>
     {children}
   </button>;
 }
 
+/** Lucide's "chevron-down", as on the composer's own pickers. */
+function ChevronIcon() {
+  return <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ flexShrink: 0 }}>
+    <path d="m6 9 6 6 6-6" />
+  </svg>;
+}
+
 /** Lucide's "dices" icon. */
 function DiceIcon() {
-  return <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+  return <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
     <rect width="12" height="12" x="2" y="10" rx="2" ry="2" />
     <path d="m17.92 14 3.5-3.5a2.24 2.24 0 0 0 0-3l-5-4.92a2.24 2.24 0 0 0-3 0L10 6" />
     <path d="M6 18h.01" /><path d="M10 14h.01" /><path d="M15 6h.01" /><path d="M18 9h.01" />

@@ -3,14 +3,16 @@ import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { experimental_NewThreadComposer as NewThreadComposer, useBbNavigate } from "@get-bb/plugin-sdk/app";
 import { isBackgroundSubmit } from "./keys.ts";
-import { HOST_MODEL_PICKER, useModelSlot } from "./model-slot.ts";
+import { HOST_MODEL_PICKER, useFooterSlot, useModelSlot } from "./model-slot.ts";
 
 type ComposerProps = ComponentProps<typeof NewThreadComposer>;
 export type ComposerRequest = Parameters<NonNullable<ComposerProps["onSubmit"]>>[0];
 
 const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
 // bb's composer labels these buttons (0.49). If a release renames them, they stay visible.
-const HIDE_ENVIRONMENT = ["Environment", "Branch"].map((label) => `[data-bb-hide-environment] button[aria-label='${label}']`).join(", ");
+// The Launcher's field is its named-worktree branch name input.
+const HIDE_ENVIRONMENT = ["button[aria-label='Environment']", "button[aria-label='Branch']", "[data-launcher-field]"]
+  .map((selector) => `[data-bb-hide-environment] ${selector}`).join(", ");
 
 // The SDK exposes no draft state for the embedded composer. Check the editor
 // text, then bb's persisted draft (which also covers attachments). The storage
@@ -45,6 +47,8 @@ export interface ComposerDialogProps {
   modelTrigger?: ReactNode | null;
   /** Hides bb's environment and branch pickers, for callers that choose the environment themselves. */
   hideEnvironment?: boolean;
+  /** Shown on the composer's footer row, after the project picker. */
+  footer?: ReactNode;
   /** Shown before bb's model picker, which stays visible. Ignored when `modelTrigger` is set. */
   chip?: ReactNode;
   /** Starts the thread; the dialog then closes, and opens it or toasts for a background start. */
@@ -64,11 +68,12 @@ export interface ComposerDialogProps {
  */
 export function ComposerDialog({
   visible, label, placeholder, hint = true, draftKey, focusRequest, sectionRef, onClose, popupOpen = false, ready,
-  composerProps, modelTrigger, hideEnvironment = false, chip, submit, onStarted, startedMessage = "Thread started", children,
+  composerProps, modelTrigger, hideEnvironment = false, footer, chip, submit, onStarted, startedMessage = "Thread started", children,
 }: ComposerDialogProps) {
   const navigate = useBbNavigate();
   const [composerRoot, setComposerRoot] = useState<HTMLDivElement | null>(null);
   const modelSlot = useModelSlot(composerRoot, (modelTrigger ?? chip ?? null) !== null);
+  const footerSlot = useFooterSlot(composerRoot, footer != null);
   // Enter opens the new thread; Cmd+Enter (Ctrl+Enter elsewhere) leaves it in the background.
   const backgroundRef = useRef(false);
   const onCloseRef = useRef(onClose);
@@ -127,6 +132,7 @@ export function ComposerDialog({
         }}
       />
       {modelSlot && (modelTrigger ?? chip) && createPortal(modelTrigger ?? chip, modelSlot)}
+      {footerSlot && footer && createPortal(footer, footerSlot)}
       </div>}
       {children}
     </section>

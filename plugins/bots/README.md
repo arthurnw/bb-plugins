@@ -14,9 +14,10 @@ Manage bots in Settings → Bots.
 - **New bot**: the command palette entry **Bots: new bot**, or **+** beside the
   thread list's view toggle. The composer text is the brief, and its project
   and model pickers set the bot's project and coordinator model (Mod+Shift+M).
-  The row under it sets the worker model (Mod+Shift+K; **Same as coordinator**
-  by default, resolved when the bot is created) and the avatar: click it to
-  pick one, or the dice for a random one no active bot uses. The coordinator
+  Beside the project picker, **Workers** sets the worker model (Mod+Shift+K;
+  **Same as coordinator** by default, resolved when the bot is created), then
+  the avatar: click it to pick one, or the dice for a random one no active bot
+  uses. The coordinator
   always runs in the bot workspace, so the environment and branch pickers are
   hidden. Enter creates the bot, starts the coordinator with the brief, and
   opens it. The bot's name comes from the brief's first line; rename it in

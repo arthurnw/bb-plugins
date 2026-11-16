@@ -70,11 +70,38 @@ export function ModelList({ bots = [], bot = null, botState, onChooseBot, preset
     listRef.current?.querySelector(`[data-index="${active}"]`)?.scrollIntoView({ block: "nearest" });
   }, [active]);
 
+  // bb renders the embedded picker's menu in its own popover outside this list.
+  // A host popup that holds this list (the Launcher's composer popup) treats a
+  // pointerdown there as outside, closes, and unmounts the picker before the
+  // choice applies. While that menu is open, keep its pointerdowns from
+  // reaching document listeners; its own clicks still work.
+  // The picker also emits a default model when its menu opens without a
+  // selection, so a change counts only after a click or key in that menu.
+  const touched = useRef(false);
+  useEffect(() => {
+    const inMenu = (event: Event) => {
+      const list = listRef.current;
+      const target = event.target instanceof Element ? event.target : null;
+      if (!list || !target) return false;
+      if (target.closest("[data-other-model]")) touched.current = false;
+      if (list.contains(target) || !list.querySelector("[data-other-model] button[aria-expanded='true']")) return false;
+      return target.closest("[data-radix-popper-content-wrapper]") !== null;
+    };
+    const onPointerDown = (event: PointerEvent) => { if (inMenu(event)) { touched.current = true; event.stopPropagation(); } };
+    const onKeyDown = (event: Event) => { if (inMenu(event)) touched.current = true; };
+    window.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => { window.removeEventListener("pointerdown", onPointerDown, true); window.removeEventListener("keydown", onKeyDown, true); };
+  }, []);
+
   // The embedded picker re-emits its current value while it reconciles with the
   // catalog (it omits a service tier that is "default"). Treating those as
   // choices re-seeds the composer, which makes the picker emit again, in a loop.
+  // Without a selection it emits a default model on mount and on open, so only
+  // changes after the user touches its menu count.
   const onPickerChange = (value: Pick<ModelSelection, "providerId" | "model" | "reasoningLevel"> & { serviceTier?: string }) => {
     if (selection && sameModel(selection, value)) return;
+    if (!touched.current) return;
     onChoose?.({ ...value, serviceTier: value.serviceTier ?? "default" }, "custom");
   };
 
