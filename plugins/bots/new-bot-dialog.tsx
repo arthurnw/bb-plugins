@@ -99,8 +99,8 @@ function NewBot({ session, visible, focusRequest }: { session: Session; visible:
         <span style={ellipsis}>Workers: {worker ? modelLabel(presets, worker, names) : "Same as coordinator"}</span>
         <Icon name="ChevronDown" aria-hidden style={{ width: 16, height: 16, flexShrink: 0 }} />
       </Control>
-      <Control title="Choose avatar" label="Choose avatar" active={popup === "avatar"} onClick={() => toggle("avatar")} style={{ padding: "0 4px" }}>
-        {face ? <BotAvatar bot={face} size={18} track /> : <span style={{ display: "inline-block", width: 18, height: 18 }} />}
+      <Control title="Choose avatar" label="Choose avatar" active={popup === "avatar"} onClick={() => toggle("avatar")} style={{ padding: "0 2px" }}>
+        {face ? <BotAvatar bot={face} size={24} track /> : <span style={{ display: "inline-block", width: 24, height: 24 }} />}
       </Control>
       <Control title="Random avatar" label="Random avatar" active={false} onClick={() => setAvatar((current) => shuffleAvatar(free, current))} style={{ padding: "0 6px" }}>
         <Icon name="RotateCcw" aria-hidden style={{ width: 16, height: 16 }} />
