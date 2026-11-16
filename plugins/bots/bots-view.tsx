@@ -12,7 +12,8 @@ import type { botsContract } from "./bots-server";
 import { BotAvatar, useBots, useBotStates, useThreadBots } from "./bot-avatars";
 import { liveThread } from "@arthurnw/bb-shared/avatars";
 import { openHandoff, openNewThread } from "@arthurnw/bb-shared/events";
-import { groupKeys, groupThreads, moveBefore, wouldCycle, type GroupKey } from "./list-model";
+import { activeBots, groupKeys, groupThreads, moveBefore, withoutCoordinators, wouldCycle, type GroupKey } from "./list-model";
+import { openNewBot } from "./new-bot-dialog";
 import { BotsSummary } from "./bots-summary";
 import { AllView } from "./all-view";
 import { actionTarget, Divider, DragGhost, errorText, groupTitle, iconButton, NewSection, PAGE, SectionActions, ThreadGroup, useDrag, type RowContext } from "./list-parts";
@@ -70,7 +71,9 @@ function useStoredSet(key: string) {
 
 export function BotThreadList({ activeThreadId, activeProjectId, onNavigate }: { activeThreadId: string | null; activeProjectId: string | null; onNavigate?: () => void }) {
   const sidebar = useSidebarThreads();
-  const bots = useBots();
+  const allBots = useBots();
+  // Initiative bots whose coordinator is archived (or gone) leave the list.
+  const bots = useMemo(() => allBots === null ? null : activeBots(allBots, new Set(sidebar.threads.filter(visible).map((thread) => thread.id))), [allBots, sidebar.threads]);
   const threadBots = useThreadBots();
   // Combined over all of a bot's threads, including those filed under Pinned or a section.
   const botStates = useBotStates();
@@ -133,14 +136,14 @@ export function BotThreadList({ activeThreadId, activeProjectId, onNavigate }: {
   const placed = useMemo(() => {
     const known = new Set((bots ?? []).map((bot) => bot.id));
     const sectionIds = new Set(sections.map((section) => section.id));
-    const rows = sidebar.threads.filter(visible).map((thread) => {
+    const rows = withoutCoordinators(sidebar.threads.filter(visible).map((thread) => {
       const owner = threadBots[thread.id];
       return {
         thread, id: thread.id, parentThreadId: thread.parentThreadId, pinned: thread.isPinned,
         botId: owner && known.has(owner) ? owner : null,
         sectionId: thread.sectionId && sectionIds.has(thread.sectionId) ? thread.sectionId : null,
       };
-    });
+    }), bots ?? []);
     const result = new Map<string, PluginSidebarThread[]>();
     for (const [key, members] of groupThreads(rows)) result.set(key, members.map((row) => row.thread));
     return result;
@@ -159,6 +162,7 @@ export function BotThreadList({ activeThreadId, activeProjectId, onNavigate }: {
   const hasMiddle = keys.length > 0;
   const hasThreads = (placed.get("threads")?.length ?? 0) > 0;
   const toggle = (
+    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
     <div role="tablist" aria-label="Sidebar view" style={{ display: "inline-flex", alignSelf: "flex-start", margin: "4px 8px 6px", padding: 2, borderRadius: 8, background: "var(--accent)" }}>
       {VIEWS.map((item) => (
         <button key={item} type="button" role="tab" aria-selected={view === item} onClick={() => setView(item)}
@@ -168,6 +172,9 @@ export function BotThreadList({ activeThreadId, activeProjectId, onNavigate }: {
           {VIEW_LABELS[item]}
         </button>
       ))}
+    </div>
+    <button type="button" aria-label="New bot" title="New bot" style={{ ...iconButton, marginLeft: "auto", marginRight: 8 }}
+      onClick={() => openNewBot({ projectId: activeProjectId })}>+</button>
     </div>
   );
   const ghost = <DragGhost drag={dragged} />;
@@ -194,9 +201,18 @@ export function BotThreadList({ activeThreadId, activeProjectId, onNavigate }: {
         const headerDrag = dragState.start({ kind: "group", key, label: key });
         if (key.startsWith("bot:")) {
           const bot = bots.find((item) => `bot:${item.id}` === key)!;
+          const coordinator = bot.coordinatorThreadId;
+          const title = <><BotAvatar bot={bot} size={16} state={botStates.get(bot.id)} track /><span style={{ ...groupTitle, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bot.name}</span></>;
+          if (coordinator !== null) {
+            return (
+              <ThreadGroup key={key} {...groupProps(key)} groupBot={bot.id} threads={placed.get(key) ?? []} onHeaderPointerDown={headerDrag} done={bot.doneThreads}
+                title={title} onOpen={() => { if (!dragState.suppressClick.current) { navigate.toThread(coordinator); onNavigate?.(); } else dragState.suppressClick.current = false; }}
+                empty="No workers yet." />
+            );
+          }
           return (
             <ThreadGroup key={key} {...groupProps(key)} groupBot={bot.id} threads={placed.get(key) ?? []} onHeaderPointerDown={headerDrag}
-              title={<><BotAvatar bot={bot} size={16} state={botStates.get(bot.id)} track /><span style={{ ...groupTitle, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bot.name}</span></>}
+              title={title}
               actions={<button type="button" aria-label={`New thread with ${bot.name}`} title={`New thread with ${bot.name}`} style={iconButton}
                 onClick={() => openNewThread({ projectId: bot.projectId ?? activeProjectId, botId: bot.id })}>+</button>} />
           );

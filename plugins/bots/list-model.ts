@@ -91,3 +91,29 @@ export function sortFeed<T extends { createdAt: number; updatedAt: number; lates
   const at = (thread: T) => sort === "created" ? thread.createdAt : sort === "attention" ? thread.latestAttentionAt : thread.updatedAt;
   return [...threads].sort((a, b) => at(b) - at(a));
 }
+
+type InitiativeBot = { id: string; coordinatorThreadId: string | null; doneThreads: readonly string[] };
+
+/**
+ * Bots the list shows: persona bots, and initiative bots whose coordinator is
+ * among the live threads (an archived coordinator retires its bot).
+ */
+export function activeBots<B extends InitiativeBot>(bots: readonly B[], liveThreadIds: ReadonlySet<string>): B[] {
+  return bots.filter((bot) => bot.coordinatorThreadId === null || liveThreadIds.has(bot.coordinatorThreadId));
+}
+
+/**
+ * An initiative bot's header stands for its coordinator, so coordinator rows
+ * leave the list and their children become roots of the bot's group.
+ */
+export function withoutCoordinators<T extends ListThread>(rows: readonly T[], bots: readonly InitiativeBot[]): T[] {
+  const coordinators = new Set(bots.map((bot) => bot.coordinatorThreadId).filter((id): id is string => id !== null));
+  return rows.filter((row) => !coordinators.has(row.id))
+    .map((row) => row.parentThreadId !== null && coordinators.has(row.parentThreadId) ? { ...row, parentThreadId: null } : row);
+}
+
+/** Splits a bot group's roots into active workers and those the coordinator marked done. */
+export function splitDone<T extends { id: string }>(roots: readonly T[], bot: InitiativeBot | undefined): { active: T[]; done: T[] } {
+  const done = new Set(bot?.doneThreads ?? []);
+  return { active: roots.filter((root) => !done.has(root.id)), done: roots.filter((root) => done.has(root.id)) };
+}

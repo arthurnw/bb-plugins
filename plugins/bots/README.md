@@ -1,11 +1,59 @@
 # Bots
 
-Bots are saved launch configurations: a name, avatar, instructions, memory, a
-starter prompt, and optional model, permission mode, environment, and project.
-A thread that runs as a bot gets the bot's instructions and a `bot_memory`
-tool. Bots works alone and also with the [Launcher](../launcher) plugin.
+A bot is one initiative: you talk to its coordinator thread, and the
+coordinator plans, decides, and starts one visible worker thread per piece of
+code work. Bots also keeps persona bots (saved launch configurations: a name,
+avatar, instructions, a starter prompt, and optional model, permission mode,
+environment, and project) until they move to the Launcher as Starters. Bots
+works alone and also with the [Launcher](../launcher) plugin.
 
 Manage bots in Settings → Bots.
+
+## Initiative bots
+
+- **New bot**: the command palette entry **Bots: new bot**, or **+** beside the
+  thread list's view toggle. The composer text is the brief; the chips under it
+  set the project, scope directories, coordinator model, worker model, and
+  avatar (**Shuffle** picks another one no active bot uses). Mod+Shift+M opens
+  the coordinator model, Mod+Shift+J the project picker, Alt+J the next
+  project. Enter creates the bot, starts the coordinator with the brief, and
+  opens it. The bot's name comes from the brief's first line; rename it in
+  Settings → Bots.
+- **Promote to bot** (thread menu): the same dialog with a mention of the
+  thread in the brief. The thread moves under the coordinator as its first
+  worker and keeps its branch and worktree.
+- **Coordinator**: the bot's root thread. It runs in the bot workspace
+  (`<bb data>/plugins/bots/workspaces/<botId>/`, outside git, kept when the
+  thread is archived) and gets the `bot-coordinator` skill, which covers
+  delegation, review, and the `tracker.md` and `log.md` state files. It never
+  edits code.
+- **Workers**: every other thread of the bot, normally children of the
+  coordinator (`bb thread spawn --parent-self`). They get short worker
+  instructions: one worktree, one PR, report to the parent.
+- **Thread list** (Threads view): a bot's header opens its coordinator, and
+  its chevron collapses the workers. Workers marked done collapse into a
+  "done" row. Archiving the coordinator retires the bot: bb archives its
+  workers too, and the bot leaves the list. Initiative bots are not offered in
+  new-thread bot pickers.
+
+### `bb bots`
+
+- `bb bots role [threadId]`: JSON with the thread's role (`coordinator`,
+  `worker`, `persona`, or `none`), its bot, and the bot workspace.
+- `bb bots done <threadId> [--undo]`: mark a worker finished.
+- `bb bots list`: initiative bots with their coordinator and workspace.
+- `bb bots hook`: the `~/.claude/settings.json` entry for the Claude Code guard.
+
+### Claude Code guard
+
+The plugin writes `<bb data>/plugins/bots/hooks/coordinator-guard.mjs` when it
+loads. Add the entry `bb bots hook` prints to the `hooks` of
+`~/.claude/settings.json`: a `PreToolUse` hook for Edit, Write, and
+NotebookEdit that runs only in bb threads (`BB_THREAD_ID`). In a coordinator it
+denies writes outside the bot workspace and the temp directories; in any other
+thread, or when `bb bots role` fails, it allows them. `onFailure: "block"`
+blocks the edit when the hook itself cannot run. Writes through the shell are
+covered by the coordinator's instructions only.
 
 - **Thread list**: Bots | Threads | All views, Pinned, and Recent, with bots and
   custom sections in one order you arrange. Drag a thread onto a bot to hand it
@@ -24,8 +72,6 @@ Manage bots in Settings → Bots.
   and the model field uses bb's own picker with no presets. Named worktree and
   Existing branch / PR need the Launcher; a bot that already uses one keeps it,
   marked "needs Launcher".
-- **`bot_memory` tool**: agents read and append facts shared by every thread
-  that uses the bot.
 - **Avatar in thread panes**: a thread with a bot shows the bot's avatar at
   96 px in a corner of its pane, with the thread's own state. The corner is set
   in the bot's settings.
@@ -42,7 +88,7 @@ listen for the `bb-bots:changed` window event.
 
 ## Details
 
-A bot is a saved launch configuration with its own instructions and memory:
+A persona bot is a saved launch configuration with its own instructions:
 name, avatar, instructions, starter prompt, and optional model, permission
 mode, environment, and project. Fields left unset keep the composer's current
 value. Keep method in skills and point a bot at them (for example a starter
@@ -64,7 +110,7 @@ point produces that mention:
   thread's defaults, so the earlier values come back after the send (or when
   you choose **No bot**). 
 
-The bot's instructions and the `bot_memory` tool are attached when the thread's
+The bot's instructions are attached when the thread's
 session starts, through `bb.agents.configure`, and a running session keeps what
 it started with. Forks, side chats, and handoffs (bb's "Continue in new thread"
 and the composer's) inherit the bot. Mentions in later messages bind nothing.
@@ -75,14 +121,6 @@ handoff to the chosen bot instead; **Without a bot** hands off with none. The
 Info tab also shows the instructions a session starting now would get.
 
 Deleting a bot keeps its threads; they get no bot at their next session start.
-
-### Memory
-
-Each bot keeps up to 1,800 characters of facts, one per line, shown in full in
-the thread instructions. Agents read and change it with `bot_memory` (`read`,
-`append`, `forget`, or `overwrite` with the sha256 from a read); its
-instructions say to store only durable preferences and never credentials. Edit
-it in the bot's settings; a save is refused if an agent changed it meanwhile.
 
 ### Avatars
 
@@ -176,7 +214,7 @@ Choose **Bots** in Settings → Appearance → Sidebar thread list. A
 **Bots | Threads | All** toggle at the top switches between three views.
 
 **Bots** shows one tile per bot in your bot order (tiles never move): model,
-thread count, running and needs-you counts, memory size, and **+** for a new
+thread count, running and needs-you counts, and **+** for a new
 thread. A tile opens the Threads view at that bot. Below the tiles, **Pinned**
 lists pinned threads, including ones without a bot (the only non-bot threads in
 this view); drag a recent thread onto it to pin it. **Recent across bots** then

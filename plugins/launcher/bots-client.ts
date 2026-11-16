@@ -18,7 +18,8 @@ function call<M extends "listBots" | "threadBots">(sdk: Sdk, method: M): Promise
 export function useBotsRpc() {
   const sdk = useSdk();
   return useMemo(() => ({
-    listBots: () => call(sdk, "listBots"),
+    // Initiative bots run through their coordinator thread, not the new-thread picker.
+    listBots: () => call(sdk, "listBots").then(({ bots }) => ({ bots: bots.filter((bot) => bot.coordinatorThreadId === null) })),
     threadBots: () => call(sdk, "threadBots"),
   }), [sdk]);
 }

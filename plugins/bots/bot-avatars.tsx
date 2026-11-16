@@ -1,5 +1,5 @@
 import { experimental_useSidebarThreads as useSidebarThreads, useRealtime, useRpc, type PluginAppBuilder, type PluginSidebarThread } from "@get-bb/plugin-sdk/app";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { animatedImageType, BotAvatar, combinedAvatarState, liveThread, setAnimationFetcher, type AvatarState, type Face } from "@arthurnw/bb-shared/avatars";
 import type { botsContract } from "./bots-server";
 import { ANIMATION_MAX_BYTES, AVATAR_SIZE, botIconName, MAX_BOTS, type Bot } from "@arthurnw/bb-shared/bots";
@@ -31,6 +31,11 @@ const botsSnapshot = () => allBots;
 const statesSnapshot = () => states;
 /** Every bot, kept current by `BotIconSync`; null until the first load. */
 export const useBots = () => useSyncExternalStore(subscribe, botsSnapshot, botsSnapshot);
+/** Bots a new thread can start as: persona bots. Initiative bots run through their coordinator. */
+export const usePersonaBots = () => {
+  const bots = useBots();
+  return useMemo(() => bots && bots.filter((bot) => bot.coordinatorThreadId === null), [bots]);
+};
 /** Bot id → combined state of its live threads: waiting, then unread, then working, else idle. */
 export const useBotStates = () => useSyncExternalStore(subscribe, statesSnapshot, statesSnapshot);
 export const useBotState = (botId: string | null | undefined): AvatarState => {

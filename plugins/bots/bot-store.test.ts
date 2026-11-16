@@ -221,3 +221,15 @@ test("old drafts default the pane avatar corner to top-right", () => {
 test("drafts accept only the five corners", () => {
   assert.throws(() => draft("Bad", { avatarCorner: "middle" as BotDraft["avatarCorner"] }));
 });
+
+test("initiative bots: coordinators leave the list, workers become roots, done ones split off, archived bots hide", async () => {
+  const { activeBots, splitDone, withoutCoordinators } = await import("./list-model.ts");
+  const bot = { id: "b", coordinatorThreadId: "c", doneThreads: ["w2"] };
+  const row = (id: string, parentThreadId: string | null) => ({ id, parentThreadId, pinned: false, botId: "b", sectionId: null });
+  const rows = withoutCoordinators([row("c", null), row("w1", "c"), row("w2", "c"), row("w1a", "w1")], [bot]);
+  assert.deepEqual(rows.map((r) => [r.id, r.parentThreadId]), [["w1", null], ["w2", null], ["w1a", "w1"]]);
+  const roots = groupThreads(rows).get("bot:b")!.filter((r) => r.parentThreadId === null);
+  assert.deepEqual(splitDone(roots, bot), { active: [rows[0]], done: [rows[1]] });
+  assert.deepEqual(activeBots([bot, { ...bot, id: "persona", coordinatorThreadId: null }], new Set()).map((b) => b.id), ["persona"]);
+  assert.deepEqual(activeBots([bot], new Set(["c"])).map((b) => b.id), ["b"]);
+});

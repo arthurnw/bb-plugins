@@ -10,7 +10,7 @@ import { cycle, ProjectList, useProjectOptions } from "@arthurnw/bb-shared/proje
 import { botLabel, type Bot, type BotEnvironment, type PermissionMode } from "@arthurnw/bb-shared/bots";
 import type { ModelSelection } from "@arthurnw/bb-shared/selection";
 import type { botsContract, spawnContract } from "./bots-server";
-import { BotIconSync, useBots, useBotStates } from "./bot-avatars";
+import { BotIconSync, usePersonaBots, useBotStates } from "./bot-avatars";
 import { dialog, subscribeDialog, type DialogSession } from "./dialog-store";
 import { useLauncher } from "./launcher-models";
 
@@ -20,7 +20,7 @@ function Session({ session, visible, focusRequest }: { session: DialogSession; v
   const rpc = useRpc<typeof botsContract>();
   const spawnRpc = useRpc<typeof spawnContract>();
   const sidebar = useSidebarThreads();
-  const bots = useBots();
+  const bots = usePersonaBots();
   const botStates = useBotStates();
   const launcher = useLauncher().status === "present";
   const projects = useProjectOptions();

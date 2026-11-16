@@ -4,7 +4,7 @@
 import { useComposer, type ComposerSelection, type PluginComposerApi } from "@get-bb/plugin-sdk/app";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { BotAvatar, useBots, useBotStates } from "./bot-avatars";
+import { BotAvatar, usePersonaBots, useBotStates } from "./bot-avatars";
 import { BOT_MENTION_PLUGINS, BOTS_PLUGIN_ID, botLabel, draftBotId, draftWithBot, type Bot } from "@arthurnw/bb-shared/bots";
 import { environmentFor, ModelList, ModelTrigger, useModelSlot } from "@arthurnw/bb-shared/composer";
 import { useLauncher } from "./launcher-models";
@@ -83,7 +83,7 @@ function useLauncherPicker(form: HTMLElement | null) {
 /** The Bot chip beside bb's model button. Also finishes the settings restore after a bot thread is sent. */
 export function BotChip() {
   const composer = useComposer();
-  const bots = useBots();
+  const bots = usePersonaBots();
   const botStates = useBotStates();
   const anchor = useRef<HTMLSpanElement>(null);
   const [form, setForm] = useState<HTMLElement | null>(null);
@@ -130,7 +130,7 @@ export function BotChip() {
 
 export function BotPopup() {
   const composer = useComposer();
-  const bots = useBots();
+  const bots = usePersonaBots();
   const botStates = useBotStates();
   const launcher = useLauncher().status === "present";
   const botId = draftBotId(composer.draft, BOT_MENTION_PLUGINS);

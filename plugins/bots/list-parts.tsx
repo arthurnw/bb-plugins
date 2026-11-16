@@ -12,6 +12,7 @@ import {
   ThreadTitle, useSdk,
   type PluginSidebarSection, type PluginSidebarThread,
 } from "@get-bb/plugin-sdk/app";
+import { splitDone } from "./list-model";
 import { useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
@@ -226,9 +227,11 @@ export function TreeRow({ thread, depth, childrenOf, groupBot, context }: {
 }
 
 /** A collapsible group of root rows with paging. */
-export function Group<R>({ dropKey, title, actions, roots, renderRoot, limit, empty, collapsed, onToggle, onHeaderPointerDown, over, footer }: {
+export function Group<R>({ dropKey, title, actions, roots, renderRoot, limit, empty, collapsed, onToggle, onOpen, onHeaderPointerDown, over, footer }: {
   dropKey: string; title: ReactNode; actions?: ReactNode; roots: readonly R[]; renderRoot: (root: R) => ReactNode;
   limit?: number; empty?: string; collapsed: boolean; onToggle: () => void;
+  /** Set when the header opens something (an initiative bot's coordinator); a chevron then collapses the group. */
+  onOpen?: () => void;
   onHeaderPointerDown?: (event: ReactPointerEvent) => void; over: string | null; footer?: ReactNode;
 }) {
   const [shown, setShown] = useState(limit ?? Infinity);
@@ -236,12 +239,15 @@ export function Group<R>({ dropKey, title, actions, roots, renderRoot, limit, em
   return (
     <section data-drop={dropKey} style={{ borderRadius: 8, paddingBottom: 4, outline: dropping ? "2px solid var(--ring, var(--primary))" : "none", outlineOffset: -2 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 8px 2px" }} onPointerDown={onHeaderPointerDown}>
-        <button type="button" aria-expanded={!collapsed} onClick={onToggle}
+        <button type="button" {...(onOpen ? {} : { "aria-expanded": !collapsed })} onClick={onOpen ?? onToggle}
           style={{ ...plainButton, flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6, cursor: onHeaderPointerDown ? "grab" : "pointer" }}>
           {title}
           <span style={{ color: "var(--muted-foreground)", fontSize: 11 }}>{roots.length || ""}</span>
         </button>
-        <span onPointerDown={(e) => e.stopPropagation()} style={{ display: "inline-flex", gap: 2 }}>{actions}</span>
+        <span onPointerDown={(e) => e.stopPropagation()} style={{ display: "inline-flex", gap: 2 }}>
+          {actions}
+          {onOpen && <button type="button" aria-expanded={!collapsed} aria-label={collapsed ? "Expand" : "Collapse"} onClick={onToggle} style={chevron}>{collapsed ? "▸" : "▾"}</button>}
+        </span>
       </div>
       {!collapsed && roots.length === 0 && empty && <div style={{ padding: "2px 8px 4px 32px", fontSize: 12, color: "var(--muted-foreground)" }}>{empty}</div>}
       {!collapsed && roots.slice(0, shown).map(renderRoot)}
@@ -256,14 +262,24 @@ export function Group<R>({ dropKey, title, actions, roots, renderRoot, limit, em
 }
 
 /** A Group of plain threads, nested with `tree`. */
-export function ThreadGroup({ threads, groupBot = null, context, ...props }: Omit<Parameters<typeof Group>[0], "roots" | "renderRoot" | "over"> & {
+export function ThreadGroup({ threads, groupBot = null, done, context, ...props }: Omit<Parameters<typeof Group>[0], "roots" | "renderRoot" | "over"> & {
   threads: readonly PluginSidebarThread[]; groupBot?: string | null; context: RowContext;
+  /** Root threads to collapse into a "done" row: an initiative bot's finished workers. */
+  done?: readonly string[];
 }) {
   const { roots, children } = useMemo(() => tree(threads), [threads]);
-  return (
-    <Group {...props} over={context.over} roots={roots}
-      renderRoot={(thread) => <TreeRow key={thread.id} thread={thread} depth={0} childrenOf={children} groupBot={groupBot} context={context} />} />
-  );
+  const split = useMemo(() => splitDone(roots, { id: "", coordinatorThreadId: null, doneThreads: done ?? [] }), [roots, done]);
+  const [showDone, setShowDone] = useState(false);
+  const renderRoot = (thread: PluginSidebarThread) => <TreeRow key={thread.id} thread={thread} depth={0} childrenOf={children} groupBot={groupBot} context={context} />;
+  const footer = split.done.length === 0 ? props.footer : <>
+    <button type="button" aria-expanded={showDone} onClick={() => setShowDone(!showDone)}
+      style={{ ...plainButton, padding: "2px 8px 2px 32px", fontSize: 12, color: "var(--muted-foreground)" }}>
+      {showDone ? "▾" : "▸"} {split.done.length} done
+    </button>
+    {showDone && split.done.map(renderRoot)}
+    {props.footer}
+  </>;
+  return <Group {...props} footer={footer} over={context.over} roots={split.active} renderRoot={renderRoot} />;
 }
 
 /** Inline rename field for a custom section. */

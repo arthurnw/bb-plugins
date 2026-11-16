@@ -5,6 +5,7 @@ import { registerBotThreadAction } from "./bot-thread-action";
 import { registerBotThreadInfo } from "./bot-thread-info";
 import { BotThreadList } from "./bots-view";
 import { registerFallbackDialog } from "./fallback-dialog";
+import { registerNewBotDialog } from "./new-bot-dialog";
 import { registerPaneAvatar } from "./pane-avatar";
 import { BotChip, BOT_POPUP_ID, BotPopup } from "./native-bot";
 import { registerZoo } from "./zoo";
@@ -14,6 +15,7 @@ export default definePluginApp((app) => {
   registerBotThreadAction(app);
   registerBotThreadInfo(app);
   registerFallbackDialog(app);
+  registerNewBotDialog(app);
   registerPaneAvatar(app);
   registerZoo(app);
   app.slots.experimental_threadList({

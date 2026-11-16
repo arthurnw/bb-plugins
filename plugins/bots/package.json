@@ -8,7 +8,7 @@
   },
   "bb": {
     "name": "Bots",
-    "description": "Saved launch configurations with their own instructions, memory, and avatar, and a thread list grouped by bot.",
+    "description": "Initiative bots that coordinate worker threads, saved launch configurations, and a thread list grouped by bot.",
     "branding": {
       "icon": "Bot"
     },
