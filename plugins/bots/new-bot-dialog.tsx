@@ -2,7 +2,7 @@
 // coordinator model, and a row under it for the worker model and avatar.
 // Enter creates the bot and opens its coordinator thread.
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
-import { experimental_useSidebarThreads as useSidebarThreads, useRpc, type PluginAppBuilder } from "@get-bb/plugin-sdk/app";
+import { experimental_Icon as Icon, experimental_useSidebarThreads as useSidebarThreads, useRpc, type PluginAppBuilder } from "@get-bb/plugin-sdk/app";
 import { BotAvatar, ComposerDialog, handoffPrompt, ModelList, modelLabel } from "@arthurnw/bb-shared/composer";
 import { useProjectOptions } from "@arthurnw/bb-shared/projects";
 import { galleryAvatar, type GalleryId } from "@arthurnw/bb-shared/bots";
@@ -97,13 +97,13 @@ function NewBot({ session, visible, focusRequest }: { session: Session; visible:
     footer={<span role="toolbar" aria-label="Bot settings" style={{ display: "inline-flex", alignItems: "center", gap: 2, minWidth: 0 }}>
       <Control title={`Worker model (${WORKER_SHORTCUT})`} active={popup === "worker"} onClick={() => toggle("worker")}>
         <span style={ellipsis}>Workers: {worker ? modelLabel(presets, worker, names) : "Same as coordinator"}</span>
-        <ChevronIcon />
+        <Icon name="ChevronDown" aria-hidden style={{ width: 16, height: 16, flexShrink: 0 }} />
       </Control>
       <Control title="Choose avatar" label="Choose avatar" active={popup === "avatar"} onClick={() => toggle("avatar")} style={{ padding: "0 4px" }}>
         {face ? <BotAvatar bot={face} size={18} track /> : <span style={{ display: "inline-block", width: 18, height: 18 }} />}
       </Control>
       <Control title="Random avatar" label="Random avatar" active={false} onClick={() => setAvatar((current) => shuffleAvatar(free, current))} style={{ padding: "0 6px" }}>
-        <DiceIcon />
+        <ShuffleIcon />
       </Control>
     </span>}
     composerProps={{
@@ -147,25 +147,18 @@ function Control({ title, label, active, onClick, style, children }: { title: st
   const [hover, setHover] = useState(false);
   return <button type="button" title={title} aria-label={label} aria-pressed={active} onMouseDown={(e) => e.preventDefault()} onClick={onClick}
     onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-    style={{ display: "inline-flex", alignItems: "center", gap: 4, minWidth: 0, maxWidth: 280, height: 32, padding: "0 6px", border: "none", borderRadius: 6, lineHeight: 1,
+    style={{ display: "inline-flex", alignItems: "center", gap: 4, minWidth: 0, maxWidth: 280, height: 32, padding: "0 4px", border: "none", borderRadius: 6, lineHeight: "15px", fontFamily: "inherit",
       background: active || hover ? "var(--accent)" : "transparent", color: "var(--muted-foreground)", cursor: "pointer", fontSize: 12, fontWeight: 500, ...style }}>
     {children}
   </button>;
 }
 
-/** Lucide's "chevron-down", as on the composer's own pickers. */
-function ChevronIcon() {
-  return <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ flexShrink: 0 }}>
-    <path d="m6 9 6 6 6-6" />
-  </svg>;
-}
-
-/** Lucide's "dices" icon. */
-function DiceIcon() {
-  return <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-    <rect width="12" height="12" x="2" y="10" rx="2" ry="2" />
-    <path d="m17.92 14 3.5-3.5a2.24 2.24 0 0 0 0-3l-5-4.92a2.24 2.24 0 0 0-3 0L10 6" />
-    <path d="M6 18h.01" /><path d="M10 14h.01" /><path d="M15 6h.01" /><path d="M18 9h.01" />
+/** Lucide's "shuffle", at the stroke width of bb's icons. */
+function ShuffleIcon() {
+  return <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="m18 14 4 4-4 4" /><path d="m18 2 4 4-4 4" />
+    <path d="M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-7.6a4 4 0 0 1 3.3-1.7H22" />
+    <path d="M2 6h1.972a4 4 0 0 1 3.6 2.2" /><path d="M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" />
   </svg>;
 }
 

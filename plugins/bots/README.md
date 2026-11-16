@@ -16,7 +16,7 @@ Manage bots in Settings → Bots.
   and model pickers set the bot's project and coordinator model (Mod+Shift+M).
   Beside the project picker, **Workers** sets the worker model (Mod+Shift+K;
   **Same as coordinator** by default, resolved when the bot is created), then
-  the avatar: click it to pick one, or the dice for a random one no active bot
+  the avatar: click it to pick one, or the shuffle button for a random one no active bot
   uses. The coordinator
   always runs in the bot workspace, so the environment and branch pickers are
   hidden. Enter creates the bot, starts the coordinator with the brief, and
