@@ -11,7 +11,6 @@ import { toast } from "sonner";
 import type { botsContract, spawnContract } from "./bots-server";
 import { BotAvatar, useBots, useBotStates, useThreadBots } from "./bot-avatars";
 import { liveThread } from "@arthurnw/bb-shared/avatars";
-import { openHandoff, openNewThread } from "@arthurnw/bb-shared/events";
 import { activeBots, groupKeys, groupThreads, moveBefore, withoutCoordinators, wouldCycle, type GroupKey } from "./list-model";
 import { openNewBot } from "./new-bot-dialog";
 import { BotsSummary } from "./bots-summary";
@@ -207,20 +206,13 @@ export function BotThreadList({ activeThreadId, activeProjectId, onNavigate }: {
         const headerDrag = dragState.start({ kind: "group", key, label: key });
         if (key.startsWith("bot:")) {
           const bot = bots.find((item) => `bot:${item.id}` === key)!;
-          const coordinator = bot.coordinatorThreadId;
+          // Bots lists initiative bots only, so every bot has a coordinator.
+          const coordinator = bot.coordinatorThreadId!;
           const title = <><BotAvatar bot={bot} size={16} state={botStates.get(bot.id)} track /><span style={{ ...groupTitle, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bot.name}</span></>;
-          if (coordinator !== null) {
-            return (
-              <ThreadGroup key={key} {...groupProps(key)} groupBot={bot.id} threads={placed.get(key) ?? []} onHeaderPointerDown={headerDrag} done={bot.doneThreads} depth={1} menuThread={sidebar.threads.find((thread) => thread.id === coordinator)}
-                title={title} onOpen={() => { if (!dragState.suppressClick.current) { navigate.toThread(coordinator); onNavigate?.(); } else dragState.suppressClick.current = false; }}
-                empty="No workers yet." />
-            );
-          }
           return (
-            <ThreadGroup key={key} {...groupProps(key)} groupBot={bot.id} threads={placed.get(key) ?? []} onHeaderPointerDown={headerDrag}
-              title={title}
-              actions={<button type="button" aria-label={`New thread with ${bot.name}`} title={`New thread with ${bot.name}`} style={iconButton}
-                onClick={() => openNewThread({ projectId: bot.projectId ?? activeProjectId, botId: bot.id })}>+</button>} />
+            <ThreadGroup key={key} {...groupProps(key)} groupBot={bot.id} threads={placed.get(key) ?? []} onHeaderPointerDown={headerDrag} done={bot.doneThreads} depth={1} menuThread={sidebar.threads.find((thread) => thread.id === coordinator)}
+              title={title} onOpen={() => { if (!dragState.suppressClick.current) { navigate.toThread(coordinator); onNavigate?.(); } else dragState.suppressClick.current = false; }}
+              empty="No workers yet." />
           );
         }
         const section = sections.find((item) => `section:${item.id}` === key)!;

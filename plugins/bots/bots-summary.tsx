@@ -8,7 +8,7 @@ import {
   experimental_ThreadStatusGlyph as ThreadStatusGlyph,
   experimental_useProviders as useProviders,
   experimental_useSidebarThreadSplit as useSidebarThreadSplit,
-  ThreadTitle, useRpc, type PluginSidebarThread, type PluginThreadActionTarget,
+  ThreadTitle, useBbNavigate, useRpc, type PluginSidebarThread, type PluginThreadActionTarget,
 } from "@get-bb/plugin-sdk/app";
 import { useEffect, useMemo, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import type { Bot } from "@arthurnw/bb-shared/bots";
@@ -16,7 +16,6 @@ import { modelSpec } from "@arthurnw/bb-shared/selection";
 import { BotAvatar, useBotStates } from "./bot-avatars";
 import { threadAvatarState } from "@arthurnw/bb-shared/avatars";
 import { useLauncherModelState } from "./launcher-models";
-import { openNewThread } from "@arthurnw/bb-shared/events";
 import { feedSort, sortFeed, type FeedSort } from "./list-model";
 
 const FEED_PAGE = 10;
@@ -87,6 +86,7 @@ export function BotsSummary(props: SummaryProps) {
   const { bots, threads, threadBots } = props;
   const names = useLauncherModelState()?.names ?? {};
   const botStates = useBotStates();
+  const navigate = useBbNavigate();
   const [stored, setStored] = useState(() => localStorage.getItem(SORT_KEY));
   const sort = feedSort(stored, props.builtInSort);
   const [shown, setShown] = useState(FEED_PAGE);
@@ -125,8 +125,8 @@ export function BotsSummary(props: SummaryProps) {
               style={{ ...tile, ...(dropping ? { background: "var(--accent)", outline: "2px solid var(--ring, var(--primary))", outlineOffset: -2 } : {}) }}>
               {/* One column so the status glyph centers under the +. */}
               <span style={{ position: "absolute", top: 6, right: 6, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                <button type="button" aria-label={`New thread with ${bot.name}`} title={`New thread with ${bot.name}`}
-                  onClick={(e) => { e.stopPropagation(); openNewThread({ projectId: bot.projectId ?? props.activeProjectId, botId: bot.id }); }}
+                <button type="button" aria-label={`Message ${bot.name}`} title={`Message ${bot.name} (opens its coordinator)`}
+                  onClick={(e) => { e.stopPropagation(); if (bot.coordinatorThreadId) navigate.toThread(bot.coordinatorThreadId); }}
                   style={plus}><Icon name="Plus" className="size-3.5" aria-hidden /></button>
                 {indicator && (
                   <span aria-label={waiting > 0 ? `${bot.name} needs you` : `${bot.name} is working`} style={{ display: "inline-flex" }}>

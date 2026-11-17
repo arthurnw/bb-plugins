@@ -1,6 +1,6 @@
 # Launcher
 
-A floating new-thread composer with model presets and a [bots](#bots) picker, plus
+A floating new-thread composer with model presets and [Starters](#starters), plus
 project shortcuts, named Git worktrees, and thread handoff. The composer is adapted from Sawyer Hood's
 Quick Compose and Dillion Verma's Ultra Launcher. Formerly `project-picker`; the
 rename did not carry over its saved state, which lives under the plugin ID.
@@ -13,8 +13,8 @@ rename did not carry over its saved state, which lives under the plugin ID.
 | Launcher: named worktree / existing branch / project checkout | `Mod+Shift+B` | Cycles Named worktree (focuses the branch name), Existing branch / PR (opens its picker), and Project checkout, then back. From any other environment the first press goes to Named worktree. In the overlay this re-seeds selections (like the project shortcuts) unless the target is already shown. |
 | Launcher: existing branch / PR | `Mod+Shift+G` | Switch the environment to Existing branch / PR and focus its field. In the overlay this re-seeds selections unless the field is already shown. |
 | Launcher: quick compose | `Mod+N` | Toggle a floating New thread composer without navigating. See [Replacing New thread](#replacing-new-thread). |
-| Model picker (overlay only) | `Mod+Shift+M` | Bots first, then presets, then **Other model…** for every provider, model, effort, and tier. |
-| Launcher: bot and model picker | none | Open the bot and model picker in bb's New thread composer. Bind a key in Settings → Keyboard. |
+| Model picker (overlay only) | `Mod+Shift+M` | Starters first, then presets, then **Other model…** for every provider, model, effort, and tier. |
+| Launcher: starter and model picker | none | Open the starter and model picker in bb's New thread composer. Bind a key in Settings → Keyboard. |
 | Launcher: hand off this thread | `Mod+Shift+H` | Open a composer mentioning the current thread and initially reusing its environment. |
 | Launcher: fork this thread into a named worktree | none | Open a composer that forks the current thread into a Named worktree based on the source's branch. Also in every thread actions menu as **Fork into named worktree**. |
 
@@ -102,17 +102,32 @@ Rebind commands in Settings → Keyboard. Existing New thread commands retain ID
 `plugin:launcher/open`, `/next`, `/previous`, and `/branch-name`; overlay commands use
 `plugin:launcher/new-thread` and `/handoff`.
 
-## Bots
+## Starters
 
-Bots are managed by the [Bots plugin](../bots/README.md); the Launcher doesn't
-store them. When Bots is installed, the Launcher's picker lists bots first (in
-the overlay and on bb's New thread page, where it replaces bb's model button),
-picking one applies its fields, and a thread started from the overlay gets the
-bot's pill through Bots' `getBot` RPC. A **+** on a bot or a handoff to a bot
-opens the Launcher's overlay. Without Bots the picker has no Bots section and
-nothing else changes. The Bots plugin's own composer dialog covers the same
-requests when the Launcher is absent.
+A Starter is a saved way to start a thread: a name, an emoji, and optional
+model, project, environment, permission mode, starter prompt, and
+instructions. Manage them in Settings → Starters.
 
+The model picker lists Starters first, in the overlay and on bb's New thread
+page (where it replaces bb's model button). Picking one sets the composer's
+model, project, environment, and permission mode in one step (fields it leaves
+unset keep the composer's value), and its starter prompt fills an empty draft.
+Picking a model afterwards keeps the Starter; **No starter** drops it. On the
+New thread page the earlier picker values come back after the send, because bb
+saves picker changes as the next thread's defaults.
+
+Nothing in the message shows the Starter. The thread records it as Launcher
+plugin metadata (`starterId`), and the Launcher adds the Starter's instructions
+when the thread's session starts (`bb.agents.configure`); a running session
+keeps what it started with. Only that thread gets them: children, forks, and
+handoffs don't. The overlay sets the metadata when it creates the thread. On
+bb's New thread page, while a Starter is chosen, the Launcher takes over the
+send (the send button and Enter) and resubmits through `composer.submit` with
+the Starter as dispatch data, which its `message.dispatch` hook records.
+
+The Bots plugin's persona bots are imported as Starters, once each, when Bots
+is installed (its `listPersonaBots` RPC). Initiative bots stay in Bots and are
+not in this picker.
 
 ## SDK limits (bb 0.46.1 / SDK 0.6.49)
 
