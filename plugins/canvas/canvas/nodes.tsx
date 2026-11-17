@@ -423,6 +423,8 @@ export const FrameNode = memo(function FrameNode({ data, selected }: NodeProps<F
     >
       {data.bot ? <BotFigure bot={data.bot} state={data.botState} /> : null}
       <div
+        data-frame-header=""
+        title={data.bot ? `Click to open ${data.name}'s coordinator; drag to move` : undefined}
         style={{ height: FRAME_HEADER, paddingLeft: data.bot ? FIGURE_INSET + FIGURE_SIZE + 8 : undefined }}
         className="flex cursor-grab items-center gap-2 px-4 active:cursor-grabbing"
       >
@@ -527,12 +529,12 @@ export const FrameNode = memo(function FrameNode({ data, selected }: NodeProps<F
               {canCreate ? (
                 <button
                   type="button"
-                  aria-label={data.bot ? `Message ${data.name}` : `New thread in ${data.name}`}
-                  title={data.bot ? `Message ${data.name} (opens its coordinator)` : `New thread in ${data.name}`}
+                  aria-label={data.bot ? `Go to ${data.name}'s coordinator` : `New thread in ${data.name}`}
+                  title={data.bot ? `Go to ${data.name}'s coordinator` : `New thread in ${data.name}`}
                   className={headerButton}
                   onClick={() => actions.newThreadIn(data)}
                 >
-                  <Icon name="Plus" className="size-3.5" />
+                  <Icon name={data.bot ? "ArrowUpRight" : "Plus"} className="size-3.5" />
                 </button>
               ) : null}
             </span>

@@ -42,7 +42,7 @@ import { CanvasActionsContext, type CanvasActions } from "./context";
 import { Icon, type IconName } from "./icons.tsx";
 import { CARD_H, CARD_W, DEFAULT_ARRANGE, FIGURE_RISE, FRAME_GAP, arrangeGroup, autoLayout, frameBounds, placeNew, type ArrangeOptions, type Point, type Rect } from "./layout.ts";
 import { DIRECTION_KEYS, nearestInDirection, nearestTo, type Direction, type NavItem } from "./nav.ts";
-import { nodeTypes, type CanvasNode } from "./nodes";
+import { nodeTypes, type CanvasNode, type FrameNodeData } from "./nodes";
 import { matchesShortcut, shortcutLabel, useArchive, useArchiveShortcut } from "./archive.ts";
 import { childForest, childListHeight } from "./children.ts";
 import { useReleaseChatFocus } from "./chatFocus.ts";
@@ -1796,6 +1796,16 @@ function CanvasInner() {
             onMove={remeasureAvatars}
             onSelectionEnd={onSelectionEnd}
             onNodeClick={(event, node) => {
+              // A click on a bot frame's header opens its coordinator's chat here.
+              if (node.type === "frame") {
+                const target = event.target as Element;
+                const botId = (node.data as FrameNodeData).botId;
+                const coordinator = botId === null ? null : botsById.get(botId)?.coordinatorThreadId;
+                if (!coordinator || !target.closest("[data-frame-header]") || target.closest("button, input")) return;
+                setSelectedId(coordinator);
+                setInspectorOpen(true);
+                return;
+              }
               if (node.type !== "thread") return;
               setSelectedId(node.id);
               // Option-click pins or unpins without opening the chat panel.
