@@ -21,6 +21,7 @@ function fakeBb() {
   let configure: Configure | undefined;
   let provider: Provider | undefined;
   let cli: Cli | undefined;
+  const events = new Map<string, (payload: { thread: { id: string } }) => unknown>();
   const spawned: Record<string, unknown>[] = [];
   const updated: Record<string, unknown>[] = [];
   const threads = new Map<string, { id: string; parentThreadId: string | null; sourceThreadId: string | null }>();
@@ -30,6 +31,7 @@ function fakeBb() {
     pluginId: "bots",
     storage: { database: () => db, migrate: (d: DatabaseSync, statements: string[]) => statements.forEach((s) => d.exec(s)), kv: { get: async () => null, set: async () => {} } },
     log: { info() {}, warn() {} },
+    events: { on: (name: string, handler: (payload: { thread: { id: string } }) => unknown) => { events.set(name, handler); } },
     realtime: { publish() {} },
     agents: { configure: (handler: Configure) => { configure = handler; }, registerTool() {} },
     experimental_environments: { register: (declaration: Provider) => { provider = declaration; } },
@@ -51,7 +53,7 @@ function fakeBb() {
   } as unknown as BbPluginApi;
   assert.equal(MIGRATIONS.length > 0, true);
   const store = registerBots(bb);
-  return { store, dispatch: dispatch!, rpc, mention: mention!, configure: configure!, provider: provider!, cli: cli!, spawned, updated, threads, dir };
+  return { store, dispatch: dispatch!, rpc, mention: mention!, configure: configure!, provider: provider!, cli: cli!, events, spawned, updated, threads, dir };
 }
 
 const base = { name: "", emoji: "", instructions: "", starterPrompt: "", model: null, permissionMode: null, environment: null, projectId: "proj_1", avatarCorner: "top-right", workerModel: null };
@@ -97,7 +99,7 @@ test("createInitiative starts a coordinator in the bot workspace and roles follo
   const model = { providerId: "claude-code", model: "opus", reasoningLevel: "high", serviceTier: "default" };
   const result = await (rpc.createInitiative!({ request: request("Ship initiative bots\nmore detail"), bot: { ...base, model } } as never) as Promise<{ threadId: string; botId: string }>);
   const bot = store.get(result.botId)!;
-  assert.equal(bot.name, "Ship initiative bots");
+  assert.equal(bot.name, "Ship Initiative Bots");
   assert.equal(bot.coordinatorThreadId, result.threadId);
   assert.deepEqual(spawned[0]!.environment, { type: "provider", environmentProviderId: "bots-workspace", inputs: { botId: bot.id }, machine: { type: "existing", hostId: "host_1" } });
   assert.equal(spawned[0]!.model, "opus");
@@ -174,4 +176,29 @@ test("createInitiative takes the coordinator model from the composer and workers
   const worker = { providerId: "claude-code", model: "sonnet", reasoningLevel: "low", serviceTier: "default" };
   const second = await (rpc.createInitiative!({ request: request("Ship more"), bot: { ...base, workerModel: worker } } as never) as Promise<{ botId: string }>);
   assert.deepEqual(store.get(second.botId)!.workerModel, worker);
+});
+
+test("a coordinator names its placeholder-named bot with bb bots rename", async () => {
+  const { store, rpc, cli, spawned } = fakeBb();
+  const auto = await (rpc.createInitiative!({ request: request("this is a test of the bot workflow"), bot: base } as never) as Promise<{ threadId: string; botId: string }>);
+  const kickoff = (spawned[0]!.input as { text: string }[]).at(-1)!.text;
+  assert.match(kickoff, /"Test Bot Workflow" is a placeholder/);
+  assert.equal((await cli.run(["rename", "Workflow Test"], { threadId: auto.threadId })).exitCode, 0);
+  assert.equal(store.get(auto.botId)!.name, "Workflow Test");
+  const refused = await cli.run(["rename", "X"], { threadId: "thr_other" });
+  assert.notEqual(refused.exitCode, 0);
+  assert.match(refused.stderr ?? "", /not an initiative bot's coordinator/);
+
+  const named = await (rpc.createInitiative!({ request: request("Ship it"), bot: { ...base, name: "Shipper" } } as never) as Promise<{ botId: string }>);
+  assert.equal(store.get(named.botId)!.name, "Shipper");
+  assert.doesNotMatch((spawned[1]!.input as { text: string }[]).at(-1)!.text, /placeholder/);
+});
+
+test("deleting a coordinator thread deletes its bot", async () => {
+  const { store, rpc, events } = fakeBb();
+  const result = await (rpc.createInitiative!({ request: request("Ship it"), bot: base } as never) as Promise<{ threadId: string; botId: string }>);
+  await events.get("thread.deleted")!({ thread: { id: "thr_unrelated" } });
+  assert.ok(store.get(result.botId));
+  await events.get("thread.deleted")!({ thread: { id: result.threadId } });
+  assert.equal(store.get(result.botId), null);
 });

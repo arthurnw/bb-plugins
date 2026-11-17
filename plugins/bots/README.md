@@ -20,8 +20,9 @@ Manage bots in Settings → Bots.
   uses. The coordinator
   always runs in the bot workspace, so the environment and branch pickers are
   hidden. Enter creates the bot, starts the coordinator with the brief, and
-  opens it. The bot's name comes from the brief's first line; rename it in
-  Settings → Bots.
+  opens it. **Name** is optional: left empty, the bot starts with a
+  placeholder from the brief's first words, and the coordinator renames it on
+  its first turn (`bb bots rename`). Rename it any time in Settings → Bots.
 - **Promote to bot** (thread menu): the same dialog with a mention of the
   thread in the brief. The thread moves under the coordinator as its first
   worker and keeps its branch and worktree.
@@ -29,7 +30,8 @@ Manage bots in Settings → Bots.
   (`<bb data>/plugins/bots/workspaces/<name>-<id prefix>/`, outside git, kept when the
   thread is archived) and gets the `bot-coordinator` skill, which covers
   delegation, review, and the `tracker.md` and `log.md` state files. It never
-  edits code.
+  edits code. Deleting the coordinator thread deletes the bot; its workspace
+  files stay.
 - **Workers**: every other thread of the bot, normally children of the
   coordinator (`bb thread spawn --parent-self`). They get short worker
   instructions: one worktree, one PR, report to the parent.
@@ -44,6 +46,8 @@ Manage bots in Settings → Bots.
 - `bb bots role [threadId]`: JSON with the thread's role (`coordinator`,
   `worker`, `persona`, or `none`), its bot, and the bot workspace.
 - `bb bots done <threadId> [--undo]`: mark a worker finished.
+- `bb bots rename "<name>" [--thread <id>]`: rename the bot a coordinator
+  thread runs (defaults to the calling thread).
 - `bb bots list`: initiative bots with their coordinator and workspace.
 - `bb bots hook`: the `~/.claude/settings.json` entry for the Claude Code guard.
 

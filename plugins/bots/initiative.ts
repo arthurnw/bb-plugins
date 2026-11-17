@@ -27,17 +27,28 @@ export function roleOf(store: OwnerLookup & { get(botId: string): Bot | null; co
   return { kind: bot.coordinatorThreadId === null ? "persona" : "worker", bot };
 }
 
-/** A bot name from the brief's first non-empty line, unique among `taken` (case-insensitive). */
+// Words that carry no meaning in a name.
+const FILLER = new Set(("a an the this that these those it its is are was were be been am i im we you me us my our your "
+  + "of to for in on at by with from into about and or but so as just please let lets can could would should will want need "
+  + "some any here there do does make create build start help go get try").split(" "));
+
+/**
+ * A short placeholder name from the brief's first non-empty line: up to three
+ * words that are not filler, in title case, unique among `taken`
+ * (case-insensitive). The coordinator replaces it with a better one.
+ */
 export function nameFromBrief(brief: string, taken: readonly string[]): string {
   // Mentions and markdown markers read badly as a name.
   const line = oneLine((brief.split("\n").find((item) => item.trim()) ?? "").replace(/@\S+/g, "")).replace(/^[#>*\-\s]+/, "");
-  const words = line.split(" ");
+  const words = line.split(/[^\p{L}\p{N}'-]+/u).filter(Boolean);
+  const content = words.filter((word) => !FILLER.has(word.toLowerCase().replace(/'/g, "")));
   let base = "";
-  for (const word of words) {
-    if ((base ? `${base} ${word}` : word).length > NAME_MAX - 4) break;
-    base = base ? `${base} ${word}` : word;
+  for (const word of (content.length > 0 ? content : words).slice(0, 3)) {
+    const next = base ? `${base} ${word}` : word;
+    if (next.length > NAME_MAX - 4) break;
+    base = next;
   }
-  base = base || line.slice(0, NAME_MAX - 4) || "Initiative";
+  base = base.replace(/(^|\s)(\p{Ll})/gu, (_, space: string, letter: string) => space + letter.toUpperCase()) || "Initiative";
   const used = new Set(taken.map((name) => name.toLowerCase()));
   if (!used.has(base.toLowerCase())) return base;
   for (let n = 2; ; n++) if (!used.has(`${base} ${n}`.toLowerCase())) return `${base} ${n}`;
@@ -102,3 +113,9 @@ export function workerInstructions(bot: Bot): string {
 
 /** The first message of a coordinator: the user's brief, plus how to start. */
 export const COORDINATOR_KICKOFF = "This is the brief for a new initiative. Start by writing tracker.md in the bot workspace from it, following the bot-coordinator skill, then tell the user the plan and any open questions.";
+
+/** The kickoff, plus a request to name the bot when the user left the name to Bots. */
+export function coordinatorKickoff(placeholderName: string | null): string {
+  if (placeholderName === null) return COORDINATOR_KICKOFF;
+  return `${COORDINATOR_KICKOFF}\n\nFirst, name the bot: its name "${placeholderName}" is a placeholder taken from the brief. Pick a short noun phrase of one to three words, in title case, that names the initiative (like "Workflow Test" or "Billing Migration"), and run \`bb bots rename "<name>"\`. Don't mention the renaming to the user.`;
+}

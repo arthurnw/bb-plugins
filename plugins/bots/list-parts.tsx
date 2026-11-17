@@ -262,18 +262,20 @@ export function Group<R>({ dropKey, title, actions, roots, renderRoot, limit, em
 }
 
 /** A Group of plain threads, nested with `tree`. */
-export function ThreadGroup({ threads, groupBot = null, done, context, ...props }: Omit<Parameters<typeof Group>[0], "roots" | "renderRoot" | "over"> & {
+export function ThreadGroup({ threads, groupBot = null, done, depth = 0, context, ...props }: Omit<Parameters<typeof Group>[0], "roots" | "renderRoot" | "over"> & {
   threads: readonly PluginSidebarThread[]; groupBot?: string | null; context: RowContext;
+  /** Indent of the group's roots: 1 for an initiative bot's workers, which sit under its coordinator. */
+  depth?: number;
   /** Root threads to collapse into a "done" row: an initiative bot's finished workers. */
   done?: readonly string[];
 }) {
   const { roots, children } = useMemo(() => tree(threads), [threads]);
   const split = useMemo(() => splitDone(roots, { id: "", coordinatorThreadId: null, doneThreads: done ?? [] }), [roots, done]);
   const [showDone, setShowDone] = useState(false);
-  const renderRoot = (thread: PluginSidebarThread) => <TreeRow key={thread.id} thread={thread} depth={0} childrenOf={children} groupBot={groupBot} context={context} />;
+  const renderRoot = (thread: PluginSidebarThread) => <TreeRow key={thread.id} thread={thread} depth={depth} childrenOf={children} groupBot={groupBot} context={context} />;
   const footer = split.done.length === 0 ? props.footer : <>
     <button type="button" aria-expanded={showDone} onClick={() => setShowDone(!showDone)}
-      style={{ ...plainButton, padding: "2px 8px 2px 32px", fontSize: 12, color: "var(--muted-foreground)" }}>
+      style={{ ...plainButton, padding: `2px 8px 2px ${8 + depth * 14}px`, fontSize: 12, color: "var(--muted-foreground)" }}>
       {showDone ? "▾" : "▸"} {split.done.length} done
     </button>
     {showDone && split.done.map(renderRoot)}

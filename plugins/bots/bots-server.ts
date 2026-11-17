@@ -5,11 +5,11 @@ import { z } from "zod";
 import { BotStore, BotStoreError, MIGRATIONS, type SqlDb } from "./bot-store.ts";
 import {
   BOT_MENTION_PLUGINS, BOTS_PLUGIN_ID, BRIEF_MAX, findBotMention, handoffSource, hasNoBotMarker, MENTION_PROVIDER, NO_BOT_TEXT, ownerOf, renderInstructions,
-  TRUSTED_ORIGIN_PLUGINS, withBotMention, withoutBotMentions, type Bot,
+  TRUSTED_ORIGIN_PLUGINS, botDraft, withBotMention, withoutBotMentions, type Bot,
 } from "@arthurnw/bb-shared/bots";
 import { botsRpcContract, initiativeDraftSchema } from "@arthurnw/bb-shared/bots/schema";
 import { GUARD_FILE, GUARD_SCRIPT, guardSettings } from "./guard-script.ts";
-import { COORDINATOR_KICKOFF, COORDINATOR_SKILL, coordinatorInstructions, nameFromBrief, roleOf, workerInstructions, WORKSPACE_PROVIDER, workspaceDirName, type ThreadRole } from "./initiative.ts";
+import { COORDINATOR_SKILL, coordinatorInstructions, coordinatorKickoff, nameFromBrief, roleOf, workerInstructions, WORKSPACE_PROVIDER, workspaceDirName, type ThreadRole } from "./initiative.ts";
 
 export const botsContract = defineRpcContract(botsRpcContract);
 // Registered apart from `botsContract`: its `z.custom` request cannot be published as discoverable.
@@ -197,6 +197,25 @@ export function registerBots(bb: BbPluginApi) {
           return { exitCode: 0, stdout: `${options.undo ? "Reopened" : "Marked done"}: ${threadId}\n` };
         },
       }),
+      rename: cliCommand({
+        summary: "Rename the bot a coordinator thread runs",
+        positionals: [{ name: "name", description: "The new name, quoted if it has spaces", required: true }],
+        options: { thread: { type: "string", description: "The coordinator thread; defaults to the calling thread (BB_THREAD_ID)" } },
+        async run({ positionals, options }, ctx) {
+          const threadId = options.thread ?? ctx.threadId;
+          if (!threadId) throw new PluginCliError("Pass --thread.", { code: "missing_thread" });
+          const bot = store.coordinatedBy(threadId);
+          if (!bot) throw new PluginCliError("That thread is not an initiative bot's coordinator.", { code: "not_coordinator" });
+          try {
+            const saved = store.save(bot.id, { ...botDraft(bot), name: positionals.name!.trim() });
+            publish();
+            return { exitCode: 0, stdout: `Renamed to ${saved.name}\n` };
+          } catch (error) {
+            if (error instanceof BotStoreError) throw new PluginCliError(error.message, { code: "invalid_name" });
+            throw error;
+          }
+        },
+      }),
       hook: cliCommand({
         summary: "Print the ~/.claude/settings.json entry for the Claude Code hook that stops coordinators editing outside their workspace",
         async run() {
@@ -213,6 +232,31 @@ export function registerBots(bb: BbPluginApi) {
       }),
     },
   }));
+
+  // A bot lives as long as its coordinator: deleting the thread deletes the bot
+  // (its workspace files stay). Archiving keeps it.
+  bb.events.on("thread.deleted", ({ thread }) => {
+    const bot = store.coordinatedBy(thread.id);
+    if (bot && store.delete(bot.id)) {
+      bb.log.info(`deleted bot ${bot.id}: its coordinator ${thread.id} was deleted`);
+      publish();
+    }
+  });
+  // Coordinators deleted while Bots was not running. bb.sdk answers only once
+  // the server listens, so this waits a moment after load.
+  const sweep = setTimeout(async () => {
+    for (const bot of store.list()) {
+      if (bot.coordinatorThreadId === null) continue;
+      try { await bb.sdk.threads.get({ threadId: bot.coordinatorThreadId }); }
+      catch (error) {
+        if (!/\b404\b|not found/i.test(String(error))) continue;
+        store.delete(bot.id);
+        bb.log.info(`deleted bot ${bot.id}: its coordinator ${bot.coordinatorThreadId} no longer exists`);
+        publish();
+      }
+    }
+  }, 10_000);
+  sweep.unref?.();
 
   bb.ui.registerMentionProvider({
     id: MENTION_PROVIDER,
@@ -310,7 +354,7 @@ export function registerBots(bb: BbPluginApi) {
       // coordinator, and in the visible brief it would repeat the name taken from the brief.
       const input: NewThreadRequest["input"] = [
         ...withoutBotMentions(request.input, BOT_MENTION_PLUGINS),
-        ...withBotMention([{ type: "text" as const, text: COORDINATOR_KICKOFF, mentions: [], visibility: "agent-only" as const }], bot, BOTS_PLUGIN_ID),
+        ...withBotMention([{ type: "text" as const, text: coordinatorKickoff(draft.name.trim() ? null : name), mentions: [], visibility: "agent-only" as const }], bot, BOTS_PLUGIN_ID),
       ];
       let threadId: string;
       try {
