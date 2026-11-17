@@ -43,19 +43,6 @@ function useListOrder(rpc: BotsRpc) {
  * Gives a thread to a bot. One that has not started is reassigned in place; a
  * started one keeps its session's instructions, so this opens a handoff.
  */
-export async function sendThreadToBot(rpc: BotsRpc, thread: { id: string; projectId: string; status: string }, botId: string | null) {
-  if (thread.status !== "pending") {
-    if (!openHandoff({ projectId: thread.projectId, threadId: thread.id, botId })) toast.error("Could not open the handoff composer.");
-    return;
-  }
-  try {
-    if (botId) await rpc.call("assignThread", { threadId: thread.id, botId });
-    else await rpc.call("detachThread", { threadId: thread.id });
-  } catch (error) {
-    toast.error(errorText(error));
-  }
-}
-
 function useStoredSet(key: string) {
   const [set, setSet] = useState<ReadonlySet<string>>(() => {
     try { return new Set(JSON.parse(localStorage.getItem(key) ?? "[]") as string[]); } catch { return new Set(); }
@@ -116,8 +103,11 @@ export function BotThreadList({ activeThreadId, activeProjectId, onNavigate }: {
       if (wouldCycle(thread.id, parent, (id) => byId.get(id)?.parentThreadId ?? null)) { toast.error("A thread cannot go under its own child."); return; }
       sdk.threads.update({ threadId: thread.id, parentThreadId: parent }).catch(fail);
     } else if (target.startsWith("bot:")) {
-      const botId = target.slice("bot:".length);
-      if (threadBots[thread.id] !== botId) void sendThreadToBot(rpc, thread, botId);
+      // Under the coordinator, the thread becomes one of the bot's workers.
+      const coordinator = bots?.find((bot) => `bot:${bot.id}` === target)?.coordinatorThreadId;
+      if (!coordinator || coordinator === thread.id || thread.parentThreadId === coordinator) return;
+      if (wouldCycle(thread.id, coordinator, (id) => byId.get(id)?.parentThreadId ?? null)) { toast.error("A thread cannot go under its own child."); return; }
+      sdk.threads.update({ threadId: thread.id, parentThreadId: coordinator }).catch(fail);
     } else if (target.startsWith("section:")) {
       const sectionId = target.slice("section:".length);
       if (thread.sectionId !== sectionId || thread.parentThreadId) sdk.threads.update({ threadId: thread.id, sectionId, parentThreadId: null }).catch(fail);

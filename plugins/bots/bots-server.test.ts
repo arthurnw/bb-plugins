@@ -62,13 +62,21 @@ const request = (text: string) => ({ projectId: "proj_1", origin: "plugin", prov
 const pill = (pluginId: string, botId: string) => ({ type: "text", text: "@B go", mentions: [{ start: 0, end: 2, resource: { kind: "plugin", pluginId, itemId: `bot:${botId}` } }] });
 const thread = (id: string, originPluginId: string) => ({ id, status: "pending", originPluginId, parentThreadId: null, sourceThreadId: null });
 
-test("a first message with a bots or launcher pill binds the thread", () => {
-  const { store, dispatch } = fakeBb();
+test("a first message with an initiative bot's pill binds the thread; a persona bot's does not", async () => {
+  const { store, dispatch, rpc, configure } = fakeBb();
+  const persona = store.save(undefined, { name: "P", emoji: "", instructions: "Be P.", starterPrompt: "", model: null, permissionMode: null, environment: null, projectId: null, avatarCorner: "top-right", workerModel: null });
   const bot = store.save(undefined, { name: "B", emoji: "", instructions: "", starterPrompt: "", model: null, permissionMode: null, environment: null, projectId: null, avatarCorner: "top-right", workerModel: null });
+  store.setCoordinator(bot.id, "coord", "/ws/b");
   dispatch({ thread: thread("t1", "launcher"), input: { blocks: [pill("bots", bot.id)] } });
   dispatch({ thread: thread("t2", "launcher"), input: { blocks: [pill("launcher", bot.id)] } });
   dispatch({ thread: thread("t3", "someone-else"), input: { blocks: [{ type: "text", text: "plain", mentions: [] }] } });
+  dispatch({ thread: thread("t4", "launcher"), input: { blocks: [pill("bots", persona.id)] } });
   assert.deepEqual(store.threadBots(), { t1: bot.id, t2: bot.id });
+  // An old persona binding gives no instructions.
+  store.bind("old", persona.id, "mention");
+  assert.equal(configure({ thread: { id: "old", parentThreadId: null, sourceThreadId: null } } as never).instructions, undefined);
+  assert.deepEqual((await (rpc.listBots!({} as never) as Promise<{ bots: { id: string }[] }>)).bots.map((item) => item.id), [bot.id]);
+  assert.deepEqual((await (rpc.listPersonaBots!({} as never) as Promise<{ bots: { id: string }[] }>)).bots.map((item) => item.id), [persona.id]);
 });
 
 test("No bot from a trusted origin detaches; from another plugin it does not", () => {

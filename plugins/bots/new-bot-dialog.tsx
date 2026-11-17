@@ -14,7 +14,7 @@ import { useLauncherModelState } from "./launcher-models";
 import { freeAvatars, isWorkerShortcut, shuffleAvatar } from "./new-bot-model";
 
 const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
-const WORKER_SHORTCUT = MAC ? "⌘⇧K" : "Ctrl+Shift+K";
+const WORKER_SHORTCUT = MAC ? "⌥M" : "Alt+M";
 export const NEW_BOT_EVENT = "bb-bots:new-bot";
 
 export interface NewBotRequest {
@@ -78,7 +78,7 @@ function NewBot({ session, visible, focusRequest }: { session: Session; visible:
   useEffect(() => {
     if (!visible) { setPopup(null); return; }
     const onKey = (event: KeyboardEvent) => {
-      if (!isWorkerShortcut(event, MAC) || !(event.target instanceof Node) || !sectionRef.current?.contains(event.target)) return;
+      if (!isWorkerShortcut(event) || !(event.target instanceof Node) || !sectionRef.current?.contains(event.target)) return;
       event.preventDefault();
       event.stopImmediatePropagation();
       setPopup((value) => value === "worker" ? null : "worker");

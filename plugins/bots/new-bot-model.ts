@@ -20,7 +20,6 @@ export function shuffleAvatar(free: readonly GalleryId[], current: GalleryId | n
   return from[Math.floor(random() * from.length)]!;
 }
 
-/** Mod+Shift+K opens the worker model picker; Mod+Shift+M stays with the composer's own model picker. */
-export const isWorkerShortcut = (event: { key: string; code: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean; isComposing: boolean }, mac: boolean) =>
-  !event.isComposing && event.shiftKey && !event.altKey && (mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey)
-  && (event.code === "KeyK" || event.key.toLowerCase() === "k");
+/** Alt+M opens the worker model picker; Mod+Shift+M stays with the composer's own model picker (Mod+Shift+K is bb's Quick Chat). */
+export const isWorkerShortcut = (event: { key: string; code: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean; isComposing: boolean }) =>
+  !event.isComposing && event.altKey && !event.shiftKey && !event.metaKey && !event.ctrlKey && (event.code === "KeyM" || event.key.toLowerCase() === "m");

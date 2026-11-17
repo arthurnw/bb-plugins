@@ -31,11 +31,6 @@ const botsSnapshot = () => allBots;
 const statesSnapshot = () => states;
 /** Every bot, kept current by `BotIconSync`; null until the first load. */
 export const useBots = () => useSyncExternalStore(subscribe, botsSnapshot, botsSnapshot);
-/** Bots a new thread can start as: persona bots. Initiative bots run through their coordinator. */
-export const usePersonaBots = () => {
-  const bots = useBots();
-  return useMemo(() => bots && bots.filter((bot) => bot.coordinatorThreadId === null), [bots]);
-};
 /** Bot id → combined state of its live threads: waiting, then unread, then working, else idle. */
 export const useBotStates = () => useSyncExternalStore(subscribe, statesSnapshot, statesSnapshot);
 export const useBotState = (botId: string | null | undefined): AvatarState => {

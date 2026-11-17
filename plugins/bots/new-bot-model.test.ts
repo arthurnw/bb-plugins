@@ -23,10 +23,10 @@ test("shuffle avoids the current avatar and falls back to all when none are free
   assert.ok(GALLERY_IDS.includes(shuffleAvatar([], null)));
 });
 
-test("Mod+Shift+K opens the worker model picker", () => {
-  const key = { key: "K", code: "KeyK", metaKey: true, ctrlKey: false, altKey: false, shiftKey: true, isComposing: false };
-  assert.equal(isWorkerShortcut(key, true), true);
-  assert.equal(isWorkerShortcut(key, false), false);
-  assert.equal(isWorkerShortcut({ ...key, metaKey: false, ctrlKey: true }, false), true);
-  assert.equal(isWorkerShortcut({ ...key, shiftKey: false }, true), false);
+test("Alt+M opens the worker model picker", () => {
+  // On macOS, Option+M types "µ"; the key code still says M.
+  const key = { key: "µ", code: "KeyM", metaKey: false, ctrlKey: false, altKey: true, shiftKey: false, isComposing: false };
+  assert.equal(isWorkerShortcut(key), true);
+  assert.equal(isWorkerShortcut({ ...key, shiftKey: true }), false);
+  assert.equal(isWorkerShortcut({ ...key, altKey: false, metaKey: true }), false);
 });

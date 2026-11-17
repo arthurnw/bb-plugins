@@ -1,29 +1,23 @@
 import { experimental_ProviderModelPicker as ProviderModelPicker, experimental_useProviders as useProviders, useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import type { botsContract } from "./bots-server";
-import { useLauncher, useLauncherModelState } from "./launcher-models";
+import { useLauncherModelState } from "./launcher-models";
+import { openNewBot } from "./new-bot-dialog";
 import {
-  AVATAR_CORNERS, BOT_ENVIRONMENTS, botDraft, DEFAULT_AVATAR_CORNER, INSTRUCTIONS_MAX, MAX_BOTS, NAME_MAX, STARTER_MAX,
-  type AvatarCorner, type Bot, type BotDraft, type BotEnvironment, type PermissionMode,
+  AVATAR_CORNERS, botDraft, MAX_BOTS, NAME_MAX,
+  type AvatarCorner, type Bot, type BotDraft,
 } from "@arthurnw/bb-shared/bots";
 import { modelSpec, sameModel, type ModelSelection } from "@arthurnw/bb-shared/selection";
 import { useProjectOptions } from "@arthurnw/bb-shared/projects";
-import { availableEnvironments } from "@arthurnw/bb-shared/composer";
 import { AnimatedAvatar, galleryAvatar, galleryId, GEOMETRIC_AVATARS, SMOOTH_AVATARS, type GalleryAvatar } from "@arthurnw/bb-shared/avatars";
 import { avatarFromFile, BotAvatar, useBotState, useBotStates } from "./bot-avatars";
 import { setZooSettings, useZooSettings } from "./zoo-settings";
 import { FLOATING_STYLES, type FloatingStyle } from "./zoo-layout";
 
-const ENVIRONMENT_LABELS: Record<BotEnvironment, string> = {
-  "named-worktree": "Named worktree",
-  "existing-branch": "Existing branch / PR",
-  checkout: "Project checkout",
-};
 const CORNER_LABELS: Record<AvatarCorner, string> = {
   "top-left": "Top left", "top-right": "Top right", "bottom-left": "Bottom left", "bottom-right": "Bottom right", off: "Off",
 };
 const FLOATING_STYLE_LABELS: Record<FloatingStyle, string> = { card: "Card", strip: "Strip" };
-const PERMISSION_LABELS: Record<PermissionMode, string> = { "accept-edits": "Accept edits", auto: "Auto", full: "Full access" };
 const KEEP = "";
 // Without Launcher presets, bb's picker starts from the first available provider and reports a real model once loaded.
 const startingModel = (providerId: string): ModelSelection => ({ providerId, model: "", reasoningLevel: "medium", serviceTier: "default" });
@@ -55,20 +49,11 @@ export function BotSettings() {
     ids.splice(index + by, 0, id!);
     await rpc.call("reorderBots", { botIds: ids });
   });
-  const add = () => run(async () => {
-    const taken = new Set(bots!.map((bot) => bot.name.toLowerCase()));
-    let n = 1;
-    while (taken.has(n === 1 ? "new bot" : `new bot ${n}`)) n++;
-    const { bot } = await rpc.call("saveBot", { bot: { name: n === 1 ? "New bot" : `New bot ${n}`, emoji: "", instructions: "", starterPrompt: "",
-      model: null, permissionMode: null, environment: null, projectId: null, avatarCorner: DEFAULT_AVATAR_CORNER, workerModel: null } });
-    setEditing(bot.id);
-  });
-
   if (!bots) return <p style={muted}>{error ?? "Loading bots…"}</p>;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 13 }}>
       <p style={{ margin: 0, color: "var(--muted-foreground)" }}>
-        Mention a bot with @ in a new thread's first message to start the thread as that bot. Forks and side chats of its threads inherit it. {bots.length} of {MAX_BOTS}.
+        Each bot coordinates one initiative through its coordinator thread, which starts a worker thread per change. Saved ways to start a single thread are the Launcher's Starters. {bots.length} of {MAX_BOTS}.
       </p>
       <ZooSettingsBlock />
       {bots.length === 0 && <p style={{ ...muted, margin: 0 }}>No bots yet.</p>}
@@ -92,12 +77,12 @@ export function BotSettings() {
               <button type="button" aria-label={`Delete bot ${bot.name}`} onClick={() => setConfirmDelete(bot.id)} style={iconButton}>Delete</button>
             )}
           </div>
-          {confirmDelete === bot.id && <p style={{ ...muted, margin: "6px 0 0" }}>Its threads stay; they stop getting the bot's instructions when their session next starts.</p>}
+          {confirmDelete === bot.id && <p style={{ ...muted, margin: "6px 0 0" }}>Its threads and workspace files stay; they stop getting the bot's instructions when their session next starts. Deleting the coordinator thread also deletes the bot.</p>}
           {editing === bot.id && <BotEditor key={bot.id} bot={bot} onSaved={load} />}
         </div>
       ))}
       <div>
-        <button type="button" style={button} disabled={bots.length >= MAX_BOTS} onClick={() => void add()}>Add bot</button>
+        <button type="button" style={button} disabled={bots.length >= MAX_BOTS} onClick={() => openNewBot({ projectId: null })}>New bot…</button>
       </div>
       {error && <p role="alert" style={alert}>{error}</p>}
     </div>
@@ -133,7 +118,6 @@ function ZooSettingsBlock() {
 function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<unknown> }) {
   const rpc = useRpc<typeof botsContract>();
   const launcherModels = useLauncherModelState();
-  const launcherPresent = useLauncher().status === "present";
   const { providers } = useProviders();
   const firstProvider = providers.find((provider) => provider.available)?.id ?? providers[0]?.id ?? "";
   const projects = useProjectOptions();
@@ -144,7 +128,6 @@ function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<unknown>
   const [error, setError] = useState<string | null>(null);
   const dirty = !sameDraft(draft, saved);
   const set = <K extends keyof BotDraft>(key: K, value: BotDraft[K]) => setDraft((current) => ({ ...current, [key]: value }));
-  const initiative = bot.coordinatorThreadId !== null;
 
   // The context row's chip saves the corner directly; follow it so an open editor does not read as changed.
   useEffect(() => { setDraft((current) => ({ ...current, avatarCorner: bot.avatarCorner })); }, [bot.avatarCorner]);
@@ -176,38 +159,10 @@ function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<unknown>
           <input value={draft.name} maxLength={NAME_MAX} onChange={(e) => set("name", e.target.value)} style={{ ...input, width: "100%", boxSizing: "border-box" }} aria-label="Name" />
         </Field>
       </div>
-      {initiative && <span style={{ ...muted, fontSize: 12 }}>Workspace: <code>{bot.workspacePath ?? "not provisioned"}</code></span>}
-      {!initiative && <>
-      <Field label="Instructions" hint={`Added to the thread's instructions. Point at skills for method instead of repeating them. ${draft.instructions.length}/${INSTRUCTIONS_MAX}`}>
-        <textarea value={draft.instructions} maxLength={INSTRUCTIONS_MAX} rows={6} onChange={(e) => set("instructions", e.target.value)} style={textarea} aria-label="Instructions" />
-      </Field>
-      <Field label="Starter prompt" hint="Put in an empty composer when you pick the bot, for example /skill:research.">
-        <textarea value={draft.starterPrompt} maxLength={STARTER_MAX} rows={2} onChange={(e) => set("starterPrompt", e.target.value)} style={textarea} aria-label="Starter prompt" />
-      </Field>
-      </>}
+      <span style={{ ...muted, fontSize: 12 }}>Workspace: <code>{bot.workspacePath ?? "not provisioned"}</code></span>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-        <ModelField label={initiative ? "Coordinator model" : "Model"} value={draft.model} template={template ?? startingModel(firstProvider)} onChange={(value) => set("model", value)} />
-        {initiative && <ModelField label="Worker model" value={draft.workerModel} template={template ?? startingModel(firstProvider)} onChange={(value) => set("workerModel", value)} />}
-        {!initiative && <>
-        <Field label="Permissions">
-          <select value={draft.permissionMode ?? KEEP} style={select} aria-label="Permissions"
-            onChange={(e) => set("permissionMode", (e.target.value || null) as PermissionMode | null)}>
-            <option value={KEEP}>Any</option>
-            {(Object.keys(PERMISSION_LABELS) as PermissionMode[]).map((mode) => <option key={mode} value={mode}>{PERMISSION_LABELS[mode]}</option>)}
-          </select>
-        </Field>
-        <Field label="Environment">
-          <select value={draft.environment ?? KEEP} style={select} aria-label="Environment"
-            onChange={(e) => set("environment", (e.target.value || null) as BotEnvironment | null)}>
-            <option value={KEEP}>Any</option>
-            {BOT_ENVIRONMENTS.map((env) => {
-              // Worktree environments are the Launcher's. A bot that already uses one keeps it, marked, so saving does not silently change it.
-              const available = availableEnvironments(launcherPresent).includes(env);
-              return (available || draft.environment === env) && <option key={env} value={env}>{ENVIRONMENT_LABELS[env]}{available ? "" : " (needs Launcher)"}</option>;
-            })}
-          </select>
-        </Field>
-        </>}
+        <ModelField label="Coordinator model" value={draft.model} template={template ?? startingModel(firstProvider)} onChange={(value) => set("model", value)} />
+        <ModelField label="Worker model" value={draft.workerModel} template={template ?? startingModel(firstProvider)} onChange={(value) => set("workerModel", value)} />
         <Field label="Project">
           <select value={draft.projectId ?? KEEP} style={select} aria-label="Project"
             onChange={(e) => set("projectId", e.target.value || null)}>

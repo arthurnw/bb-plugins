@@ -1,55 +1,39 @@
-// The thread Info tab: which bot a thread runs as, and what the bot adds to its instructions.
+// The thread Info tab: the initiative bot a thread belongs to, and what Bots adds to its instructions.
 import {
   experimental_DetailRow as DetailRow,
   experimental_InfoSection as InfoSection,
   experimental_THREAD_INFO_ROW_GROUPS as ROW_GROUPS,
   experimental_THREAD_INFO_SECTION_GROUPS as SECTION_GROUPS,
-  useRealtime, useRpc, useSdk, type PluginAppBuilder,
+  useRealtime, useRpc, type PluginAppBuilder,
 } from "@get-bb/plugin-sdk/app";
 import { useEffect, useState } from "react";
 import type { botsContract } from "./bots-server";
 import { BotAvatar, useBots, useBotStates } from "./bot-avatars";
-import { sendThreadToBot } from "./bots-view";
 
 type ThreadBot = { botId: string | null; source: "own" | "inherited" | "none" | "detached"; instructions: string | null };
-type ThreadFacts = { id: string; projectId: string; status: string };
 
 function useThreadBot(threadId: string) {
   const rpc = useRpc<typeof botsContract>();
-  const sdk = useSdk();
   const [state, setState] = useState<ThreadBot | null>(null);
-  // Archived threads are not in the sidebar's live list, so read the thread itself.
-  const [thread, setThread] = useState<ThreadFacts | null>(null);
-  const load = () => {
-    rpc.call("threadBot", { threadId }).then(setState, () => setState(null));
-    sdk.threads.get({ threadId }).then((t) => setThread({ id: t.id, projectId: t.projectId, status: t.status }), () => setThread(null));
-  };
-  useEffect(load, [rpc, sdk, threadId]);
+  const load = () => { rpc.call("threadBot", { threadId }).then(setState, () => setState(null)); };
+  useEffect(load, [rpc, threadId]);
   useRealtime("bots", load);
-  return { rpc, state, thread };
+  return { state };
 }
 
-const NONE = "";
-
 function BotRow({ threadId }: { threadId: string }) {
-  const { rpc, state, thread } = useThreadBot(threadId);
+  const { state } = useThreadBot(threadId);
   const bots = useBots();
   const botStates = useBotStates();
-  if (!state || !bots || bots.length === 0 || !thread) return null;
-  const bot = bots.find((item) => item.id === state.botId) ?? null;
-  const started = thread.status !== "pending";
+  const bot = state?.botId ? bots?.find((item) => item.id === state.botId) ?? null : null;
+  if (!bot) return null;
+  const role = bot.coordinatorThreadId === threadId ? "coordinator" : "worker";
   return (
     <DetailRow label="Bot" icon="Bot">
       <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-        {bot && <BotAvatar bot={bot} size={14} state={botStates.get(bot.id)} />}
-        <select value={bot?.id ?? NONE} aria-label={started ? "Hand off to bot" : "Bot"}
-          title={started ? "A started thread keeps its bot. Picking another opens a handoff." : undefined}
-          onChange={(e) => void sendThreadToBot(rpc, thread, e.target.value || null)}
-          style={{ minWidth: 0, maxWidth: 180, border: "none", background: "transparent", color: "var(--foreground)", fontSize: "inherit", padding: 0, cursor: "pointer" }}>
-          <option value={NONE}>{started && bot ? "Hand off without a bot" : "No bot"}</option>
-          {bots.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-        </select>
-        {state.source === "inherited" && <span style={{ color: "var(--muted-foreground)", fontSize: 12 }}>inherited</span>}
+        <BotAvatar bot={bot} size={14} state={botStates.get(bot.id)} />
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bot.name}</span>
+        <span style={{ color: "var(--muted-foreground)", fontSize: 12 }}>{role}</span>
       </span>
     </DetailRow>
   );

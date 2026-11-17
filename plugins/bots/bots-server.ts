@@ -4,7 +4,7 @@ import { cliCommand, defineCli, defineRpcContract, PluginCliError, type BbPlugin
 import { z } from "zod";
 import { BotStore, BotStoreError, MIGRATIONS, type SqlDb } from "./bot-store.ts";
 import {
-  BOT_MENTION_PLUGINS, BOTS_PLUGIN_ID, BRIEF_MAX, findBotMention, handoffSource, hasNoBotMarker, MENTION_PROVIDER, NO_BOT_TEXT, ownerOf, renderInstructions,
+  BOT_MENTION_PLUGINS, BOTS_PLUGIN_ID, BRIEF_MAX, findBotMention, handoffSource, hasNoBotMarker, isInitiative, MENTION_PROVIDER, ownerOf,
   TRUSTED_ORIGIN_PLUGINS, botDraft, NAME_MAX, oneLine, withBotMention, withoutBotMentions, type Bot,
 } from "@arthurnw/bb-shared/bots";
 import { botsRpcContract, initiativeDraftSchema } from "@arthurnw/bb-shared/bots/schema";
@@ -14,14 +14,6 @@ import { COORDINATOR_SKILL, coordinatorInstructions, coordinatorKickoff, nameFro
 export const botsContract = defineRpcContract(botsRpcContract);
 // Registered apart from `botsContract`: its `z.custom` request cannot be published as discoverable.
 export const spawnContract = defineRpcContract({
-  // Starts a thread as a bot (or without one) for composers that have no Launcher.
-  createThread: {
-    input: z.object({ request: z.custom<NewThreadRequest>(),
-      placement: z.object({ sectionId: z.string().nullable(), pinned: z.boolean() }).optional(),
-      // A bot id starts the thread as that bot; null means the user chose "No bot" over an inherited one.
-      botId: z.string().min(1).nullable().optional() }),
-    output: z.object({ threadId: z.string() }),
-  },
   /**
    * Creates an initiative bot and starts its coordinator in the bot workspace
    * with the composer's request as the brief. `promoteThreadId` becomes the
@@ -86,17 +78,19 @@ export function registerBots(bb: BbPluginApi) {
     try { await bb.sdk.threads.update({ threadId: bot.coordinatorThreadId, title: bot.name }); }
     catch (error) { bb.log.warn(`could not title coordinator ${bot.coordinatorThreadId}: ${String(error)}`); }
   };
-  const known = (botId: string) => store.get(botId) !== null;
+  // Persona bots (no coordinator) are now the Launcher's Starters; their rows stay
+  // for that import, but nothing binds to them or gets their instructions.
+  const known = (botId: string) => store.get(botId)?.coordinatorThreadId != null || pendingCoordinators.has(botId);
+  const initiativeRole = (role: ThreadRole | null) => role?.kind === "persona" ? null : role;
 
   bb.agents.configure((ctx) => {
-    const role = roleOf(store, ctx.thread);
+    const role = initiativeRole(roleOf(store, ctx.thread));
     if (!role) return { tools: [], skills: [] };
     if (role.kind === "coordinator") {
       return { tools: [], skills: [COORDINATOR_SKILL], instructions: coordinatorInstructions(role.bot,
         { projectId: ctx.project.id, projectName: ctx.project.name, checkoutPath: store.checkoutPath(role.bot.id) }) };
     }
-    if (role.kind === "worker") return { tools: [], skills: [], instructions: workerInstructions(role.bot) };
-    return { tools: [], skills: [], instructions: renderInstructions(role.bot) };
+    return { tools: [], skills: [], instructions: workerInstructions(role.bot) };
   });
 
   // A binding is fixed before the first turn starts, because tools and
@@ -124,7 +118,7 @@ export function registerBots(bb: BbPluginApi) {
     }
     const source = handoffSource(ctx.input.blocks, trusted(thread.originPluginId));
     const inherited = ownerOf(store, thread) ?? (source === null ? null : store.binding(source));
-    if (inherited !== null) {
+    if (inherited !== null && known(inherited)) {
       store.bind(thread.id, inherited, "inherit");
       publish();
     }
@@ -141,9 +135,9 @@ export function registerBots(bb: BbPluginApi) {
 
   async function roleOfThread(threadId: string): Promise<ThreadRole | null> {
     if (store.coordinatedBy(threadId) || store.hasBinding(threadId) || store.detached(threadId)) {
-      return roleOf(store, { id: threadId, parentThreadId: null, sourceThreadId: null });
+      return initiativeRole(roleOf(store, { id: threadId, parentThreadId: null, sourceThreadId: null }));
     }
-    return roleOf(store, await bb.sdk.threads.get({ threadId }));
+    return initiativeRole(roleOf(store, await bb.sdk.threads.get({ threadId })));
   }
 
   // A persistent, non-git directory per bot that holds the coordinator's state
@@ -303,7 +297,9 @@ export function registerBots(bb: BbPluginApi) {
 
   bb.rpc.register(botsContract, {
     getBot: ({ botId }) => ({ bot: store.get(botId) }),
-    listBots: () => ({ bots: store.list() }),
+    listBots: () => ({ bots: store.list().filter(isInitiative) }),
+    // A bot being created has a workspace before its coordinator; persona bots never have one.
+    listPersonaBots: () => ({ bots: store.list().filter((bot) => !isInitiative(bot) && bot.workspacePath === null) }),
     saveBot: ({ botId, bot }) => {
       const saved = store.save(botId, bot);
       publish();
@@ -343,7 +339,7 @@ export function registerBots(bb: BbPluginApi) {
       if (store.detached(threadId)) return { botId: null, source: "detached" as const, instructions: null };
       const role = await roleOfThread(threadId);
       if (!role) return { botId: null, source: "none" as const, instructions: null };
-      const instructions = role.kind === "persona" ? renderInstructions(role.bot) : role.kind === "worker" ? workerInstructions(role.bot) : null;
+      const instructions = role.kind === "worker" ? workerInstructions(role.bot) : null;
       return { botId: role.bot.id, source: store.hasBinding(threadId) ? "own" as const : "inherited" as const, instructions };
     },
     getListOrder: async () => ({ order: (await bb.storage.kv.get<string[]>(LIST_ORDER_KEY)) ?? [] }),
@@ -355,14 +351,6 @@ export function registerBots(bb: BbPluginApi) {
   }, { experimental_discoverable: true, experimental_description: "Bots: initiative bots with a coordinator thread, and saved launch configurations." });
 
   bb.rpc.register(spawnContract, {
-    async createThread({ request, placement, botId }) {
-      // An explicit choice replaces any bot pill already in the draft, so the thread gets one.
-      const input: NewThreadRequest["input"] = botId ? withBotMention(withoutBotMentions(request.input, BOT_MENTION_PLUGINS), store.require(botId), BOTS_PLUGIN_ID)
-        : botId === null ? [...withoutBotMentions(request.input, BOT_MENTION_PLUGINS), { type: "text", text: NO_BOT_TEXT, mentions: [], visibility: "agent-only" }]
-        : request.input;
-      const thread = await bb.sdk.threads.spawn({ ...request, input, ...placement });
-      return { threadId: thread.id };
-    },
     renameFromTitle({ threadId, title }) {
       renameFromTitle(store.coordinatedBy(threadId), title);
       return {};

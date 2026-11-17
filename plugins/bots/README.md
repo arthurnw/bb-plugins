@@ -14,7 +14,7 @@ Manage bots in Settings → Bots.
 - **New bot**: the command palette entry **Bots: new bot**, or **+** beside the
   thread list's view toggle. The composer text is the brief, and its project
   and model pickers set the bot's project and coordinator model (Mod+Shift+M).
-  Beside the project picker, **Workers** sets the worker model (Mod+Shift+K;
+  Beside the project picker, **Workers** sets the worker model (Alt+M;
   **Same as coordinator** by default, resolved when the bot is created), then
   the avatar: click it to pick one, or the circular arrow for a random one no active bot
   uses. The coordinator
