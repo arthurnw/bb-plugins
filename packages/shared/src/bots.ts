@@ -82,10 +82,10 @@ export const botDraft = ({ name, emoji, instructions, starterPrompt, model, perm
 export const isInitiative = (bot: Pick<Bot, "coordinatorThreadId">): boolean => bot.coordinatorThreadId !== null;
 
 /** Text for places that cannot show the avatar icon. */
-export const botLabel = (bot: Pick<Bot, "emoji" | "name">) => bot.emoji ? `${bot.emoji} ${bot.name}` : bot.name;
+export const botLabel = (bot: { emoji: string; name: string }) => bot.emoji ? `${bot.emoji} ${bot.name}` : bot.name;
 
-/** Case-insensitive match of every query word against a bot's name. */
-export function filterBots(bots: readonly Bot[], query: string): Bot[] {
+/** Case-insensitive match of every query word against a name. */
+export function filterBots<T extends { name: string }>(bots: readonly T[], query: string): T[] {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   return bots.filter((bot) => words.every((word) => bot.name.toLowerCase().includes(word)));
 }

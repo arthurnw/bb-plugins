@@ -4,5 +4,5 @@ export { availableEnvironments, checkoutOn, environmentFor, EXISTING_BRANCH_PROV
 export { createFocusRegistry } from "./focus-field.ts";
 export { hostFontSize, useHostFontSize } from "./host-font.ts";
 export { isBackgroundSubmit, projectShortcut, type OverlayShortcut } from "./keys.ts";
-export { ModelList, ModelTrigger, modelLabel } from "./model-picker.tsx";
+export { ModelList, ModelTrigger, modelLabel, type PickerStarter } from "./model-picker.tsx";
 export { HOST_MODEL_PICKER, useFooterSlot, useModelSlot } from "./model-slot.ts";

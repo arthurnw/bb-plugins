@@ -52,7 +52,10 @@ const threadId = z.string().min(1);
 export const botsRpcContract = {
   /** Null when the bot does not exist. */
   getBot: { input: z.object({ botId }), output: z.object({ bot: botSchema.nullable() }) },
+  /** Initiative bots. */
   listBots: { input: z.object({}), output: z.object({ bots: z.array(botSchema).max(MAX_BOTS) }) },
+  /** Persona bots from before initiative bots, kept for the Launcher's one-time import as Starters. */
+  listPersonaBots: { input: z.object({}), output: z.object({ bots: z.array(botSchema).max(MAX_BOTS) }) },
   /** Creates a bot when `botId` is omitted. */
   saveBot: { input: z.object({ botId: botId.optional(), bot: botDraftSchema }), output: z.object({ bot: botSchema }) },
   /** Threads keep their bindings; they stop receiving the bot at their next session start. */
