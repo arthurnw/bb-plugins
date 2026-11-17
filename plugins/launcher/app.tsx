@@ -55,7 +55,7 @@ export default definePluginApp((app) => {
     id: "launcher",
     scopes: ["new-thread"],
     experimental_popups: [{ id: POPUP_ID, label: "Switch project", component: ProjectPopup }, { id: STARTER_POPUP_ID, label: "Choose starter or model", component: NativeModelPopup }],
-    actions: [{ id: "bot", component: NativeModelTrigger }],
+    actions: [{ id: "model-picker", component: NativeModelTrigger }],
     banners: [{ id: "sdk-capture", chrome: "bare", component: SdkCapture }, { id: "default-environment", chrome: "bare", component: DefaultEnvironment }],
   });
 
