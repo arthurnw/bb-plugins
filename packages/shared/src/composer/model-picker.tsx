@@ -67,7 +67,8 @@ export function ModelList({ starters = [], starter = null, onChooseStarter, pres
     listRef.current?.querySelector(`[data-index="${active}"]`)?.scrollIntoView({ block: "nearest" });
   }, [active]);
 
-  // bb renders the embedded picker's menu in its own popover outside this list.
+  // bb renders the embedded picker's menu in its own popover (a sheet on
+  // phones) outside this list.
   // A host popup that holds this list (the Launcher's composer popup) treats a
   // pointerdown there as outside, closes, and unmounts the picker before the
   // choice applies. While that menu is open, keep its pointerdowns from
@@ -82,7 +83,9 @@ export function ModelList({ starters = [], starter = null, onChooseStarter, pres
       if (!list || !target) return false;
       if (target.closest("[data-other-model]")) touched.current = false;
       if (list.contains(target) || !list.querySelector("[data-other-model] button[aria-expanded='true']")) return false;
-      return target.closest("[data-radix-popper-content-wrapper]") !== null;
+      // A popover on wide screens, a bottom sheet on phones; not the sheet holding this list.
+      const menu = target.closest("[data-radix-popper-content-wrapper], [data-persistent-drawer-content]");
+      return menu !== null && !menu.contains(list);
     };
     const onPointerDown = (event: PointerEvent) => { if (inMenu(event)) { touched.current = true; event.stopPropagation(); } };
     const onKeyDown = (event: Event) => { if (inMenu(event)) touched.current = true; };
