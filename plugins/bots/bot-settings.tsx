@@ -1,8 +1,9 @@
-import { experimental_ProviderModelPicker as ProviderModelPicker, experimental_useProviders as useProviders, useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
-import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { experimental_ProviderModelPicker as ProviderModelPicker, experimental_useProviders as useProviders, experimental_useSidebarThreads as useSidebarThreads, useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import type { botsContract } from "./bots-server";
 import { useLauncherModelState } from "./launcher-models";
 import { openNewBot } from "./new-bot-dialog";
+import { activeBots } from "./list-model";
 import {
   AVATAR_CORNERS, botDraft, MAX_BOTS, NAME_MAX,
   type AvatarCorner, type Bot, type BotDraft,
@@ -33,6 +34,13 @@ export function BotSettings() {
   const [editing, setEditing] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const sidebar = useSidebarThreads();
+  // A bot whose coordinator is archived is retired until the thread is unarchived.
+  const [live, archived] = useMemo(() => {
+    if (!bots || sidebar.status !== "ready") return [bots ?? [], []];
+    const active = activeBots(bots, new Set(sidebar.threads.filter((thread) => thread.archivedAt === null).map((thread) => thread.id)));
+    return [active, bots.filter((bot) => !active.includes(bot))];
+  }, [bots, sidebar.status, sidebar.threads]);
 
   const load = useCallback(() => rpc.call("listBots", {}).then(({ bots }) => setBots(bots), (e) => setError(errorText(e))), [rpc]);
   useEffect(() => { void load(); }, [load]);
@@ -44,9 +52,10 @@ export function BotSettings() {
     await load();
   }
   const move = (index: number, by: -1 | 1) => run(async () => {
-    const ids = bots!.map((bot) => bot.id);
+    const ids = live.map((bot) => bot.id);
     const [id] = ids.splice(index, 1);
     ids.splice(index + by, 0, id!);
+    ids.push(...archived.map((bot) => bot.id));
     await rpc.call("reorderBots", { botIds: ids });
   });
   if (!bots) return <p style={muted}>{error ?? "Loading bots…"}</p>;
@@ -56,8 +65,8 @@ export function BotSettings() {
         Each bot coordinates one initiative through its coordinator thread, which starts a worker thread per change. Saved ways to start a single thread are the Launcher's Starters. {bots.length} of {MAX_BOTS}.
       </p>
       <ZooSettingsBlock />
-      {bots.length === 0 && <p style={{ ...muted, margin: 0 }}>No bots yet.</p>}
-      {bots.map((bot, index) => (
+      {live.length === 0 && <p style={{ ...muted, margin: 0 }}>No bots yet.</p>}
+      {live.map((bot, index) => (
         <div key={bot.id} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 8 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <button type="button" aria-expanded={editing === bot.id} onClick={() => setEditing(editing === bot.id ? null : bot.id)}
@@ -67,7 +76,7 @@ export function BotSettings() {
               <span style={{ ...muted, ...ellipsis }}>{bot.model ? modelSpec(bot.model, names) : "Any model"}</span>
             </button>
             <button type="button" aria-label={`Move ${bot.name} up`} disabled={index === 0} onClick={() => void move(index, -1)} style={iconButton}>↑</button>
-            <button type="button" aria-label={`Move ${bot.name} down`} disabled={index === bots.length - 1} onClick={() => void move(index, 1)} style={iconButton}>↓</button>
+            <button type="button" aria-label={`Move ${bot.name} down`} disabled={index === live.length - 1} onClick={() => void move(index, 1)} style={iconButton}>↓</button>
             {confirmDelete === bot.id ? (
               <>
                 <button type="button" style={iconButton} onClick={() => { setConfirmDelete(null); void run(() => rpc.call("deleteBot", { botId: bot.id })); }}>Delete</button>
@@ -81,6 +90,27 @@ export function BotSettings() {
           {editing === bot.id && <BotEditor key={bot.id} bot={bot} onSaved={load} />}
         </div>
       ))}
+      {archived.length > 0 && (
+        <>
+          <span style={{ ...muted, marginTop: 8 }}>Archived: unarchive a bot's coordinator thread to bring it back.</span>
+          {archived.map((bot) => (
+            <div key={bot.id} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 8, display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ flex: 1, display: "flex", gap: 8, alignItems: "center", minWidth: 0, opacity: 0.6 }}>
+                <BotAvatar bot={bot} size={20} />
+                <span style={{ fontWeight: 500 }}>{bot.name}</span>
+              </span>
+              {confirmDelete === bot.id ? (
+                <>
+                  <button type="button" style={iconButton} onClick={() => { setConfirmDelete(null); void run(() => rpc.call("deleteBot", { botId: bot.id })); }}>Delete</button>
+                  <button type="button" style={iconButton} onClick={() => setConfirmDelete(null)}>Cancel</button>
+                </>
+              ) : (
+                <button type="button" aria-label={`Delete bot ${bot.name}`} onClick={() => setConfirmDelete(bot.id)} style={iconButton}>Delete</button>
+              )}
+            </div>
+          ))}
+        </>
+      )}
       <div>
         <button type="button" style={button} disabled={bots.length >= MAX_BOTS} onClick={() => openNewBot({ projectId: null })}>New bot…</button>
       </div>
