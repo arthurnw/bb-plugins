@@ -74,6 +74,13 @@ export function registerBots(bb: BbPluginApi) {
   void mkdir(dirname(guardPath), { recursive: true }).then(() => writeFile(guardPath, GUARD_SCRIPT, { mode: 0o755 }))
     .catch((error) => bb.log.warn(`could not write the coordinator guard: ${error instanceof Error ? error.message : String(error)}`));
   const publish = () => bb.realtime.publish("bots", { changedAt: Date.now() });
+  // An initiative bot's name is its coordinator thread's title. bb titles new
+  // threads itself, so the title is set again whenever it drifts.
+  const syncTitle = async (bot: Bot | null, current?: string | null) => {
+    if (!bot?.coordinatorThreadId || current === bot.name) return;
+    try { await bb.sdk.threads.update({ threadId: bot.coordinatorThreadId, title: bot.name }); }
+    catch (error) { bb.log.warn(`could not title coordinator ${bot.coordinatorThreadId}: ${String(error)}`); }
+  };
   const known = (botId: string) => store.get(botId) !== null;
 
   bb.agents.configure((ctx) => {
@@ -209,6 +216,7 @@ export function registerBots(bb: BbPluginApi) {
           try {
             const saved = store.save(bot.id, { ...botDraft(bot), name: positionals.name!.trim() });
             publish();
+            await syncTitle(saved);
             return { exitCode: 0, stdout: `Renamed to ${saved.name}\n` };
           } catch (error) {
             if (error instanceof BotStoreError) throw new PluginCliError(error.message, { code: "invalid_name" });
@@ -242,13 +250,16 @@ export function registerBots(bb: BbPluginApi) {
       publish();
     }
   });
+  bb.events.on("thread.idle", async ({ thread }) => { await syncTitle(store.coordinatedBy(thread.id), thread.title); });
   // Coordinators deleted while Bots was not running. bb.sdk answers only once
   // the server listens, so this waits a moment after load.
   const sweep = setTimeout(async () => {
     for (const bot of store.list()) {
       if (bot.coordinatorThreadId === null) continue;
-      try { await bb.sdk.threads.get({ threadId: bot.coordinatorThreadId }); }
-      catch (error) {
+      try {
+        const thread = await bb.sdk.threads.get({ threadId: bot.coordinatorThreadId });
+        await syncTitle(bot, thread.title);
+      } catch (error) {
         if (!/\b404\b|not found/i.test(String(error))) continue;
         store.delete(bot.id);
         bb.log.info(`deleted bot ${bot.id}: its coordinator ${bot.coordinatorThreadId} no longer exists`);
@@ -280,6 +291,7 @@ export function registerBots(bb: BbPluginApi) {
     saveBot: ({ botId, bot }) => {
       const saved = store.save(botId, bot);
       publish();
+      void syncTitle(saved);
       return { bot: saved };
     },
     deleteBot: ({ botId }) => {
@@ -375,6 +387,7 @@ export function registerBots(bb: BbPluginApi) {
         throw error;
       }
       claimCoordinator(bot.id, threadId);
+      await syncTitle(store.get(bot.id));
       if (promoteThreadId) await promote(bot, threadId, promoteThreadId);
       return { threadId, botId: bot.id };
     },

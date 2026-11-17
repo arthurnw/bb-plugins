@@ -134,7 +134,20 @@ test("createInitiative promotes an existing thread under the coordinator", async
   const { store, rpc, updated } = fakeBb();
   const result = await (rpc.createInitiative!({ request: request("Take over @thread:thr_old"), bot: base, promoteThreadId: "thr_old" } as never) as Promise<{ threadId: string; botId: string }>);
   assert.equal(store.binding("thr_old"), result.botId);
-  assert.deepEqual(updated, [{ threadId: "thr_old", parentThreadId: result.threadId }]);
+  assert.deepEqual(updated, [{ threadId: result.threadId, title: "Take Over" }, { threadId: "thr_old", parentThreadId: result.threadId }]);
+});
+
+test("the coordinator thread's title follows the bot name", async () => {
+  const { cli, rpc, events, updated } = fakeBb();
+  const result = await (rpc.createInitiative!({ request: request("Ship it"), bot: { ...base, name: "Shipper" } } as never) as Promise<{ threadId: string }>);
+  assert.deepEqual(updated.at(-1), { threadId: result.threadId, title: "Shipper" });
+  await cli.run(["rename", "Ship Crew"], { threadId: result.threadId });
+  assert.deepEqual(updated.at(-1), { threadId: result.threadId, title: "Ship Crew" });
+  const count = updated.length;
+  await events.get("thread.idle")!({ thread: { id: result.threadId, title: "Ship Crew" } } as never);
+  assert.equal(updated.length, count);
+  await events.get("thread.idle")!({ thread: { id: result.threadId, title: "Set up the tracker" } } as never);
+  assert.deepEqual(updated.at(-1), { threadId: result.threadId, title: "Ship Crew" });
 });
 
 test("createInitiative refuses an empty brief", async () => {
