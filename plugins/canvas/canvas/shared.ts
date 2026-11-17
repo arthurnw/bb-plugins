@@ -11,7 +11,7 @@ export type FrameColor = (typeof FRAME_COLORS)[number];
 export const ARRANGE_STYLES = ["tree", "column", "row", "gridColumns", "gridRows"] as const;
 export type ArrangeStyle = (typeof ARRANGE_STYLES)[number];
 
-/** What the canvas draws frames around. "bot" needs the Launcher plugin. */
+/** What the canvas draws frames around. "bot" needs the Bots plugin. */
 export const GROUPINGS = ["project", "section", "machine", "bot"] as const;
 export type Grouping = (typeof GROUPINGS)[number];
 

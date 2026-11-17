@@ -6,6 +6,8 @@ export const LAUNCHER_NEW_THREAD_EVENT = "bb-launcher:new-thread";
 export const LAUNCHER_HANDOFF_EVENT = "bb-launcher:handoff";
 export const BOTS_NEW_THREAD_EVENT = "bb-bots:new-thread";
 export const BOTS_HANDOFF_EVENT = "bb-bots:handoff";
+/** Opens the Bots plugin's New bot dialog. */
+export const BOTS_NEW_BOT_EVENT = "bb-bots:new-bot";
 /** Dispatched on window after bots or thread bindings change. */
 export const BOTS_CHANGED_EVENT = "bb-bots:changed";
 
@@ -43,6 +45,11 @@ export function openNewThread(detail: NewThreadDetail): boolean {
 /** Opens a handoff composer for a started thread. Returns false when no plugin handled it. */
 export function openHandoff(detail: HandoffDetail): boolean {
   return handled(LAUNCHER_HANDOFF_EVENT, detail) || handled(BOTS_HANDOFF_EVENT, detail);
+}
+
+/** Opens the Bots plugin's New bot dialog. Returns false when Bots isn't running. */
+export function openNewBot(detail: { projectId?: string | null } = {}): boolean {
+  return handled(BOTS_NEW_BOT_EVENT, detail);
 }
 
 /** Calls `listener` for each event; the listener returns true when it handled it. Returns a cleanup. */

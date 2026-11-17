@@ -15,6 +15,8 @@ const botsSchema = z.object({
     avatar: z.string().nullable(),
     // Older Bots versions don't send it.
     avatarAnimation: z.string().nullable().default(null),
+    coordinatorThreadId: z.string().nullable().default(null),
+    doneThreads: z.array(z.string()).default([]),
   })),
 });
 const animationSchema = z.object({ animation: z.string().nullable() });
@@ -42,7 +44,7 @@ export function useLauncherBots(threadIds: string): LauncherBots {
       sdk.plugins.callRpc({ pluginId: BOTS_PLUGIN_ID, method, input: {}, outputSchema });
     Promise.all([call("listBots", botsSchema), call("threadBots", threadBotsSchema)]).then(
       ([{ bots }, { threads }]): LauncherBots => ({ status: "ready", bots, threadBots: threads }),
-      // A missing or disabled Launcher answers 404; keep the last read through other failures.
+      // A missing or disabled Bots plugin answers 404; keep the last read through other failures.
       (error: unknown): LauncherBots =>
         last.status === "ready" && !isNotFound(error) ? last : { status: "unavailable" },
     ).then((next) => {

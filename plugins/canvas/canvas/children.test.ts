@@ -29,6 +29,16 @@ test("a child whose parent isn't on the canvas stays top-level", () => {
   assert.equal(rowsOf.get("orphan")?.length, 1);
 });
 
+test("children of an own-cards parent stay top-level; their children still fold", () => {
+  const { rootOf, rowsOf } = childForest(
+    [t("coordinator", null), t("worker", "coordinator"), t("helper", "worker")],
+    new Set(["coordinator"]),
+  );
+  assert.equal(rootOf.has("worker"), false);
+  assert.equal(rowsOf.has("coordinator"), false);
+  assert.equal(rootOf.get("helper"), "worker");
+});
+
 test("childListHeight grows by a row height per child", () => {
   assert.equal(childListHeight(0), 0);
   assert.equal(childListHeight(3) - childListHeight(2), CHILD_ROW_H);

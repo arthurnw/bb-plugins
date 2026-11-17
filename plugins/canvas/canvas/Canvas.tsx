@@ -55,8 +55,8 @@ import { Triage, needsAttention } from "./Triage.tsx";
 import { GROUPINGS, LAYOUT_CHANGED, emptyLayout, type ArrangeStyle, type Grouping } from "./shared.ts";
 import { BUCKETS, BUCKET_LABEL, age, bucketOf, type Bucket } from "./status.ts";
 import { combinedAvatarState, liveThread, remeasureAvatars, type AvatarState } from "@arthurnw/bb-shared/avatars";
-import { openNewThread } from "@arthurnw/bb-shared/events";
-import { availableGroupings, effectiveGrouping, rebound } from "./bots.ts";
+import { openNewBot, openNewThread } from "@arthurnw/bb-shared/events";
+import { activeBots, availableGroupings, effectiveGrouping, rebound } from "./bots.ts";
 import { sendThreadToBot, useLauncherBots } from "./launcher.ts";
 
 const CLIENT_ID = Math.random().toString(36).slice(2, 10);
@@ -259,7 +259,7 @@ const SHORTCUTS: [string, string][] = [
   ["m", "Move the thread to a section"],
   ["a", "Rearrange the selected thread's frame"],
   ["z", "Fold or unfold a card's child threads"],
-  ["1 2 3 4", "Group by project, section, machine, bot (with the Launcher plugin)"],
+  ["1 2 3 4", "Group by project, section, machine, bot (with the Bots plugin)"],
   ["c / f", "Center the selection / fit everything"],
   ["/", "Filter"],
   ["⌘Z / ⇧⌘Z", "Undo / redo a layout change"],
@@ -297,7 +297,7 @@ interface Group {
   projectId: string | null;
   sectionId: string | null;
   hostId: string | null;
-  /** The Launcher bot, in the bot grouping. */
+  /** The bot, in the bot grouping. */
   botId: string | null;
 }
 
@@ -426,12 +426,16 @@ function CanvasInner() {
   );
   const threadsById = useMemo(() => new Map(threads.map((thread) => [thread.id, thread])), [threads]);
   const threadIdKey = useMemo(() => threads.map((thread) => thread.id).sort().join(","), [threads]);
-  // The bot grouping needs the Launcher plugin; without it the canvas offers the other three.
+  // The bot grouping needs the Bots plugin; without it the canvas offers the other three.
   const launcher = useLauncherBots(threadIdKey);
   const groupings = useMemo(() => availableGroupings(GROUPINGS, launcher.status), [launcher.status]);
   const grouping = effectiveGrouping(storedGrouping, launcher.status);
   const botsReady = launcher.status === "ready";
-  const bots = launcher.status === "ready" ? launcher.bots : null;
+  // A bot whose coordinator is archived drops off; its threads go to No bot.
+  const bots = useMemo(
+    () => (launcher.status === "ready" ? activeBots(launcher.bots, sidebar.threads) : null),
+    [launcher, sidebar.threads],
+  );
   const threadBots = launcher.status === "ready" ? launcher.threadBots : null;
   const botsById = useMemo(() => new Map((bots ?? []).map((bot) => [bot.id, bot])), [bots]);
   // Each bot's combined state over its live threads, as in the Bots panel:
@@ -504,8 +508,17 @@ function CanvasInner() {
   const buckets = useMemo(() => new Map(threads.map((thread) => [thread.id, bucketOf(thread)])), [threads]);
 
   // Child threads fold into their top-level ancestor's card instead of
-  // getting cards of their own.
-  const forest = useMemo(() => childForest(threads), [threads]);
+  // getting cards of their own. In the bot grouping a coordinator's workers
+  // get cards, which the tree layout puts to its right.
+  const coordinators = useMemo(
+    () => new Set(grouping === "bot" ? (bots ?? []).flatMap((bot) => bot.coordinatorThreadId ?? []) : []),
+    [grouping, bots],
+  );
+  const doneWorkers = useMemo(
+    () => new Set(grouping === "bot" ? (bots ?? []).flatMap((bot) => bot.doneThreads) : []),
+    [grouping, bots],
+  );
+  const forest = useMemo(() => childForest(threads, coordinators), [threads, coordinators]);
   const topLevel = useMemo(() => threads.filter((thread) => !forest.rootOf.has(thread.id)), [threads, forest]);
   const rootOf = useCallback((id: string) => forest.rootOf.get(id) ?? id, [forest]);
   const foldedKey = `${pluginId}:folded`;
@@ -644,7 +657,7 @@ function CanvasInner() {
     if (fresh.length > 0 && sidebar.status === "ready") save(Object.fromEntries(fresh));
   }, [layout, arrangement, layoutThreads, sidebar.status, save, grouping, botsReady, headroom]);
 
-  // A thread placed before the Launcher recorded its bot sits in the wrong
+  // A thread placed before Bots recorded its bot sits in the wrong
   // frame; drop its spot in the bot grouping so it is placed again.
   const previousThreadBots = useRef(threadBots);
   useEffect(() => {
@@ -834,6 +847,7 @@ function CanvasInner() {
           ageLabel: age(thread.updatedAt, now),
           children,
           folded: folded.has(thread.id),
+          done: doneWorkers.has(thread.id),
           height,
           dimmed: hidden.has(bucket) || !anyMatch,
         },
@@ -877,7 +891,7 @@ function CanvasInner() {
       });
     }
     return result;
-  }, [compact, threadsById, topLevel, forest, folded, cardHeight, rootOf, frames, positions, notes, chats, focusedChat, chatFocusRequests, settledZoom, selectedId, groups, buckets, hidden, query, now, grouping, layout?.frameColors, botsById, botStates]);
+  }, [compact, threadsById, topLevel, forest, folded, cardHeight, rootOf, frames, positions, notes, chats, focusedChat, chatFocusRequests, settledZoom, selectedId, groups, buckets, hidden, query, now, grouping, layout?.frameColors, botsById, botStates, doneWorkers]);
 
   // React Flow owns transient state (measured size, selection, drag); merge
   // it into each rebuild.
@@ -1133,8 +1147,18 @@ function CanvasInner() {
     const visible = new Set(threads.map((thread) => thread.id));
     const result: Edge[] = [];
     // A child with its parent on the canvas is a row in the parent's card, so
-    // there's no parent edge to draw. Forks join the cards that hold them.
+    // there's no parent edge to draw, except a worker's, which has its own
+    // card. Forks join the cards that hold them.
     for (const thread of threads) {
+      if (thread.parentThreadId !== null && coordinators.has(thread.parentThreadId) && visible.has(thread.parentThreadId)) {
+        result.push({
+          id: `worker:${thread.id}`,
+          source: thread.parentThreadId,
+          target: thread.id,
+          type: "smoothstep",
+          style: { strokeWidth: 1.5, opacity: doneWorkers.has(thread.id) ? 0.4 : 1 },
+        });
+      }
       if (thread.sourceThreadId !== null && visible.has(thread.sourceThreadId) && thread.sourceThreadId !== thread.parentThreadId) {
         const source = rootOf(thread.sourceThreadId);
         const target = rootOf(thread.id);
@@ -1166,7 +1190,7 @@ function CanvasInner() {
       });
     }
     return result;
-  }, [threads, buckets, chats, focusedChat, compact, rootOf]);
+  }, [threads, buckets, chats, focusedChat, compact, rootOf, coordinators, doneWorkers]);
 
   const counts = useMemo(() => {
     const result = new Map<Bucket, number>(BUCKETS.map((bucket) => [bucket, 0]));
@@ -1415,8 +1439,8 @@ function CanvasInner() {
 
   // These three change with most thread updates; reading them through a ref
   // keeps `actions` stable so the memoized nodes don't all re-render.
-  const latest = useRef({ togglePin, openChild, arrangeFrame });
-  latest.current = { togglePin, openChild, arrangeFrame };
+  const latest = useRef({ togglePin, openChild, arrangeFrame, botsById });
+  latest.current = { togglePin, openChild, arrangeFrame, botsById };
   const actions = useMemo<CanvasActions>(
     () => ({
       select: setSelectedId,
@@ -1426,7 +1450,10 @@ function CanvasInner() {
         const section = frame.grouping === "section" ? { placement: { sectionId: frame.sectionId, pinned: false } } : null;
         const machine = frame.grouping === "machine" && frame.groupKey !== NO_GROUP ? { hostId: frame.groupKey } : null;
         if (frame.grouping === "bot") {
-          if (!openNewThread(frame.botId === null ? {} : { botId: frame.botId })) navigate.toCompose({ focusPrompt: true });
+          // A bot frame's + opens the coordinator, the thread you talk to the bot in.
+          const coordinator = frame.botId === null ? null : latest.current.botsById.get(frame.botId)?.coordinatorThreadId;
+          if (coordinator) navigate.toThread(coordinator);
+          else if (!openNewThread({ botId: null })) navigate.toCompose({ focusPrompt: true });
           return;
         }
         const target = project ?? section ?? machine ?? {};
@@ -1992,6 +2019,12 @@ function CanvasInner() {
                     <Icon name="ListChecks" className="size-3.5" />
                     {attentionQueue.length > 0 ? <span className="tabular-nums">{attentionQueue.length}</span> : null}
                   </ToolButton>
+                  {grouping === "bot" ? (
+                    <ToolButton size="sm" className="ml-1 h-7 gap-1 px-2.5" onClick={() => { if (!openNewBot()) toast.error("The Bots plugin isn't running."); }}>
+                      <Icon name="Bot" className="size-3.5" />
+                      New bot
+                    </ToolButton>
+                  ) : null}
                   <ToolButton size="sm" className="ml-1 h-7 gap-1 px-2.5" onClick={() => { if (!openNewThread({})) navigate.toCompose({ focusPrompt: true }); }}>
                     <Icon name="Plus" className="size-3.5" />
                     New thread

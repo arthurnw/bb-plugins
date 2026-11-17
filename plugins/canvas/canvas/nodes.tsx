@@ -38,6 +38,8 @@ export type ThreadNodeData = {
   children: ChildRowData[];
   /** Children collapsed to a summary chip. */
   folded: boolean;
+  /** A bot's worker the coordinator marked finished; drawn faded. */
+  done: boolean;
   /** Card height: CARD_H, plus the child list when unfolded. */
   height: number;
 };
@@ -58,7 +60,7 @@ export type FrameNodeData = {
   projectId: string | null;
   /** The bb section, in the section grouping; null for threads outside every section. */
   sectionId: string | null;
-  /** The Launcher bot, in the bot grouping; null for threads without one. */
+  /** The bot, in the bot grouping; null for threads without one. */
   botId: string | null;
   bot: LauncherBot | null;
   /** The bot's combined state over its live threads; idle without a bot. */
@@ -149,6 +151,7 @@ export const ThreadNode = memo(function ThreadNode({ data, selected }: NodeProps
           `status-${bucket}`,
           data.highlighted || selected ? "ring-2 ring-ring" : "hover:shadow-md",
           dimmed && "opacity-30",
+          data.done && !dimmed && "opacity-50",
           thread.isArchived && "border-dashed opacity-60",
           far && "far",
         )}
@@ -524,8 +527,8 @@ export const FrameNode = memo(function FrameNode({ data, selected }: NodeProps<F
               {canCreate ? (
                 <button
                   type="button"
-                  aria-label={data.bot ? `New thread with ${data.name}` : `New thread in ${data.name}`}
-                  title={data.bot ? `New thread with ${data.name}` : `New thread in ${data.name}`}
+                  aria-label={data.bot ? `Message ${data.name}` : `New thread in ${data.name}`}
+                  title={data.bot ? `Message ${data.name} (opens its coordinator)` : `New thread in ${data.name}`}
                   className={headerButton}
                   onClick={() => actions.newThreadIn(data)}
                 >

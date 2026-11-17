@@ -12,10 +12,10 @@ import type { spawnContract } from "./bots-server";
 import { BotIconSync, useBots } from "./bot-avatars";
 import { useLauncherModelState } from "./launcher-models";
 import { freeAvatars, isWorkerShortcut, shuffleAvatar } from "./new-bot-model";
+import { BOTS_NEW_BOT_EVENT, onEvent } from "@arthurnw/bb-shared/events";
 
 const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
 const WORKER_SHORTCUT = MAC ? "⌥M" : "Alt+M";
-export const NEW_BOT_EVENT = "bb-bots:new-bot";
 
 export interface NewBotRequest {
   projectId: string | null;
@@ -207,5 +207,5 @@ export function registerNewBotDialog(app: PluginAppBuilder) {
       run: () => openNewBot({ projectId: thread.projectId, promoteThreadId: thread.id }),
     },
   });
-  window.addEventListener(NEW_BOT_EVENT, (event) => openNewBot({ projectId: null, ...(event as CustomEvent<Partial<NewBotRequest>>).detail }));
+  onEvent<Partial<NewBotRequest> | null>(BOTS_NEW_BOT_EVENT, (detail) => openNewBot({ projectId: null, ...detail }));
 }
