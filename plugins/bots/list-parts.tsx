@@ -227,28 +227,33 @@ export function TreeRow({ thread, depth, childrenOf, groupBot, context }: {
 }
 
 /** A collapsible group of root rows with paging. */
-export function Group<R>({ dropKey, title, actions, roots, renderRoot, limit, empty, collapsed, onToggle, onOpen, onHeaderPointerDown, over, footer }: {
+export function Group<R>({ dropKey, title, actions, roots, renderRoot, limit, empty, collapsed, onToggle, onOpen, menuThread, onHeaderPointerDown, over, footer }: {
   dropKey: string; title: ReactNode; actions?: ReactNode; roots: readonly R[]; renderRoot: (root: R) => ReactNode;
   limit?: number; empty?: string; collapsed: boolean; onToggle: () => void;
   /** Set when the header opens something (an initiative bot's coordinator); a chevron then collapses the group. */
   onOpen?: () => void;
+  /** Right-clicking the header opens this thread's menu (an initiative bot's coordinator, whose deletion deletes the bot). */
+  menuThread?: PluginSidebarThread;
   onHeaderPointerDown?: (event: ReactPointerEvent) => void; over: string | null; footer?: ReactNode;
 }) {
   const [shown, setShown] = useState(limit ?? Infinity);
   const dropping = over === dropKey;
+  const header = (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 8px 2px" }} onPointerDown={onHeaderPointerDown}>
+      <button type="button" {...(onOpen ? {} : { "aria-expanded": !collapsed })} onClick={onOpen ?? onToggle}
+        style={{ ...plainButton, flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6, cursor: onHeaderPointerDown ? "grab" : "pointer" }}>
+        {title}
+        <span style={{ color: "var(--muted-foreground)", fontSize: 11 }}>{roots.length || ""}</span>
+      </button>
+      <span onPointerDown={(e) => e.stopPropagation()} style={{ display: "inline-flex", gap: 2 }}>
+        {actions}
+        {onOpen && <button type="button" aria-expanded={!collapsed} aria-label={collapsed ? "Expand" : "Collapse"} onClick={onToggle} style={chevron}>{collapsed ? "▸" : "▾"}</button>}
+      </span>
+    </div>
+  );
   return (
     <section data-drop={dropKey} style={{ borderRadius: 8, paddingBottom: 4, outline: dropping ? "2px solid var(--ring, var(--primary))" : "none", outlineOffset: -2 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 8px 2px" }} onPointerDown={onHeaderPointerDown}>
-        <button type="button" {...(onOpen ? {} : { "aria-expanded": !collapsed })} onClick={onOpen ?? onToggle}
-          style={{ ...plainButton, flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6, cursor: onHeaderPointerDown ? "grab" : "pointer" }}>
-          {title}
-          <span style={{ color: "var(--muted-foreground)", fontSize: 11 }}>{roots.length || ""}</span>
-        </button>
-        <span onPointerDown={(e) => e.stopPropagation()} style={{ display: "inline-flex", gap: 2 }}>
-          {actions}
-          {onOpen && <button type="button" aria-expanded={!collapsed} aria-label={collapsed ? "Expand" : "Collapse"} onClick={onToggle} style={chevron}>{collapsed ? "▸" : "▾"}</button>}
-        </span>
-      </div>
+      {menuThread ? <ThreadActionsContextMenu thread={actionTarget(menuThread)}>{header}</ThreadActionsContextMenu> : header}
       {!collapsed && roots.length === 0 && empty && <div style={{ padding: "2px 8px 4px 32px", fontSize: 12, color: "var(--muted-foreground)" }}>{empty}</div>}
       {!collapsed && roots.slice(0, shown).map(renderRoot)}
       {!collapsed && roots.length > shown && (

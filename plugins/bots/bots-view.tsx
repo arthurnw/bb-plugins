@@ -205,7 +205,7 @@ export function BotThreadList({ activeThreadId, activeProjectId, onNavigate }: {
           const title = <><BotAvatar bot={bot} size={16} state={botStates.get(bot.id)} track /><span style={{ ...groupTitle, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bot.name}</span></>;
           if (coordinator !== null) {
             return (
-              <ThreadGroup key={key} {...groupProps(key)} groupBot={bot.id} threads={placed.get(key) ?? []} onHeaderPointerDown={headerDrag} done={bot.doneThreads} depth={1}
+              <ThreadGroup key={key} {...groupProps(key)} groupBot={bot.id} threads={placed.get(key) ?? []} onHeaderPointerDown={headerDrag} done={bot.doneThreads} depth={1} menuThread={sidebar.threads.find((thread) => thread.id === coordinator)}
                 title={title} onOpen={() => { if (!dragState.suppressClick.current) { navigate.toThread(coordinator); onNavigate?.(); } else dragState.suppressClick.current = false; }}
                 empty="No workers yet." />
             );

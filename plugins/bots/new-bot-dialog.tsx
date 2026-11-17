@@ -3,7 +3,7 @@
 // Enter creates the bot and opens its coordinator thread.
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { experimental_Icon as Icon, experimental_useSidebarThreads as useSidebarThreads, useRpc, type PluginAppBuilder } from "@get-bb/plugin-sdk/app";
-import { BotAvatar, ComposerDialog, handoffPrompt, ModelList, modelLabel } from "@arthurnw/bb-shared/composer";
+import { BotAvatar, ComposerDialog, handoffPrompt, ModelList, modelLabel, useHostFontSize } from "@arthurnw/bb-shared/composer";
 import { useProjectOptions } from "@arthurnw/bb-shared/projects";
 import { galleryAvatar, NAME_MAX, type GalleryId } from "@arthurnw/bb-shared/bots";
 import { AnimatedAvatar, GEOMETRIC_AVATARS, SMOOTH_AVATARS, type GalleryAvatar } from "@arthurnw/bb-shared/avatars";
@@ -52,6 +52,8 @@ function NewBot({ session, visible, focusRequest }: { session: Session; visible:
   const [avatar, setAvatar] = useState<GalleryId | null>(null);
   // Empty: the coordinator names the bot.
   const [name, setName] = useState("");
+  const nameField = useRef<HTMLInputElement>(null);
+  const hostFont = useHostFontSize(nameField);
   const [popup, setPopup] = useState<Popup | null>(null);
   const [focus, setFocus] = useState(0);
   const sectionRef = useRef<HTMLElement>(null);
@@ -107,13 +109,17 @@ function NewBot({ session, visible, focusRequest }: { session: Session; visible:
       <Control title="Random avatar" label="Random avatar" active={false} onClick={() => setAvatar((current) => shuffleAvatar(free, current))} style={{ padding: "0 6px" }}>
         <Icon name="RotateCcw" aria-hidden style={{ width: 16, height: 16 }} />
       </Control>
-      <input value={name} maxLength={NAME_MAX} aria-label="Bot name" placeholder="Name (optional)" title="Leave empty and the coordinator names the bot"
+      <input ref={nameField} value={name} maxLength={NAME_MAX} aria-label="Bot name" placeholder="Bot name" title="Optional: leave empty and the coordinator names the bot"
         onChange={(e) => setName(e.target.value)}
-        // Enter here would submit the composer's form without its draft.
-        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); setFocus((n) => n + 1); } }}
-        style={{ width: 130, minWidth: 0, height: 26, padding: "0 6px", border: "1px solid transparent", borderRadius: 6, background: "transparent", outline: "none",
-          color: "var(--foreground)", font: "inherit", fontSize: 12, fontWeight: 500 }}
-        onFocus={(e) => { e.currentTarget.style.borderColor = "var(--border)"; }} onBlur={(e) => { e.currentTarget.style.borderColor = "transparent"; }} />
+        onKeyDown={(e) => {
+          // Enter here would submit the composer's form without its draft.
+          if (e.key === "Enter") { e.preventDefault(); setFocus((n) => n + 1); }
+          // Keep typing out of the composer, but let app shortcuts through.
+          if (!e.metaKey && !e.ctrlKey && !e.altKey) e.stopPropagation();
+        }}
+        // The Launcher's branch name field, beside it in the regular composer.
+        style={{ flex: "0 10 140px", width: 140, minWidth: 80, boxSizing: "border-box", height: 28, marginLeft: 4, padding: "0 8px", border: "1px solid var(--border)", borderRadius: 4,
+          background: "transparent", color: "var(--foreground)", font: "inherit", fontSize: hostFont }} />
     </span>}
     composerProps={{
       ...(projectId ? { defaultProjectId: projectId } : {}),

@@ -30,8 +30,9 @@ Manage bots in Settings → Bots.
   (`<bb data>/plugins/bots/workspaces/<name>-<id prefix>/`, outside git, kept when the
   thread is archived) and gets the `bot-coordinator` skill, which covers
   delegation, review, and the `tracker.md` and `log.md` state files. It never
-  edits code. Deleting the coordinator thread deletes the bot; its workspace
-  files stay.
+  edits code. Right-click the bot's header in the Threads view for the
+  coordinator thread's menu. Deleting the coordinator thread deletes the bot;
+  its workspace files stay.
 - **Workers**: every other thread of the bot, normally children of the
   coordinator (`bb thread spawn --parent-self`). They get short worker
   instructions: one worktree, one PR, report to the parent.
