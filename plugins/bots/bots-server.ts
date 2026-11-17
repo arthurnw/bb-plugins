@@ -9,7 +9,7 @@ import {
 } from "@arthurnw/bb-shared/bots";
 import { botsRpcContract, initiativeDraftSchema } from "@arthurnw/bb-shared/bots/schema";
 import { GUARD_FILE, GUARD_SCRIPT, guardSettings } from "./guard-script.ts";
-import { COORDINATOR_SKILL, coordinatorInstructions, coordinatorKickoff, nameFromBrief, roleOf, workerInstructions, WORKSPACE_PROVIDER, workspaceDirName, type ThreadRole } from "./initiative.ts";
+import { codexCoordinatorBlock, COORDINATOR_SKILL, coordinatorInstructions, coordinatorKickoff, nameFromBrief, roleOf, workerInstructions, WORKSPACE_PROVIDER, workspaceDirName, type ThreadRole } from "./initiative.ts";
 
 export const botsContract = defineRpcContract(botsRpcContract);
 // Registered apart from `botsContract`: its `z.custom` request cannot be published as discoverable.
@@ -97,6 +97,9 @@ export function registerBots(bb: BbPluginApi) {
   // instructions apply only when a provider session is constructed.
   bb.experimental_hooks.on("message.dispatch", (ctx) => {
     const { thread } = ctx;
+    const role = initiativeRole(roleOf(store, thread));
+    const blocked = role?.kind === "coordinator" ? codexCoordinatorBlock(ctx.requestedExecution, role.bot.name) : null;
+    if (blocked) return { action: "reject", message: blocked };
     if (thread.status !== "pending") return { action: "proceed" };
     const mentioned = findBotMention(ctx.input.blocks, BOT_MENTION_PLUGINS, known);
     if (mentioned !== null && thread.originPluginId === BOTS_PLUGIN_ID && pendingCoordinators.has(mentioned)) {
@@ -370,6 +373,8 @@ export function registerBots(bb: BbPluginApi) {
       publish();
       pendingCoordinators.add(bot.id);
       const model = draft.model;
+      // Codex keeps a coordinator's writes in its workspace only in Accept edits (see codexCoordinatorBlock).
+      const codex = (model?.providerId ?? request.providerId) === "codex";
       // The bot's pill goes in the hidden kickoff block: the dispatch hook needs it to bind the
       // coordinator, and in the visible brief it would repeat the name taken from the brief.
       const input: NewThreadRequest["input"] = [
@@ -385,6 +390,8 @@ export function registerBots(bb: BbPluginApi) {
           // The composer's session options belong to its own provider; a chosen coordinator model drops them.
           ...(model ? { providerId: model.providerId, model: model.model, reasoningLevel: model.reasoningLevel, serviceTier: model.serviceTier, sessionOptions: undefined,
             executionInputSources: { ...request.executionInputSources, providerId: "explicit", model: "explicit", reasoningLevel: "explicit", serviceTier: "explicit" } } : {}),
+          ...(codex ? { permissionMode: "accept-edits" as const, executionInputSources: {
+            ...request.executionInputSources, ...(model ? { providerId: "explicit", model: "explicit", reasoningLevel: "explicit", serviceTier: "explicit" } as const : {}), permissionMode: "explicit" } } : {}),
           environment: { type: "provider", environmentProviderId: WORKSPACE_PROVIDER, inputs: { botId: bot.id }, machine: { type: "existing", hostId } },
         });
         threadId = thread.id;

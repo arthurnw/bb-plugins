@@ -63,6 +63,17 @@ thread, or when `bb bots role` fails, it allows them. `onFailure: "block"`
 blocks the edit when the hook itself cannot run. Writes through the shell are
 covered by the coordinator's instructions only.
 
+### Pi and Codex
+
+- **Pi**: the `bb-bridge` extension in `~/.pi/agent/extensions` makes the same
+  check in its `tool_call` handler for `write` and `edit`, using `bb bots role`.
+- **Codex**: bb's `workspace-write` sandbox keeps every write, shell included,
+  in the bot workspace and the temp directories, but only in Accept edits mode.
+  A Codex coordinator starts in Accept edits, and the plugin refuses a
+  coordinator turn sent in Auto (Codex's reviewer can approve escalations) or
+  Full (no sandbox). In Accept edits, a user can still approve a write outside
+  the workspace when Codex asks.
+
 - **Thread list**: Bots | Threads | All views, Pinned, and Recent, with bots and
   custom sections in one order you arrange. Drag a thread onto a bot to make it
   one of its workers. **All** is bb's regular list with bot avatars: it shares

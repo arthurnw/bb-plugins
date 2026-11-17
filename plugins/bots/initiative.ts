@@ -119,3 +119,15 @@ export function coordinatorKickoff(placeholderName: string | null): string {
   if (placeholderName === null) return COORDINATOR_KICKOFF;
   return `${COORDINATOR_KICKOFF}\n\nFirst, name the bot: its name "${placeholderName}" is a placeholder taken from the brief. Pick a short noun phrase of one to three words, in title case, that names the initiative (like "Workflow Test" or "Billing Migration"), and run \`bb bots rename "<name>"\`. Don't mention the renaming to the user.`;
 }
+
+/**
+ * Why a Codex coordinator turn can't run in this permission mode, or null.
+ * bb runs Codex in its `workspace-write` sandbox, which limits every write
+ * (shell included) to the bot workspace and the temp dirs, only in
+ * `accept-edits`; `auto` lets Codex's reviewer approve escalations and `full`
+ * turns the sandbox off.
+ */
+export function codexCoordinatorBlock(execution: { providerId: string; permissionMode: string | null }, botName: string): string | null {
+  if (execution.providerId !== "codex" || (execution.permissionMode !== "auto" && execution.permissionMode !== "full")) return null;
+  return `"${botName}" is a coordinator, which runs Codex only in Accept edits mode so its sandbox keeps writes in the bot workspace. Switch this thread to Accept edits and send again.`;
+}

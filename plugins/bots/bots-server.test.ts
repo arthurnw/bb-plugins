@@ -8,7 +8,7 @@ import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { MIGRATIONS } from "./bot-store.ts";
 import { registerBots, spawnContract } from "./bots-server.ts";
 
-type Dispatch = (ctx: { thread: Record<string, unknown>; input: { blocks: unknown[] } }) => { action: string };
+type Dispatch = (ctx: { thread: Record<string, unknown>; input: { blocks: unknown[] }; requestedExecution?: { providerId: string; permissionMode: string | null } }) => { action: string; message?: string };
 
 type Configure = (ctx: { thread: { id: string; parentThreadId: string | null; sourceThreadId: string | null }; project: { id: string; name: string } }) => { tools: unknown[]; skills: string[]; instructions?: string };
 type Provider = { create(ctx: { inputs: { botId: string }; projectCheckout: { path: string } | null }): Promise<{ status: string; path?: string }> };
@@ -45,7 +45,8 @@ function fakeBb() {
         spawned.push(request);
         const id = `thr_${spawned.length}`;
         // bb runs the dispatch hook before the session starts.
-        dispatch!({ thread: { id, status: "pending", originPluginId: "bots", parentThreadId: null, sourceThreadId: null }, input: { blocks: request.input as unknown[] } });
+        dispatch!({ thread: { id, status: "pending", originPluginId: "bots", parentThreadId: null, sourceThreadId: null }, input: { blocks: request.input as unknown[] },
+          requestedExecution: { providerId: String(request.providerId ?? "claude-code"), permissionMode: (request.permissionMode as string | undefined) ?? null } });
         return { id };
       },
       update: async (request: Record<string, unknown>) => { updated.push(request); },
@@ -136,6 +137,20 @@ test("createInitiative starts a coordinator in the bot workspace and roles follo
   assert.equal((await role("stranger")).role, "none");
   assert.equal((await cli.run(["done", "w1"], {})).exitCode, 0);
   assert.deepEqual(store.get(bot.id)!.doneThreads, ["w1"]);
+});
+
+test("a Codex coordinator starts in Accept edits and its turns are refused in other modes", async () => {
+  const { rpc, spawned, dispatch } = fakeBb();
+  const model = { providerId: "codex", model: "gpt-5", reasoningLevel: "high", serviceTier: "default" };
+  const result = await (rpc.createInitiative!({ request: request("Ship it"), bot: { ...base, model } } as never) as Promise<{ threadId: string }>);
+  assert.equal(spawned[0]!.permissionMode, "accept-edits");
+  assert.equal((spawned[0]!.executionInputSources as { permissionMode: string }).permissionMode, "explicit");
+  const send = (providerId: string, permissionMode: string | null) => dispatch({ thread: { id: result.threadId, status: "idle", originPluginId: "bots", parentThreadId: null, sourceThreadId: null },
+    input: { blocks: [{ type: "text", text: "go", mentions: [] }] }, requestedExecution: { providerId, permissionMode } });
+  assert.equal(send("codex", "auto").action, "reject");
+  assert.match(send("codex", "full").message ?? "", /Accept edits/);
+  assert.equal(send("codex", "accept-edits").action, "proceed");
+  assert.equal(send("claude-code", "full").action, "proceed");
 });
 
 test("createInitiative promotes an existing thread under the coordinator", async () => {
