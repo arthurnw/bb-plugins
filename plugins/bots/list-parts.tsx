@@ -286,7 +286,7 @@ export function ThreadGroup({ threads, groupBot = null, done, depth = 0, context
     {showDone && split.done.map(renderRoot)}
     {props.footer}
   </>;
-  return <Group {...props} footer={footer} over={context.over} roots={split.active} renderRoot={renderRoot} />;
+  return <Group {...props} {...(split.done.length > 0 ? { empty: undefined } : {})} footer={footer} over={context.over} roots={split.active} renderRoot={renderRoot} />;
 }
 
 /** Inline rename field for a custom section. */

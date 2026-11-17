@@ -6,9 +6,9 @@ import {
   useBbNavigate, useRealtime, useRpc, useSdk,
   type PluginSidebarThread,
 } from "@get-bb/plugin-sdk/app";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import type { botsContract } from "./bots-server";
+import type { botsContract, spawnContract } from "./bots-server";
 import { BotAvatar, useBots, useBotStates, useThreadBots } from "./bot-avatars";
 import { liveThread } from "@arthurnw/bb-shared/avatars";
 import { openHandoff, openNewThread } from "@arthurnw/bb-shared/events";
@@ -79,6 +79,7 @@ export function BotThreadList({ activeThreadId, activeProjectId, onNavigate }: {
   const botStates = useBotStates();
   const navigate = useBbNavigate();
   const rpc = useRpc<typeof botsContract>();
+  const spawnRpc = useRpc<typeof spawnContract>();
   const sdk = useSdk();
   const { providers } = useProviders();
   const [order, saveOrder] = useListOrder(rpc);
@@ -132,6 +133,21 @@ export function BotThreadList({ activeThreadId, activeProjectId, onNavigate }: {
     navigate.toThread(thread.id);
     onNavigate?.();
   };
+
+  // A coordinator thread renamed in bb renames its bot. Only a change of title
+  // counts: renaming the bot retitles the thread a moment later, and the gap
+  // between the two must not rename the bot back.
+  const seenTitles = useRef(new Map<string, string>());
+  useEffect(() => {
+    for (const bot of allBots ?? []) {
+      const thread = bot.coordinatorThreadId ? sidebar.threads.find((item) => item.id === bot.coordinatorThreadId) : undefined;
+      const title = thread?.title?.trim();
+      if (!thread || !title) continue;
+      const before = seenTitles.current.get(thread.id);
+      seenTitles.current.set(thread.id, title);
+      if (before !== undefined && before !== title && title !== bot.name) void spawnRpc.call("renameFromTitle", { threadId: thread.id, title }).catch(() => {});
+    }
+  }, [allBots, sidebar.threads, spawnRpc]);
 
   const placed = useMemo(() => {
     const known = new Set((bots ?? []).map((bot) => bot.id));

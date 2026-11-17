@@ -134,20 +134,24 @@ test("createInitiative promotes an existing thread under the coordinator", async
   const { store, rpc, updated } = fakeBb();
   const result = await (rpc.createInitiative!({ request: request("Take over @thread:thr_old"), bot: base, promoteThreadId: "thr_old" } as never) as Promise<{ threadId: string; botId: string }>);
   assert.equal(store.binding("thr_old"), result.botId);
-  assert.deepEqual(updated, [{ threadId: result.threadId, title: "Take Over" }, { threadId: "thr_old", parentThreadId: result.threadId }]);
+  assert.deepEqual(updated, [{ threadId: "thr_old", parentThreadId: result.threadId }]);
 });
 
-test("the coordinator thread's title follows the bot name", async () => {
-  const { cli, rpc, events, updated } = fakeBb();
-  const result = await (rpc.createInitiative!({ request: request("Ship it"), bot: { ...base, name: "Shipper" } } as never) as Promise<{ threadId: string }>);
-  assert.deepEqual(updated.at(-1), { threadId: result.threadId, title: "Shipper" });
+test("the coordinator thread's title and the bot name follow each other", async () => {
+  const { store, cli, rpc, events, updated, spawned } = fakeBb();
+  const result = await (rpc.createInitiative!({ request: request("Ship it"), bot: { ...base, name: "Shipper" } } as never) as Promise<{ threadId: string; botId: string }>);
+  assert.equal(spawned[0]!.title, "Shipper");
   await cli.run(["rename", "Ship Crew"], { threadId: result.threadId });
   assert.deepEqual(updated.at(-1), { threadId: result.threadId, title: "Ship Crew" });
-  const count = updated.length;
-  await events.get("thread.idle")!({ thread: { id: result.threadId, title: "Ship Crew" } } as never);
-  assert.equal(updated.length, count);
-  await events.get("thread.idle")!({ thread: { id: result.threadId, title: "Set up the tracker" } } as never);
-  assert.deepEqual(updated.at(-1), { threadId: result.threadId, title: "Ship Crew" });
+  // Renaming the thread in bb renames the bot, from the app or after the coordinator's turn.
+  await rpc.renameFromTitle!({ threadId: result.threadId, title: "Release Crew" } as never);
+  assert.equal(store.get(result.botId)!.name, "Release Crew");
+  await events.get("thread.idle")!({ thread: { id: result.threadId, title: "Launch Crew" } } as never);
+  assert.equal(store.get(result.botId)!.name, "Launch Crew");
+  // A title longer than a name is cut, and the thread gets the cut name.
+  await rpc.renameFromTitle!({ threadId: result.threadId, title: "x".repeat(60) } as never);
+  assert.equal(store.get(result.botId)!.name, "x".repeat(40));
+  assert.deepEqual(updated.at(-1), { threadId: result.threadId, title: "x".repeat(40) });
 });
 
 test("createInitiative refuses an empty brief", async () => {

@@ -51,7 +51,9 @@ EOF
   diff or PR, and update state.
 - To steer a running worker: `bb thread tell <thread id> '<message>'`.
 - When a worker's PR merges or the work is dropped, run
-  `bb bots done <thread id>` so the thread list collapses it.
+  `bb bots done <thread id>` so the thread list collapses it into the bot's
+  done row. Don't archive or delete finished workers: the done row is where
+  they stay visible to the user. Removing their worktrees and branches is fine.
 - If the user steered a worker directly, record what they asked in `log.md`.
 
 ## Review

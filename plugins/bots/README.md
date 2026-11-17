@@ -32,9 +32,8 @@ Manage bots in Settings → Bots.
   delegation, review, and the `tracker.md` and `log.md` state files. It never
   edits code. Right-click the bot's header in the Threads view for the
   coordinator thread's menu. Deleting the coordinator thread deletes the bot;
-  its workspace files stay. The coordinator's title is the bot's name: Bots
-  sets it again when bb retitles the thread, so rename the bot rather than the
-  thread.
+  its workspace files stay. The coordinator's title is the bot's name:
+  renaming either renames the other.
 - **Workers**: every other thread of the bot, normally children of the
   coordinator (`bb thread spawn --parent-self`). They get short worker
   instructions: one worktree, one PR, report to the parent.

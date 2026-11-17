@@ -5,7 +5,7 @@ import { z } from "zod";
 import { BotStore, BotStoreError, MIGRATIONS, type SqlDb } from "./bot-store.ts";
 import {
   BOT_MENTION_PLUGINS, BOTS_PLUGIN_ID, BRIEF_MAX, findBotMention, handoffSource, hasNoBotMarker, MENTION_PROVIDER, NO_BOT_TEXT, ownerOf, renderInstructions,
-  TRUSTED_ORIGIN_PLUGINS, botDraft, withBotMention, withoutBotMentions, type Bot,
+  TRUSTED_ORIGIN_PLUGINS, botDraft, NAME_MAX, oneLine, withBotMention, withoutBotMentions, type Bot,
 } from "@arthurnw/bb-shared/bots";
 import { botsRpcContract, initiativeDraftSchema } from "@arthurnw/bb-shared/bots/schema";
 import { GUARD_FILE, GUARD_SCRIPT, guardSettings } from "./guard-script.ts";
@@ -32,6 +32,11 @@ export const spawnContract = defineRpcContract({
     input: z.object({ request: z.custom<NewThreadRequest>(), bot: initiativeDraftSchema, avatar: z.string().max(200).optional(),
       promoteThreadId: z.string().min(1).optional() }),
     output: z.object({ threadId: z.string(), botId: z.string() }),
+  },
+  /** A coordinator thread was renamed in bb: its bot takes the title as its name. */
+  renameFromTitle: {
+    input: z.object({ threadId: z.string().min(1), title: z.string().max(500) }),
+    output: z.object({}),
   },
 });
 const trusted = (pluginId: string | null | undefined) => pluginId != null && (TRUSTED_ORIGIN_PLUGINS as readonly string[]).includes(pluginId);
@@ -74,8 +79,8 @@ export function registerBots(bb: BbPluginApi) {
   void mkdir(dirname(guardPath), { recursive: true }).then(() => writeFile(guardPath, GUARD_SCRIPT, { mode: 0o755 }))
     .catch((error) => bb.log.warn(`could not write the coordinator guard: ${error instanceof Error ? error.message : String(error)}`));
   const publish = () => bb.realtime.publish("bots", { changedAt: Date.now() });
-  // An initiative bot's name is its coordinator thread's title. bb titles new
-  // threads itself, so the title is set again whenever it drifts.
+  // An initiative bot's name is its coordinator thread's title: renaming the bot
+  // retitles the thread, and renaming the thread renames the bot.
   const syncTitle = async (bot: Bot | null, current?: string | null) => {
     if (!bot?.coordinatorThreadId || current === bot.name) return;
     try { await bb.sdk.threads.update({ threadId: bot.coordinatorThreadId, title: bot.name }); }
@@ -170,6 +175,18 @@ export function registerBots(bb: BbPluginApi) {
     return (local.find((source) => source.isDefault) ?? local[0])?.hostId;
   }
 
+  /** Takes a coordinator thread's new title (a rename in bb) as its bot's name. */
+  function renameFromTitle(bot: Bot | null, title: string | null | undefined) {
+    const name = oneLine(title ?? "").slice(0, NAME_MAX).trim();
+    if (!bot?.coordinatorThreadId || !name || name === bot.name) return;
+    try {
+      const saved = store.save(bot.id, { ...botDraft(bot), name });
+      publish();
+      // A title longer than a name allows is cut to fit.
+      if (saved.name !== title) void syncTitle(saved);
+    } catch (error) { bb.log.warn(`could not rename bot ${bot.id} to its coordinator's title: ${String(error)}`); }
+  }
+
   async function provisionWorkspace(botId: string, checkoutPath: string | null) {
     if (!store.get(botId)) return { status: "failed" as const, message: "That bot no longer exists." };
     const path = workspaceFor(botId);
@@ -250,15 +267,14 @@ export function registerBots(bb: BbPluginApi) {
       publish();
     }
   });
-  bb.events.on("thread.idle", async ({ thread }) => { await syncTitle(store.coordinatedBy(thread.id), thread.title); });
+  bb.events.on("thread.idle", ({ thread }) => { renameFromTitle(store.coordinatedBy(thread.id), thread.title); });
   // Coordinators deleted while Bots was not running. bb.sdk answers only once
   // the server listens, so this waits a moment after load.
   const sweep = setTimeout(async () => {
     for (const bot of store.list()) {
       if (bot.coordinatorThreadId === null) continue;
       try {
-        const thread = await bb.sdk.threads.get({ threadId: bot.coordinatorThreadId });
-        await syncTitle(bot, thread.title);
+        await bb.sdk.threads.get({ threadId: bot.coordinatorThreadId });
       } catch (error) {
         if (!/\b404\b|not found/i.test(String(error))) continue;
         store.delete(bot.id);
@@ -347,6 +363,10 @@ export function registerBots(bb: BbPluginApi) {
       const thread = await bb.sdk.threads.spawn({ ...request, input, ...placement });
       return { threadId: thread.id };
     },
+    renameFromTitle({ threadId, title }) {
+      renameFromTitle(store.coordinatedBy(threadId), title);
+      return {};
+    },
     async createInitiative({ request, bot: draft, avatar, promoteThreadId }) {
       const brief = briefText(request.input);
       if (!brief.trim()) throw new BotStoreError("Write a brief for the bot.");
@@ -373,7 +393,7 @@ export function registerBots(bb: BbPluginApi) {
         const hostId = hostIn(request.environment) ?? await defaultHostId(projectId);
         if (!hostId) throw new BotStoreError("This project has no checkout on a machine, so the bot has nowhere to run.");
         const thread = await bb.sdk.threads.spawn({
-          ...request, input, projectId,
+          ...request, input, projectId, title: name,
           // The composer's session options belong to its own provider; a chosen coordinator model drops them.
           ...(model ? { providerId: model.providerId, model: model.model, reasoningLevel: model.reasoningLevel, serviceTier: model.serviceTier, sessionOptions: undefined,
             executionInputSources: { ...request.executionInputSources, providerId: "explicit", model: "explicit", reasoningLevel: "explicit", serviceTier: "explicit" } } : {}),
@@ -387,7 +407,6 @@ export function registerBots(bb: BbPluginApi) {
         throw error;
       }
       claimCoordinator(bot.id, threadId);
-      await syncTitle(store.get(bot.id));
       if (promoteThreadId) await promote(bot, threadId, promoteThreadId);
       return { threadId, botId: bot.id };
     },
