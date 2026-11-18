@@ -22,6 +22,8 @@ export interface LayoutThread {
   latestAttentionAt: number;
   /** Card height when not CARD_H: a parent card listing its child threads. */
   height?: number;
+  /** A bot's coordinator: its workers are laid out as a block to its right. */
+  coordinator?: boolean;
 }
 
 export const CARD_W = 300;
@@ -100,6 +102,20 @@ function layoutGroup(threads: readonly LayoutThread[], options: ArrangeOptions =
   const heights = new Map(threads.map((thread) => [thread.id, heightOf(thread)]));
   const tree = treeCells(threads);
   if (options.style === "tree") return placeCells(tree, heights, CARD_W + GAP_X);
+  // The flat styles would wrap workers under the coordinator, so every worker
+  // edge would run behind cards. Grid the workers alone, right of it.
+  const coordinator = threads.find((thread) => thread.coordinator === true);
+  if (coordinator !== undefined && threads.length > 1) {
+    const workers = layoutGroup(threads.filter((thread) => thread !== coordinator), options);
+    const offset = CARD_W + GAP_X;
+    const positions = new Map<string, Point>([[coordinator.id, { x: 0, y: 0 }]]);
+    for (const [id, point] of workers.positions) positions.set(id, { x: offset + point.x, y: point.y });
+    return {
+      positions,
+      width: offset + workers.width,
+      height: Math.max(heightOf(coordinator), workers.height),
+    };
+  }
   const order = [...tree.keys()];
   const size = options.gridSize;
   const cell = (index: number): { col: number; row: number } => {

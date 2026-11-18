@@ -639,8 +639,13 @@ function CanvasInner() {
 
   const layoutThreads = useMemo(
     () =>
-      topLevel.map((thread) => ({ ...thread, group: groups.get(thread.id)?.key ?? NO_GROUP, height: cardHeight(thread.id) })),
-    [topLevel, groups, cardHeight],
+      topLevel.map((thread) => ({
+        ...thread,
+        group: groups.get(thread.id)?.key ?? NO_GROUP,
+        height: cardHeight(thread.id),
+        coordinator: coordinators.has(thread.id),
+      })),
+    [topLevel, groups, cardHeight, coordinators],
   );
 
   useEffect(() => {

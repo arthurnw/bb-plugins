@@ -182,3 +182,53 @@ test("frameBounds uses each card's height", () => {
   const bounds = frameBounds([{ x: 0, y: 0, height: 500 }])!;
   assert.ok(bounds.y + bounds.height > 500);
 });
+
+const botFrame = (workers: number): LayoutThread[] => [
+  thread("coord", "bot", { coordinator: true, latestAttentionAt: 9 }),
+  ...Array.from({ length: workers }, (_, i) =>
+    thread(`w${i}`, "bot", { parentThreadId: "coord", createdAt: i + 1 }),
+  ),
+];
+
+const assertWorkersRight = (positions: Map<string, Point>, workers: number) => {
+  const coord = positions.get("coord")!;
+  for (let i = 0; i < workers; i += 1) {
+    const w = positions.get(`w${i}`)!;
+    assert.ok(w.x >= coord.x + CARD_W, `w${i} is right of the coordinator`);
+  }
+  const ys = Array.from(positions.values(), (p) => p.y);
+  assert.equal(Math.min(...ys), coord.y);
+};
+
+test("bot frame in tree style puts workers in a column right of the coordinator", () => {
+  const positions = autoLayout(botFrame(3), { style: "tree", gridSize: 3 });
+  assertWorkersRight(positions, 3);
+  assert.equal(positions.get("w0")!.y, positions.get("coord")!.y);
+  assert.equal(positions.get("w1")!.x, positions.get("w0")!.x);
+});
+
+test("bot frame in gridColumns grids the workers only, right of the coordinator", () => {
+  const positions = autoLayout(botFrame(4), { style: "gridColumns", gridSize: 3 });
+  assertWorkersRight(positions, 4);
+  const coord = positions.get("coord")!;
+  assert.equal([...positions.values()].filter((p) => p.x === coord.x).length, 1);
+  assert.equal(positions.get("w3")!.x, positions.get("w0")!.x);
+  assert.ok(positions.get("w3")!.y > positions.get("w0")!.y);
+  assert.equal(positions.get("w2")!.y, positions.get("w0")!.y);
+});
+
+test("bot frame keeps workers right of the coordinator in every flat style", () => {
+  for (const style of ["row", "gridRows", "column"] as const) {
+    assertWorkersRight(autoLayout(botFrame(4), { style, gridSize: 2 }), 4);
+  }
+});
+
+test("placeNew stacks a new worker below existing workers, right of the coordinator", () => {
+  const threads = botFrame(3);
+  const all = autoLayout(threads.slice(0, 3), { style: "gridColumns", gridSize: 3 });
+  const positions = placeNew(threads, all);
+  const added = positions.get("w2")!;
+  const coord = positions.get("coord")!;
+  assert.ok(added.x >= coord.x + CARD_W);
+  assert.ok(added.y >= Math.max(positions.get("w0")!.y, positions.get("w1")!.y) + CARD_H);
+});
