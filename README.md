@@ -6,6 +6,7 @@
 | --- | --- |
 | [bots](plugins/bots) | Initiative bots: a coordinator thread that delegates code work to visible worker threads, with its state in a bot workspace. Also saved launch configurations and a thread list grouped by bot. Works with or without Launcher. |
 | [canvas](plugins/canvas) | Zoomable canvas of your threads: project frames, fork links, live status, pinned chats, and sticky notes. |
+| [change-breakdown](plugins/change-breakdown) | Splits a thread's changed lines into Code, Tests, Mocks, Generated, and Docs. |
 | [composer-vim](plugins/composer-vim) | Neovim-style modal editing for the composer, with readline insert-mode keys. |
 | [inbox](plugins/inbox) | Inbox page for agent threads: live status, filter tabs, and rows with Approve, Reject, Retry, and Open. |
 | [message-timestamps-lite](plugins/message-timestamps-lite) | Shows when you sent each message. |
@@ -15,6 +16,7 @@
 | [tailnet-preview](plugins/tailnet-preview) | Publishes dev servers over `tailscale serve` and opens them in the thread's in-app browser. |
 | [thread-cost](plugins/thread-cost) | Estimated API cost of each Pi, Claude Code, and Codex thread, shown in the composer footer. |
 | [thread-delete-shortcut](plugins/thread-delete-shortcut) | Adds a confirmation-gated keyboard shortcut for deleting the focused thread. |
+| [thread-row-project](plugins/thread-row-project) | Shows each thread's project name on its sidebar row metadata line (needs the `threadRowMetadata` experiment). |
 
 `dev/` holds test fixtures, not plugins. `dev/latency-spa` is a small page and
 server for checking tailnet-preview latency through the proxy.

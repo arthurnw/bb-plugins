@@ -12,6 +12,10 @@
       "source": "./plugins/canvas"
     },
     {
+      "name": "change-breakdown",
+      "source": "./plugins/change-breakdown"
+    },
+    {
       "name": "composer-vim",
       "source": "./plugins/composer-vim"
     },
@@ -46,6 +50,10 @@
     {
       "name": "thread-delete-shortcut",
       "source": "./plugins/thread-delete-shortcut"
+    },
+    {
+      "name": "thread-row-project",
+      "source": "./plugins/thread-row-project"
     }
   ]
 }
